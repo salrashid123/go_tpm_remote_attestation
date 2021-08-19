@@ -31,6 +31,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
+	mrnd "math/rand"
 	"net"
 	"os"
 	"sync"
@@ -63,7 +64,6 @@ import (
 
 var (
 	grpcport         = flag.String("grpcport", "", "grpcport")
-	secret           = flag.String("secret", "foo", "secret")
 	expectedPCRValue = flag.String("expectedPCRValue", "24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f", "expectedPCRValue")
 	pcr              = flag.Int("pcr", 23, "PCR Value to use")
 	caCert           = flag.String("cacert", "CA_crt.pem", "CA Certificate to issue certs")
@@ -98,6 +98,7 @@ var (
 			KeyBits: 2048,
 		},
 	}
+	letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 )
 
 const (
@@ -244,7 +245,7 @@ func main() {
 	})
 
 	glog.V(2).Infof("Starting gRPC server on port %v", *grpcport)
-
+	mrnd.Seed(time.Now().UnixNano())
 	s.Serve(lis)
 }
 
@@ -291,7 +292,14 @@ func (s *server) MakeCredential(ctx context.Context, in *verifier.MakeCredential
 
 	registry[in.Uid] = *in
 
-	credBlob, encryptedSecret, err := makeCredential(*secret, in.EkPub, in.AkPub)
+	b := make([]rune, 32)
+	for i := range b {
+		b[i] = letterRunes[mrnd.Intn(len(letterRunes))]
+	}
+	nonce := string(b)
+	nonces[in.Uid] = nonce
+
+	credBlob, encryptedSecret, err := makeCredential(nonce, in.EkPub, in.AkPub)
 	if err != nil {
 		return &verifier.MakeCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to makeCredential"))
 	}
@@ -310,7 +318,8 @@ func (s *server) ActivateCredential(ctx context.Context, in *verifier.ActivateCr
 	glog.V(10).Infof("     Secret %s", in.Secret)
 
 	verified := false
-	err := verifyQuote(in.Uid, *secret, in.Attestation, in.Signature)
+	nonce := nonces[in.Uid]
+	err := verifyQuote(in.Uid, nonce, in.Attestation, in.Signature)
 	if err != nil {
 		glog.Errorf("     Quote Verification Failed Quote: %v", err)
 		return &verifier.ActivateCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Quote Verification Failed Quote: %v", err))
