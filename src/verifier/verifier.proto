@@ -29,16 +29,13 @@ message MakeCredentialRequest {
 
 message MakeCredentialResponse {
   string uid = 1;
-  int32 pcr = 2;
-  bytes credBlob = 3;
-  bytes encryptedSecret = 4;
+  bytes credBlob = 2;
+  bytes encryptedSecret = 3;
 }
 
 message ActivateCredentialRequest {
   string uid = 1;
-  string secret = 2;  
-  bytes attestation = 3;
-  bytes signature = 4;  
+  string secret = 2;
 }
 
 message ActivateCredentialResponse {

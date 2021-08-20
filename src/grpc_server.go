@@ -290,6 +290,14 @@ func (s *server) MakeCredential(ctx context.Context, in *verifier.MakeCredential
 		glog.V(10).Infof("     EKPubCert SerialNumber: %s", encCert.SerialNumber.String())
 	}
 
+	//  NOTE: this is the point where you would usually have some way to verify that the EKPubPEM is infact
+	//        for this TPM.  One way to do that is to check the EKCert that is signed by the TPM's manufacturer
+	//        on GCP, the EKCert is provided by the client if you invoke the client with `--readCertsFromNV` flag.
+	//        The EKCert for GCP is signed by google and has the actual instanceID, project and zone  embedded within in it as extended Claims
+	//        You can extract the public key from the x509 and use that for remote attestation.
+
+	//    This repo simply trusts the EKPubPEM just for simplicity...you really need to establish root of trust using the EKCert or some other mechanism.
+
 	registry[in.Uid] = *in
 
 	b := make([]rune, 32)
@@ -319,13 +327,9 @@ func (s *server) ActivateCredential(ctx context.Context, in *verifier.ActivateCr
 
 	verified := false
 	nonce := nonces[in.Uid]
-	err := verifyQuote(in.Uid, nonce, in.Attestation, in.Signature)
-	if err != nil {
-		glog.Errorf("     Quote Verification Failed Quote: %v", err)
-		return &verifier.ActivateCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Quote Verification Failed Quote: %v", err))
-	} else {
-		glog.V(2).Infof("     Verified Quote")
-		verified = true
+
+	if nonce != in.Secret {
+		glog.V(5).Infof("     client provided incorrect nonce for ActivateCredential wanted [%s], got [%s]", nonce, in.Uid)
 	}
 
 	return &verifier.ActivateCredentialResponse{

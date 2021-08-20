@@ -319,15 +319,9 @@ func main() {
 		glog.Fatalf("could not activateCredential: %v", err)
 	}
 
-	attestation, signature, err := quote(int(r.Pcr), secret)
-	if err != nil {
-		glog.Fatalf("Unable to generate quote: %v", err)
-	}
 	areq := &pb.ActivateCredentialRequest{
-		Uid:         *u,
-		Secret:      secret,
-		Attestation: attestation,
-		Signature:   signature,
+		Uid:    *u,
+		Secret: secret,
 	}
 
 	ar, err := c.ActivateCredential(ctx, areq)
