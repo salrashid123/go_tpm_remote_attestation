@@ -5,11 +5,12 @@ package verifier;
 option go_package = "github.com/salrashid123/rungo_tpm_remote_attestation/verifier";
 
 service Verifier {
-  rpc MakeCredential (MakeCredentialRequest) returns (MakeCredentialResponse) { }
+  rpc GetPlatformCert (GetPlatformCertRequest) returns (GetPlatformCertResponse) { }
+  rpc GetEKCert (GetEKCertRequest) returns (GetEKCertResponse) { }
+  rpc GetAK (GetAKRequest) returns (GetAKResponse) { }
   rpc ActivateCredential (ActivateCredentialRequest) returns (ActivateCredentialResponse) { }
-  rpc OfferQuote (OfferQuoteRequest) returns (OfferQuoteResponse) { }
-  rpc ProvideQuote (ProvideQuoteRequest) returns (ProvideQuoteResponse) { }
-  rpc OfferImport (OfferImportRequest) returns (OfferImportResponse) { }
+  rpc Quote (QuoteRequest) returns (QuoteResponse) { }
+  rpc PushSecret (PushSecretRequest) returns (PushSecretResponse) { }  
 }
 
 enum SecretType {
@@ -18,59 +19,65 @@ enum SecretType {
   AES = 2;
 }  
 
-message MakeCredentialRequest {
+message GetPlatformCertRequest {
   string uid = 1;
-  string akName = 2;  
-  bytes ekPub = 3; //   TPMT_PUBLIC  use tpm2.DecodePublic, tpm2.LoadExternal..TODO, just send RSAPublicKey
-  bytes ekCert = 4;
-  bytes akPub = 5;
-  bytes akPubCert = 6;
 }
 
-message MakeCredentialResponse {
+message GetPlatformCertResponse {
+  string uid = 1;
+  bytes platformCert = 2;
+}
+
+message GetEKCertRequest {
+  string uid = 1;
+}
+
+message GetEKCertResponse {
+  string uid = 1;
+  bytes ekCert = 2;
+}
+
+message GetAKRequest {
+  string uid = 1;
+}
+
+message GetAKResponse {
+  string uid = 1;
+  bytes ekPub = 2;
+  bytes akName = 3;  
+  bytes akPub = 4;
+}
+
+message ActivateCredentialRequest {
   string uid = 1;
   bytes credBlob = 2;
   bytes encryptedSecret = 3;
 }
 
-message ActivateCredentialRequest {
-  string uid = 1;
-  string secret = 2;
-}
-
 message ActivateCredentialResponse {
   string uid = 1;
-  bool verified = 2;
+  bytes secret = 2;
 }
 
-message OfferQuoteRequest {
-  string uid = 1;
-}
-
-message OfferQuoteResponse {
+message QuoteRequest {
   string uid = 1;
   int32 pcr = 2;
-  string nonce = 3;
+  string secret =3;
 }
 
-message ProvideQuoteRequest {
+message QuoteResponse {
   string uid = 1;
-  bytes attestation = 3;
-  bytes signature = 4;    
+  bytes attestation = 2;
+  bytes signature = 3;  
 }
 
-message ProvideQuoteResponse {
-  string uid = 1;
-  bool verified = 2;
-}
-
-message OfferImportRequest {
-  string uid = 1;
-}
-
-message OfferImportResponse {
+message PushSecretRequest {
   string uid = 1;
   SecretType secret_type = 2;
-  bytes importBlob = 3;
+  bytes importBlob = 3;  
 }
 
+message PushSecretResponse {
+  string uid = 1;
+  bytes verification = 2;  
+}
