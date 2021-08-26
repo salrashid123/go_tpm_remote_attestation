@@ -153,6 +153,8 @@ func main() {
 	tlsCfg.RootCAs = rootCAs
 	tlsCfg.ServerName = "verify.esodemoapp2.com"
 
+	mrnd.Seed(time.Now().UTC().UnixNano())
+
 	ce := credentials.NewTLS(&tlsCfg)
 
 	ctx := context.Background()
