@@ -54,7 +54,7 @@ const (
 
 var (
 	expectedPCRValue = flag.String("expectedPCRValue", "24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f", "expectedPCRValue to use")
-	expectedPCR0SHA1 = flag.String("expectedPCR0SHA1", "0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "PCR0 value for the eventlog on GCE VMs, debian10 with secure boot")
+	expectedPCRSHA1  = flag.String("expectedPCRSHA1", "0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "PCR0 value for the eventlog on GCE VMs, debian10 with secure boot")
 	pcr              = flag.Int("pcr", 0, "PCR Value to use")
 	u                = flag.String("uid", uuid.New().String(), "uid of client")
 
@@ -377,7 +377,7 @@ func main() {
 	glog.V(2).Infof("     Attestation Signature Verified ")
 
 	glog.V(2).Infof("     Reading EventLog")
-	bt, err := hex.DecodeString(*expectedPCR0SHA1)
+	bt, err := hex.DecodeString(*expectedPCRSHA1)
 	if err != nil {
 		glog.Fatalf("Error decoding pcr %v", err)
 	}

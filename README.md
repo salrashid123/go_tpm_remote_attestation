@@ -217,7 +217,7 @@ I0901 00:37:55.388172   32554 grpc_attestor.go:1017]      Returning PullRSAKeyRe
 
 ```log
 $ go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
-   -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" --expectedPCR0SHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
+   -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" --expectedPCRSHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
    --host verify.esodemoapp2.com:50051 --pcr=0 --expectedPCRValue 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f \
    --v=10 -alsologtostderr 
 
@@ -439,7 +439,7 @@ I0901 00:40:06.411740   32601 grpc_attestor.go:1017]      Returning PullRSAKeyRe
 ```log
 $ go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
   --pcr=0  --expectedPCRValue 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f  --rsaCert=certs/tpm_client.crt \
-  --expectedPCR0SHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
+  --expectedPCRSHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
   --rsaKey=certs/tpm_client.key  --host verify.esodemoapp2.com:50051   \
   --v=10 -alsologtostderr 
 
@@ -520,7 +520,11 @@ I0901 00:40:06.419834    6743 grpc_verifier.go:565]      Pulled Signing Key 369c
 ```
 
 
-### EventLog
+#### EventLog
+
+Please see the following for background on the eventlog and how to use it 
+
+- [TPMJS Event Log](https://google.github.io/tpm-js/#pg_attestation)
 
 >> Note, on [GCP Shielded VM](https://cloud.google.com/compute/docs/instances/integrity-monitoring), the default `PCR0` value is:
 
@@ -534,7 +538,7 @@ I0901 00:40:06.419834    6743 grpc_verifier.go:565]      Pulled Signing Key 369c
 
 which you can specify with arguments
 
-`--pcr=0 --expectedPCR0SHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea --expectedPCRValue 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f`
+`--pcr=0 --expectedPCRSHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea --expectedPCRValue 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f`
 
 We're using PCR0 for the [TPM EventLog](https://www.kernel.org/doc/html/latest/security/tpm/tpm_event_log.html) that is returned during quote/verify.
 
