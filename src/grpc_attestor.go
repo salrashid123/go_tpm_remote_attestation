@@ -15,6 +15,8 @@
 package main
 
 import (
+	"bytes"
+	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
@@ -47,6 +49,7 @@ import (
 
 	tpmpb "github.com/google/go-tpm-tools/proto/tpm"
 	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/tpmutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -906,7 +909,9 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	glog.V(10).Infof("     uakPub PEM \n%s", string(ukPubPEM))
 
 	// Certify the Unrestricted key using the AK
-	attestation, csig, err := tpm2.Certify(rwc, emptyPassword, emptyPassword, ukeyHandle, aKkeyHandle, nil)
+	// override tpm2.Certify until https://github.com/google/go-tpm/issues/262 is fixed
+	attestation, csig, err := Certify(rwc, emptyPassword, emptyPassword, ukeyHandle, aKkeyHandle, nil)
+	//attestation, csig, err := tpm2.Certify(rwc, emptyPassword, emptyPassword, ukeyHandle, aKkeyHandle, nil)
 	if err != nil {
 		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Load failed: %s", err))
 	}
@@ -971,43 +976,40 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	glog.V(20).Infof("     Attestation : MatchesPublic %v", ok)
 	glog.V(20).Infof("     Attestation att.AttestedCertifyInfo.Name: %s", base64.StdEncoding.EncodeToString(att.AttestedCertifyInfo.Name.Digest.Value))
 
-	/*
-		// Just verify the signature with the AK...just for fun
-		// currently skipped pending https://github.com/google/go-tpm/issues/262
-		sigL := tpm2.SignatureRSA{
-			HashAlg:   tpm2.AlgSHA256,
-			Signature: csig,
-		}
+	sigL := tpm2.SignatureRSA{
+		HashAlg:   tpm2.AlgSHA256,
+		Signature: csig,
+	}
 
-		// Verify signature of Attestation by using the PEM Public key for AK
-		glog.V(10).Infof("     Decoding PublicKey for AK ========")
+	// Verify signature of Attestation by using the PEM Public key for AK
+	glog.V(10).Infof("     Decoding PublicKey for AK ========")
 
-		block, _ := pem.Decode(akPubPEM)
-		if block == nil {
-			return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to decode akPubPEM %v", err))
-		}
+	block, _ := pem.Decode(akPubPEM)
+	if block == nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to decode akPubPEM %v", err))
+	}
 
-		r, err := x509.ParsePKIXPublicKey(block.Bytes)
-		if err != nil {
-			return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create rsa Key from PEM %v", err))
-		}
-		rsaPub := *r.(*rsa.PublicKey)
+	r, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create rsa Key from PEM %v", err))
+	}
+	rsaPub := *r.(*rsa.PublicKey)
 
-		// p, err := tpm2.DecodePublic(akPub)
-		// if err != nil {
-		// 	log.Fatalf("DecodePublic failed: %v", err)
-		// }
-		// rsaPub := rsa.PublicKey{E: int(p.RSAParameters.Exponent()), N: p.RSAParameters.Modulus()}
-		// rsaPub = *ap.(*rsa.PublicKey)
+	// p, err := tpm2.DecodePublic(akPub)
+	// if err != nil {
+	// 	log.Fatalf("DecodePublic failed: %v", err)
+	// }
+	// rsaPub := rsa.PublicKey{E: int(p.RSAParameters.Exponent()), N: p.RSAParameters.Modulus()}
+	// rsaPub = *ap.(*rsa.PublicKey)
 
-		hsh := crypto.SHA256.New()
-		hsh.Write(attestation)
+	hsh := crypto.SHA256.New()
+	hsh.Write(attestation)
 
-		if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
-			return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("VerifyPKCS1v15 failed: %v", err))
-		}
-		glog.V(10).Infof("     Attestation Verified")
-	*/
+	if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("VerifyPKCS1v15 failed: %v", err))
+	}
+	glog.V(10).Infof("     Attestation Verified")
+
 	res := &verifier.PullRSAKeyResponse{
 		Uid:          in.Uid,
 		RsaPublicKey: ukPubPEM,
@@ -1091,4 +1093,154 @@ func main() {
 	glog.V(2).Infof("Starting gRPC server on port %v", *grpcport)
 	mrnd.Seed(time.Now().UnixNano())
 	s.Serve(lis)
+}
+
+/// *************************
+//  The rest of this file is just code copied from go-tpm and overrides the
+//  tpm2.Certify() call due to  https://github.com/google/go-tpm/issues/262
+
+func Certify(rw io.ReadWriter, objectAuth, signerAuth string, object, signer tpmutil.Handle, qualifyingData []byte) ([]byte, []byte, error) {
+	cmd, err := encodeCertify(objectAuth, signerAuth, object, signer, qualifyingData)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := runCommand(rw, tpm2.TagSessions, tpm2.CmdCertify, tpmutil.RawBytes(cmd))
+	if err != nil {
+		return nil, nil, err
+	}
+	return decodeCertify(resp)
+}
+
+// SigScheme represents a signing scheme.
+type SigScheme struct {
+	Alg   tpm2.Algorithm
+	Hash  tpm2.Algorithm
+	Count uint32
+}
+
+func (s *SigScheme) encode() ([]byte, error) {
+	if s == nil || s.Alg.IsNull() {
+		return tpmutil.Pack(tpm2.AlgNull)
+	}
+	if s.Alg.UsesCount() {
+		return tpmutil.Pack(s.Alg, s.Hash, s.Count)
+	}
+	return tpmutil.Pack(s.Alg, s.Hash)
+}
+
+func encodeCertify(objectAuth, signerAuth string, object, signer tpmutil.Handle, qualifyingData tpmutil.U16Bytes) ([]byte, error) {
+	ha, err := tpmutil.Pack(object, signer)
+	if err != nil {
+		return nil, err
+	}
+
+	auth, err := encodeAuthArea(tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession, Auth: []byte(objectAuth)}, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession, Auth: []byte(signerAuth)})
+	if err != nil {
+		return nil, err
+	}
+
+	scheme := SigScheme{Alg: tpm2.AlgRSASSA, Hash: tpm2.AlgSHA256}
+	// Use signing key's scheme.
+	s, err := scheme.encode()
+	if err != nil {
+		return nil, err
+	}
+	data, err := tpmutil.Pack(qualifyingData)
+	if err != nil {
+		return nil, err
+	}
+	return concat(ha, auth, data, s)
+}
+
+func runCommand(rw io.ReadWriter, tag tpmutil.Tag, Cmd tpmutil.Command, in ...interface{}) ([]byte, error) {
+	resp, code, err := tpmutil.RunCommand(rw, tag, Cmd, in...)
+	if err != nil {
+		return nil, err
+	}
+	if code != tpmutil.RCSuccess {
+		return nil, decodeResponse(code)
+	}
+	return resp, decodeResponse(code)
+}
+
+func decodeResponse(code tpmutil.ResponseCode) error {
+	if code == tpmutil.RCSuccess {
+		return nil
+	}
+	if code&0x180 == 0 { // Bits 7:8 == 0 is a TPM1 error
+		return fmt.Errorf("response status 0x%x", code)
+	}
+	if code&0x80 == 0 { // Bit 7 unset
+		if code&0x400 > 0 { // Bit 10 set, vendor specific code
+			return tpm2.VendorError{uint32(code)}
+		}
+		if code&0x800 > 0 { // Bit 11 set, warning with code in bit 0:6
+			return tpm2.Warning{tpm2.RCWarn(code & 0x7f)}
+		}
+		// error with code in bit 0:6
+		return tpm2.Error{tpm2.RCFmt0(code & 0x7f)}
+	}
+	if code&0x40 > 0 { // Bit 6 set, code in 0:5, parameter number in 8:11
+		return tpm2.ParameterError{tpm2.RCFmt1(code & 0x3f), tpm2.RCIndex((code & 0xf00) >> 8)}
+	}
+	if code&0x800 == 0 { // Bit 11 unset, code in 0:5, handle in 8:10
+		return tpm2.HandleError{tpm2.RCFmt1(code & 0x3f), tpm2.RCIndex((code & 0x700) >> 8)}
+	}
+	// Code in 0:5, Session in 8:10
+	return tpm2.SessionError{tpm2.RCFmt1(code & 0x3f), tpm2.RCIndex((code & 0x700) >> 8)}
+}
+
+func decodeCertify(resp []byte) ([]byte, []byte, error) {
+	var paramSize uint32
+	var attest, signature tpmutil.U16Bytes
+	var sigAlg, hashAlg tpm2.Algorithm
+
+	buf := bytes.NewBuffer(resp)
+	if err := tpmutil.UnpackBuf(buf, &paramSize); err != nil {
+		return nil, nil, err
+	}
+	buf.Truncate(int(paramSize))
+	if err := tpmutil.UnpackBuf(buf, &attest, &sigAlg); err != nil {
+		return nil, nil, err
+	}
+	// If sigAlg is AlgNull, there will be no hashAlg or signature.
+	// This will happen if AlgNull was passed in the Certify() as
+	// the signing key (no need to sign the response).
+	// See TPM2 spec part4 pg227 SignAttestInfo()
+	if sigAlg != tpm2.AlgNull {
+		if sigAlg == tpm2.AlgECDSA {
+			var r, s tpmutil.U16Bytes
+			if err := tpmutil.UnpackBuf(buf, &hashAlg, &r, &s); err != nil {
+				return nil, nil, err
+			}
+			signature = append(r, s...)
+		} else {
+			if err := tpmutil.UnpackBuf(buf, &hashAlg, &signature); err != nil {
+				return nil, nil, err
+			}
+		}
+	}
+	return attest, signature, nil
+}
+
+func encodeAuthArea(sections ...tpm2.AuthCommand) ([]byte, error) {
+	var res tpmutil.RawBytes
+	for _, s := range sections {
+		buf, err := tpmutil.Pack(s)
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, buf...)
+	}
+
+	size, err := tpmutil.Pack(uint32(len(res)))
+	if err != nil {
+		return nil, err
+	}
+
+	return concat(size, res)
+}
+
+func concat(chunks ...[]byte) ([]byte, error) {
+	return bytes.Join(chunks, nil), nil
 }

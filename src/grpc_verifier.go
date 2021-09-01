@@ -518,17 +518,16 @@ func main() {
 	glog.V(20).Infof("     Attestation att.AttestedCertifyInfo.QualifiedName: %s", hex.EncodeToString(att.AttestedCertifyInfo.QualifiedName.Digest.Value))
 
 	// Verify signature of Attestation by using the PEM Public key for AK
-	// currently skipped pending https://github.com/google/go-tpm/issues/262
-	/*
-		rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
-		ahsh := crypto.SHA256.New()
-		ahsh.Write(psResponse.Attestation)
 
-		if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, ahsh.Sum(nil), psResponse.Signature); err != nil {
-			glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
-		}
-	*/
-	glog.V(20).Infof("     Attestation of Signing Key Verified")
+	rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
+	ahsh := crypto.SHA256.New()
+	ahsh.Write(psResponse.Attestation)
+
+	if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, ahsh.Sum(nil), psResponse.Signature); err != nil {
+		glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
+	}
+
+	glog.V(10).Infof("     Attestation of Signing Key Verified")
 
 	ukblock, _ := pem.Decode(psResponse.RsaPublicKey)
 	if ukblock == nil {
