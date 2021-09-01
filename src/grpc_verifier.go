@@ -53,7 +53,8 @@ const (
 )
 
 var (
-	expectedPCRValue = flag.String("expectedPCRValue", "24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f", "expectedPCRValue")
+	expectedPCRValue = flag.String("expectedPCRValue", "24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f", "expectedPCRValue to use")
+	expectedPCR0SHA1 = flag.String("expectedPCR0SHA1", "0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "PCR0 value for the eventlog on GCE VMs, debian10 with secure boot")
 	pcr              = flag.Int("pcr", 0, "PCR Value to use")
 	u                = flag.String("uid", uuid.New().String(), "uid of client")
 
@@ -70,45 +71,6 @@ var (
 		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
 		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
 		"transient": []tpm2.HandleType{tpm2.HandleTypeTransient},
-	}
-
-	defaultEKTemplate = tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagAdminWithPolicy | tpm2.FlagRestricted | tpm2.FlagDecrypt,
-		AuthPolicy: []byte{
-			0x83, 0x71, 0x97, 0x67, 0x44, 0x84,
-			0xB3, 0xF8, 0x1A, 0x90, 0xCC, 0x8D,
-			0x46, 0xA5, 0xD7, 0x24, 0xFD, 0x52,
-			0xD7, 0x6E, 0x06, 0x52, 0x0B, 0x64,
-			0xF2, 0xA1, 0xDA, 0x1B, 0x33, 0x14,
-			0x69, 0xAA,
-		},
-		RSAParameters: &tpm2.RSAParams{
-			Symmetric: &tpm2.SymScheme{
-				Alg:     tpm2.AlgAES,
-				KeyBits: 128,
-				Mode:    tpm2.AlgCFB,
-			},
-			KeyBits:    2048,
-			ModulusRaw: make([]byte, 256),
-		},
-	}
-
-	defaultKeyParams = tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagUserWithAuth | tpm2.FlagRestricted | tpm2.FlagSign,
-		AuthPolicy: []byte{},
-		RSAParameters: &tpm2.RSAParams{
-			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgRSASSA,
-				Hash: tpm2.AlgSHA256,
-			},
-			KeyBits: 2048,
-		},
 	}
 )
 
@@ -250,8 +212,8 @@ func main() {
 		glog.Fatalf("Error GetEKCert: %v", err)
 	}
 
-	glog.V(10).Infof("     akPub: %v,", hex.EncodeToString(akResponse.AkPub))
-	glog.V(10).Infof("     akName: %v,", hex.EncodeToString(akResponse.AkName))
+	glog.V(20).Infof("     akPub: %v,", hex.EncodeToString(akResponse.AkPub))
+	glog.V(20).Infof("     akName: %v,", hex.EncodeToString(akResponse.AkName))
 
 	glog.V(5).Infof("=============== MakeCredential ===============")
 
@@ -283,8 +245,6 @@ func main() {
 	}
 	defer tpm2.FlushContext(rwc, ekh)
 
-	glog.V(10).Infof("     Read (akPub) from registry")
-
 	tPub, err := tpm2.DecodePublic(akResponse.AkPub)
 	if err != nil {
 		glog.Fatalf("Error DecodePublic AK %v", tPub)
@@ -307,7 +267,7 @@ func main() {
 	)
 	glog.V(10).Infof("     Decoded AkPub: \n%v", string(akPubPEM))
 
-	if tPub.MatchesTemplate(defaultKeyParams) {
+	if tPub.MatchesTemplate(client.AKTemplateRSA()) {
 		glog.V(10).Infof("     AK Default parameter match template")
 	} else {
 		glog.Fatalf("AK does not have correct defaultParameters")
@@ -329,12 +289,12 @@ func main() {
 	if err != nil {
 		glog.Fatalf("MakeCredential failed: %v", err)
 	}
-	glog.V(10).Infof("     credBlob %s", hex.EncodeToString(credBlob))
-	glog.V(10).Infof("     encryptedSecret0 %s", hex.EncodeToString(encryptedSecret0))
+	glog.V(20).Infof("     credBlob %s", hex.EncodeToString(credBlob))
+	glog.V(20).Infof("     encryptedSecret0 %s", hex.EncodeToString(encryptedSecret0))
 	glog.V(2).Infof("     <-- End makeCredential()")
 
-	glog.V(10).Infof("     EncryptedSecret: %s,", hex.EncodeToString(encryptedSecret0))
-	glog.V(10).Infof("     CredentialBlob: %v,", hex.EncodeToString(credBlob))
+	glog.V(20).Infof("     EncryptedSecret: %s,", hex.EncodeToString(encryptedSecret0))
+	glog.V(20).Infof("     CredentialBlob: %v,", hex.EncodeToString(credBlob))
 
 	glog.V(5).Infof("=============== ActivateCredential ===============")
 	acReq := &pb.ActivateCredentialRequest{
@@ -365,8 +325,8 @@ func main() {
 		glog.Fatalf("Error Quote: %v", err)
 	}
 
-	glog.V(10).Infof("     Attestation: %s", hex.EncodeToString(qResponse.Attestation))
-	glog.V(10).Infof("     Signature: %s", hex.EncodeToString(qResponse.Signature))
+	glog.V(20).Infof("     Attestation: %s", hex.EncodeToString(qResponse.Attestation))
+	glog.V(20).Infof("     Signature: %s", hex.EncodeToString(qResponse.Signature))
 
 	attestation := qResponse.Attestation
 	signature := qResponse.Signature
@@ -376,9 +336,9 @@ func main() {
 		glog.Fatalf("DecodeAttestationData(%v) failed: %v", attestation, err)
 	}
 
-	glog.V(5).Infof("     Attestation ExtraData (nonce): %s ", string(att.ExtraData))
-	glog.V(5).Infof("     Attestation PCR#: %v ", att.AttestedQuoteInfo.PCRSelection.PCRs)
-	glog.V(5).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
+	glog.V(20).Infof("     Attestation ExtraData (nonce): %s ", string(att.ExtraData))
+	glog.V(20).Infof("     Attestation PCR#: %v ", att.AttestedQuoteInfo.PCRSelection.PCRs)
+	glog.V(20).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
 
 	if string(cc) != string(att.ExtraData) {
 		glog.Fatalf("Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), string(cc))
@@ -400,10 +360,10 @@ func main() {
 	glog.V(2).Infof("     Decoding PublicKey for AK ========")
 
 	// use the AK from the original attestation
-	rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
+	// rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
 	hsh := crypto.SHA256.New()
 	hsh.Write(attestation)
-	if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
+	if err := rsa.VerifyPKCS1v15(ap.(*rsa.PublicKey), crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
 		glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
 	}
 
@@ -415,12 +375,40 @@ func main() {
 		glog.Fatalf("Unexpected secret Value expected: %v  Got %v", string(cc), string(att.ExtraData))
 	}
 	glog.V(2).Infof("     Attestation Signature Verified ")
+
+	glog.V(2).Infof("     Reading EventLog")
+	bt, err := hex.DecodeString(*expectedPCR0SHA1)
+	if err != nil {
+		glog.Fatalf("Error decoding pcr %v", err)
+	}
+	evtLogPcrMap := map[uint32][]byte{uint32(*pcr): bt}
+
+	pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA1, Pcrs: evtLogPcrMap}
+
+	events, err := server.ParseAndVerifyEventLog(qResponse.Eventlog, pcrs)
+	if err != nil {
+		glog.Fatalf("Failed to parse EventLog: %v", err)
+	}
+
+	for _, event := range events {
+		glog.V(2).Infof("     Event Type %v\n", event.Type)
+		glog.V(2).Infof("     PCR Index %d\n", event.Index)
+		glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
+		glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
+	}
+	glog.V(2).Infof("     EventLog Verified ")
+
 	glog.V(2).Infof("     <-- End verifyQuote()")
 
 	glog.V(5).Infof("=============== PushSecret ===============")
 
 	glog.V(5).Infof("     Pushing %s", *importMode)
 
+	// Note: we are binding the import to the the PCR's value.
+	// for AES:
+	//   A non-nil pcrs parameter adds a requirement that the TPM must have specific PCR values for Import() to succeed.
+	// for RSA:
+	//   A non-nil pcrs parameter adds a requirement that the TPM must have specific PCR values to use the signing key.
 	hv, err := hex.DecodeString(*expectedPCRValue)
 	if err != nil {
 		glog.Fatalf("Error parsing uint64->32: %v\n", err)
@@ -473,7 +461,7 @@ func main() {
 		block, _ = pem.Decode(privateKeyPEM)
 		priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 		if err != nil {
-			glog.Fatalf("failed to parse pravate Key: " + err.Error())
+			glog.Fatalf("failed to parse private Key: " + err.Error())
 		}
 
 		dataToSign := []byte("secret")
@@ -503,8 +491,76 @@ func main() {
 
 	presp, err := c.PushSecret(ctx, preq)
 	if err != nil {
-		glog.Fatalf("Error Quote: %v", err)
+		glog.Fatalf("Error Pushing Secret: %v", err)
 	}
 	glog.V(5).Infof("     Verification %s", base64.StdEncoding.EncodeToString(presp.Verification))
 
+	glog.V(5).Infof("=============== PullRSAKey ===============")
+
+	psReq := &pb.PullRSAKeyRequest{
+		Uid: *u,
+		Pcr: int32(*pcr),
+	}
+	psResponse, err := c.PullRSAKey(ctx, psReq)
+	if err != nil {
+		glog.Fatalf("Error PullRSAKey: %v", err)
+	}
+
+	glog.V(20).Infof("     SigningKey %s\n", psResponse.RsaPublicKey)
+	glog.V(20).Infof("     SigningKey Attestation %s\n", base64.StdEncoding.EncodeToString(psResponse.Attestation))
+	glog.V(20).Infof("     SigningKey Attestation Signature %s\n", base64.StdEncoding.EncodeToString(psResponse.Signature))
+
+	glog.V(20).Infof("     Read and Decode (attestion)")
+	att, err = tpm2.DecodeAttestationData(psResponse.Attestation)
+	if err != nil {
+		glog.Fatalf("DecodeAttestationData failed: %v", err)
+	}
+	glog.V(20).Infof("     Attestation att.AttestedCertifyInfo.QualifiedName: %s", hex.EncodeToString(att.AttestedCertifyInfo.QualifiedName.Digest.Value))
+
+	// Verify signature of Attestation by using the PEM Public key for AK
+	// currently skipped pending https://github.com/google/go-tpm/issues/262
+	/*
+		rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
+		ahsh := crypto.SHA256.New()
+		ahsh.Write(psResponse.Attestation)
+
+		if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, ahsh.Sum(nil), psResponse.Signature); err != nil {
+			glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
+		}
+	*/
+	glog.V(20).Infof("     Attestation of Signing Key Verified")
+
+	ukblock, _ := pem.Decode(psResponse.RsaPublicKey)
+	if ukblock == nil {
+		glog.Fatalf("     Unable to decode Signingkey")
+	}
+
+	ukrra, err := x509.ParsePKIXPublicKey(ukblock.Bytes)
+	if err != nil {
+		glog.Fatalf("     Unable to ParsePKIXPublicKey rsa Key from PEM %v", err)
+	}
+	ukrsaPub := *ukrra.(*rsa.PublicKey)
+
+	params := tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth | tpm2.FlagSign,
+		AuthPolicy: []byte{},
+		RSAParameters: &tpm2.RSAParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgRSASSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			KeyBits:    2048,
+			ModulusRaw: ukrsaPub.N.Bytes(),
+		},
+	}
+	ok, err := att.AttestedCertifyInfo.Name.MatchesPublic(params)
+	if err != nil {
+		glog.Fatalf("     AttestedCertifyInfo.MatchesPublic(%v) failed: %v", att, err)
+	}
+	glog.V(20).Infof("     Attestation MatchesPublic %v", ok)
+
+	glog.V(5).Infof("     Pulled Signing Key %v", psResponse.Uid)
 }

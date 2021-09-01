@@ -55,7 +55,7 @@ import (
 var (
 	grpcport   = flag.String("grpcport", "", "grpcport")
 	caCert     = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to trust")
-	pcr        = flag.Int("pcr", 0, "PCR Value to use")
+	pcr        = flag.Int("pcr", 0, "PCR bank imported Secrets are bound to during AES import or RSA signing")
 	serverCert = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
 	serverKey  = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
 	nonces     = make(map[string]string)
@@ -70,35 +70,11 @@ var (
 		"transient": []tpm2.HandleType{tpm2.HandleTypeTransient},
 	}
 
-	defaultEKTemplate = tpm2.Public{
+	unrestrictedKeyParams = tpm2.Public{
 		Type:    tpm2.AlgRSA,
 		NameAlg: tpm2.AlgSHA256,
 		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagAdminWithPolicy | tpm2.FlagRestricted | tpm2.FlagDecrypt,
-		AuthPolicy: []byte{
-			0x83, 0x71, 0x97, 0x67, 0x44, 0x84,
-			0xB3, 0xF8, 0x1A, 0x90, 0xCC, 0x8D,
-			0x46, 0xA5, 0xD7, 0x24, 0xFD, 0x52,
-			0xD7, 0x6E, 0x06, 0x52, 0x0B, 0x64,
-			0xF2, 0xA1, 0xDA, 0x1B, 0x33, 0x14,
-			0x69, 0xAA,
-		},
-		RSAParameters: &tpm2.RSAParams{
-			Symmetric: &tpm2.SymScheme{
-				Alg:     tpm2.AlgAES,
-				KeyBits: 128,
-				Mode:    tpm2.AlgCFB,
-			},
-			KeyBits:    2048,
-			ModulusRaw: make([]byte, 256),
-		},
-	}
-
-	defaultKeyParams = tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagUserWithAuth | tpm2.FlagRestricted | tpm2.FlagSign,
+			tpm2.FlagUserWithAuth | tpm2.FlagSign,
 		AuthPolicy: []byte{},
 		RSAParameters: &tpm2.RSAParams{
 			Sign: &tpm2.SigScheme{
@@ -108,6 +84,7 @@ var (
 			KeyBits: 2048,
 		},
 	}
+
 	letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 )
 
@@ -119,6 +96,8 @@ const (
 	importedKeyFile = "importedKey.bin"
 	akPubFile       = "akPub.bin"
 	akPrivFile      = "akPriv.bin"
+	signPubFile     = "signPub.bin"
+	signPrivFile    = "signPriv.bin"
 	ekFile          = "ek.bin"
 )
 
@@ -142,11 +121,12 @@ func authUnaryInterceptor(
 	handler grpc.UnaryHandler,
 ) (interface{}, error) {
 	glog.V(2).Infof(">> inbound request")
-	//md, _ := metadata.FromIncomingContext(ctx)
+	// optionally check for metadata or custom headers
+	// md, _ := metadata.FromIncomingContext(ctx)
+	// newCtx := context.WithValue(ctx, contextKey("idtoken"), "someheader")
+	// return handler(newCtx, req)
 
-	newCtx := context.WithValue(ctx, contextKey("idtoken"), "someheader")
-	return handler(newCtx, req)
-
+	return handler(ctx, req)
 	//return nil, grpc.Errorf(codes.Unauthenticated, "Authorization header not provided")
 }
 
@@ -255,14 +235,14 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 	if err != nil {
 		return &verifier.GetAKResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:   Unable to  ReadPCR: %v", err))
 	}
-	glog.V(10).Infof("    Current PCR %v Value %d ", *pcr, hex.EncodeToString(pcrval))
+	glog.V(10).Infof("     Current PCR %v Value %s", *pcr, hex.EncodeToString(pcrval))
 
 	pcrSelection23 := tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrList}
 	emptyPassword := ""
 
 	glog.V(10).Infof("     createPrimary")
 
-	ekh, _, err := tpm2.CreatePrimary(rwc, tpm2.HandleEndorsement, pcrSelection23, emptyPassword, emptyPassword, defaultEKTemplate)
+	ekh, _, err := tpm2.CreatePrimary(rwc, tpm2.HandleEndorsement, pcrSelection23, emptyPassword, emptyPassword, client.DefaultEKTemplateRSA())
 	if err != nil {
 		return &verifier.GetAKResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error creating EK: %v", err))
 	}
@@ -278,7 +258,7 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 	if err != nil {
 		return &verifier.GetAKResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error tpmEkPub.Key() failed: %s", err))
 	}
-	glog.V(10).Infof("     tpmEkPub: \n%v", p)
+	glog.V(20).Infof("     tpmEkPub: \n%v", p)
 
 	b, err := x509.MarshalPKIXPublicKey(p)
 	if err != nil {
@@ -291,8 +271,8 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 			Bytes: b,
 		},
 	)
-	glog.V(5).Infof("     ekPub Name: %v", hex.EncodeToString(name))
-	glog.V(10).Infof("     ekPubPEM: \n%v", string(ekPubPEM))
+	glog.V(10).Infof("     ekPub Name: %s", hex.EncodeToString(name))
+	glog.V(10).Infof("     ekPubPEM: \n%s", string(ekPubPEM))
 
 	ekPubBytes, err := tpmEkPub.Encode()
 	if err != nil {
@@ -321,21 +301,21 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 
 	authCommandCreateAuth := tpm2.AuthCommand{Session: sessCreateHandle, Attributes: tpm2.AttrContinueSession}
 
-	akPriv, akPub, creationData, creationHash, creationTicket, err := tpm2.CreateKeyUsingAuth(rwc, ekh, pcrSelection23, authCommandCreateAuth, emptyPassword, defaultKeyParams)
+	akPriv, akPub, creationData, creationHash, creationTicket, err := tpm2.CreateKeyUsingAuth(rwc, ekh, pcrSelection23, authCommandCreateAuth, emptyPassword, client.AKTemplateRSA())
 	if err != nil {
 		return &verifier.GetAKResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("CreateKey failed: %s", err))
 	}
-	glog.V(10).Infof("     akPub: %v,", hex.EncodeToString(akPub))
-	glog.V(10).Infof("     akPriv: %v,", hex.EncodeToString(akPriv))
+	glog.V(20).Infof("     akPub: %s,", hex.EncodeToString(akPub))
+	glog.V(20).Infof("     akPriv: %s,", hex.EncodeToString(akPriv))
 
 	cr, err := tpm2.DecodeCreationData(creationData)
 	if err != nil {
 		return &verifier.GetAKResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to  DecodeCreationData : %v", err))
 	}
 
-	glog.V(10).Infof("     CredentialData.ParentName.Digest.Value %v", hex.EncodeToString(cr.ParentName.Digest.Value))
-	glog.V(10).Infof("     CredentialTicket %v", hex.EncodeToString(creationTicket.Digest))
-	glog.V(10).Infof("     CredentialHash %v", hex.EncodeToString(creationHash))
+	glog.V(20).Infof("     CredentialData.ParentName.Digest.Value %s", hex.EncodeToString(cr.ParentName.Digest.Value))
+	glog.V(20).Infof("     CredentialTicket %s", hex.EncodeToString(creationTicket.Digest))
+	glog.V(20).Infof("     CredentialHash %s", hex.EncodeToString(creationHash))
 
 	glog.V(10).Infof("     ContextSave (ek)")
 	ekhBytes, err := tpm2.ContextSave(rwc, ekh)
@@ -387,7 +367,7 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 	}
 	defer tpm2.FlushContext(rwc, keyHandle)
 	kn := hex.EncodeToString(keyName)
-	glog.V(5).Infof("     AK keyName %v", kn)
+	glog.V(5).Infof("     AK keyName %s", kn)
 
 	akPublicKey, akName, _, err := tpm2.ReadPublic(rwc, keyHandle)
 	if err != nil {
@@ -616,14 +596,22 @@ func (s *server) Quote(ctx context.Context, in *verifier.QuoteRequest) (*verifie
 	if err != nil {
 		return &verifier.QuoteResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Failed to quote: %s", err))
 	}
-	glog.V(10).Infof("     Quote Hex %v", hex.EncodeToString(attestation))
-	glog.V(10).Infof("     Quote Sig %v", hex.EncodeToString(sig.RSA.Signature))
+	glog.V(20).Infof("     Quote Hex %v", hex.EncodeToString(attestation))
+	glog.V(20).Infof("     Quote Sig %v", hex.EncodeToString(sig.RSA.Signature))
+
+	glog.V(20).Infof("     Getting EventLog")
+	evtLog, err := client.GetEventLog(rwc)
+	if err != nil {
+		return &verifier.QuoteResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to get event log: %v", err))
+	}
+
 	glog.V(5).Infof("     <-- End Quote")
 
 	res := &verifier.QuoteResponse{
 		Uid:         in.Uid,
 		Attestation: attestation,
 		Signature:   sig.RSA.Signature,
+		Eventlog:    evtLog,
 	}
 	return res, nil
 }
@@ -733,6 +721,300 @@ func (s *server) PushSecret(ctx context.Context, in *verifier.PushSecretRequest)
 		Uid:          in.Uid,
 		Verification: verification,
 	}
+	return res, nil
+}
+
+// Returns a Public key and signature for a file that is associated with
+func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest) (*verifier.PullRSAKeyResponse, error) {
+	glog.V(2).Infof("======= PullRSAKey ========")
+	glog.V(5).Infof("     client provided uid: %s", in.Uid)
+
+	glog.V(5).Infof("======= Generate UnrestrictedKey ========")
+
+	glog.V(10).Infof("     ContextLoad (ek) ========")
+	ekhBytes, err := ioutil.ReadFile(ekFile)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ContextLoad failed for ekh: %v", err))
+	}
+	ekh, err := tpm2.ContextLoad(rwc, ekhBytes)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ContextLoad failed for ekh: %v", err))
+	}
+	defer tpm2.FlushContext(rwc, ekh)
+
+	glog.V(5).Infof("     Loading AttestationKey")
+	loadCreateHandle, _, err := tpm2.StartAuthSession(
+		rwc,
+		tpm2.HandleNull,
+		tpm2.HandleNull,
+		make([]byte, 16),
+		nil,
+		tpm2.SessionPolicy,
+		tpm2.AlgNull,
+		tpm2.AlgSHA256)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create StartAuthSession : %v", err))
+	}
+	defer tpm2.FlushContext(rwc, loadCreateHandle)
+
+	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
+	}
+
+	authCommandLoad := tpm2.AuthCommand{Session: loadCreateHandle, Attributes: tpm2.AttrContinueSession}
+
+	akPub, err := ioutil.ReadFile(akPubFile)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Read failed for akPub: %v", err))
+	}
+
+	akPriv, err := ioutil.ReadFile(akPrivFile)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Read failed for akPriv: %v", err))
+	}
+
+	aKkeyHandle, keyName, err := tpm2.LoadUsingAuth(rwc, ekh, authCommandLoad, akPub, akPriv)
+	defer tpm2.FlushContext(rwc, aKkeyHandle)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Load AK failed: %s", err))
+	}
+	glog.V(5).Infof("     AK keyName: %s,", base64.StdEncoding.EncodeToString(keyName))
+
+	tpm2.FlushContext(rwc, loadCreateHandle)
+
+	tPub, err := tpm2.DecodePublic(akPub)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error DecodePublic AK %v", tPub))
+	}
+
+	ap, err := tPub.Key()
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("akPub.Key() failed: %s", err))
+	}
+	akBytes, err := x509.MarshalPKIXPublicKey(ap)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to convert akPub: %v", err))
+	}
+	akPubPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: akBytes,
+		},
+	)
+
+	glog.V(10).Infof("     akPub PEM \n%s", string(akPubPEM))
+
+	// Create Child of AK that is Unrestricted (does not have tpm2.FlagRestricted)
+	// Under endorsement handle
+	glog.V(5).Infof("     ======= CreateKeyUsingAuthUnrestricted ========")
+
+	sessCreateHandle, _, err := tpm2.StartAuthSession(
+		rwc,
+		tpm2.HandleNull,
+		tpm2.HandleNull,
+		make([]byte, 16),
+		nil,
+		tpm2.SessionPolicy,
+		tpm2.AlgNull,
+		tpm2.AlgSHA256)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create StartAuthSession : %v", err))
+	}
+	defer tpm2.FlushContext(rwc, sessCreateHandle)
+
+	// if err = tpm2.PolicyPCR(rwc, sessCreateHandle, nil, pcrSelection23); err != nil {
+	// 	log.Fatalf("PolicyPCR failed: %v", err)
+	// }
+
+	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessCreateHandle, nil, nil, nil, 0); err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
+	}
+	authCommandCreateAuth := tpm2.AuthCommand{Session: sessCreateHandle, Attributes: tpm2.AttrContinueSession}
+
+	pcrList := []int{int(in.Pcr)}
+	pcrval, err := tpm2.ReadPCR(rwc, int(in.Pcr), tpm2.AlgSHA256)
+	if err != nil {
+		glog.Fatalf("Unable to  ReadPCR : %v", err)
+	}
+	glog.V(5).Infof("     PCR %d Value %v ", in.Pcr, hex.EncodeToString(pcrval))
+
+	pcrSelection23 := tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrList}
+
+	// what i'd really want is a child key of aKkeyHandle but there's some policy i'm isssing
+	// error code 0x1d : a policy check failed exit status 1
+	//ukPriv, ukPub, _, _, _, err := tpm2.CreateKeyUsingAuth(rwc, ekh, pcrSelection23, authCommandCreateAuth, emptyPassword, unrestrictedKeyParams)
+	//ukPriv, ukPub, _, _, _, err := tpm2.CreateKey(rwc, aKkeyHandle, pcrSelection23, emptyPassword, emptyPassword, unrestrictedKeyParams)
+
+	ukPriv, ukPub, _, _, _, err := tpm2.CreateKeyUsingAuth(rwc, ekh, pcrSelection23, authCommandCreateAuth, emptyPassword, unrestrictedKeyParams)
+
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("UnrestrictedCreateKey failed: %s", err))
+	}
+	glog.V(20).Infof("     Unrestricted ukPub: %v,", hex.EncodeToString(ukPub))
+	glog.V(20).Infof("     Unrestricted ukPriv: %v,", hex.EncodeToString(ukPriv))
+
+	tpm2.FlushContext(rwc, sessCreateHandle)
+
+	// Load the unrestricted key
+	sessLoadHandle, _, err := tpm2.StartAuthSession(
+		rwc,
+		tpm2.HandleNull,
+		tpm2.HandleNull,
+		make([]byte, 16),
+		nil,
+		tpm2.SessionPolicy,
+		tpm2.AlgNull,
+		tpm2.AlgSHA256)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create StartAuthSession : %v", err))
+	}
+	defer tpm2.FlushContext(rwc, sessLoadHandle)
+
+	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessLoadHandle, nil, nil, nil, 0); err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
+	}
+	authCommandLoad = tpm2.AuthCommand{Session: sessLoadHandle, Attributes: tpm2.AttrContinueSession}
+
+	ukeyHandle, ukeyName, err := tpm2.LoadUsingAuth(rwc, ekh, authCommandLoad, ukPub, ukPriv)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Load failed: %s", err))
+	}
+	defer tpm2.FlushContext(rwc, ukeyHandle)
+	glog.V(20).Infof("     ukeyName: %v,", base64.StdEncoding.EncodeToString(ukeyName))
+
+	utPub, err := tpm2.DecodePublic(ukPub)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error DecodePublic AK %v", utPub))
+	}
+
+	uap, err := utPub.Key()
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("akPub.Key() failed: %s", err))
+	}
+	uBytes, err := x509.MarshalPKIXPublicKey(uap)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to convert akPub: %v", err))
+	}
+
+	ukPubPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: uBytes,
+		},
+	)
+
+	glog.V(10).Infof("     uakPub PEM \n%s", string(ukPubPEM))
+
+	// Certify the Unrestricted key using the AK
+	attestation, csig, err := tpm2.Certify(rwc, emptyPassword, emptyPassword, ukeyHandle, aKkeyHandle, nil)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Load failed: %s", err))
+	}
+	glog.V(20).Infof("     Certify Attestation: %v,", hex.EncodeToString(attestation))
+	glog.V(20).Infof("     Certify Signature: %v,", hex.EncodeToString(csig))
+	tpm2.FlushContext(rwc, sessLoadHandle)
+
+	// // Now Sign some arbitrary data with the unrestricted Key
+
+	dataToSign := []byte("secret")
+	digest, hashValidation, err := tpm2.Hash(rwc, tpm2.AlgSHA256, dataToSign, tpm2.HandleOwner)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Hash failed unexpectedly: %v", err))
+	}
+
+	sig, err := tpm2.Sign(rwc, ukeyHandle, "", digest[:], hashValidation, &tpm2.SigScheme{
+		Alg:  tpm2.AlgRSASSA,
+		Hash: tpm2.AlgSHA256,
+	})
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error Signing: %v", err))
+	}
+	glog.V(10).Infof("     Signature data:  %s", base64.RawStdEncoding.EncodeToString([]byte(sig.RSA.Signature)))
+
+	// Verify the Certification value:
+	glog.V(20).Infof("     Read and Decode (attestion)")
+	att, err := tpm2.DecodeAttestationData(attestation)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("DecodeAttestationData(%v) failed: %v", attestation, err))
+	}
+
+	ablock, _ := pem.Decode(ukPubPEM)
+	if ablock == nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to decode akPubPEM %v", err))
+	}
+
+	rra, err := x509.ParsePKIXPublicKey(ablock.Bytes)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create rsa Key from PEM %v", err))
+	}
+	arsaPub := *rra.(*rsa.PublicKey)
+
+	params := tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth | tpm2.FlagSign,
+		AuthPolicy: []byte{},
+		RSAParameters: &tpm2.RSAParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgRSASSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			KeyBits:    2048,
+			ModulusRaw: arsaPub.N.Bytes(),
+		},
+	}
+	ok, err := att.AttestedCertifyInfo.Name.MatchesPublic(params)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("MatchesPublic(%v) failed: %v", attestation, err))
+	}
+	glog.V(20).Infof("     Attestation : MatchesPublic %v", ok)
+	glog.V(20).Infof("     Attestation att.AttestedCertifyInfo.Name: %s", base64.StdEncoding.EncodeToString(att.AttestedCertifyInfo.Name.Digest.Value))
+
+	/*
+		// Just verify the signature with the AK...just for fun
+		// currently skipped pending https://github.com/google/go-tpm/issues/262
+		sigL := tpm2.SignatureRSA{
+			HashAlg:   tpm2.AlgSHA256,
+			Signature: csig,
+		}
+
+		// Verify signature of Attestation by using the PEM Public key for AK
+		glog.V(10).Infof("     Decoding PublicKey for AK ========")
+
+		block, _ := pem.Decode(akPubPEM)
+		if block == nil {
+			return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to decode akPubPEM %v", err))
+		}
+
+		r, err := x509.ParsePKIXPublicKey(block.Bytes)
+		if err != nil {
+			return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create rsa Key from PEM %v", err))
+		}
+		rsaPub := *r.(*rsa.PublicKey)
+
+		// p, err := tpm2.DecodePublic(akPub)
+		// if err != nil {
+		// 	log.Fatalf("DecodePublic failed: %v", err)
+		// }
+		// rsaPub := rsa.PublicKey{E: int(p.RSAParameters.Exponent()), N: p.RSAParameters.Modulus()}
+		// rsaPub = *ap.(*rsa.PublicKey)
+
+		hsh := crypto.SHA256.New()
+		hsh.Write(attestation)
+
+		if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
+			return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("VerifyPKCS1v15 failed: %v", err))
+		}
+		glog.V(10).Infof("     Attestation Verified")
+	*/
+	res := &verifier.PullRSAKeyResponse{
+		Uid:          in.Uid,
+		RsaPublicKey: ukPubPEM,
+		Signature:    csig,
+		Attestation:  attestation,
+	}
+	glog.V(10).Infof("     Returning PullRSAKeyResponse")
 	return res, nil
 }
 

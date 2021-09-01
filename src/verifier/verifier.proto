@@ -10,7 +10,8 @@ service Verifier {
   rpc GetAK (GetAKRequest) returns (GetAKResponse) { }
   rpc ActivateCredential (ActivateCredentialRequest) returns (ActivateCredentialResponse) { }
   rpc Quote (QuoteRequest) returns (QuoteResponse) { }
-  rpc PushSecret (PushSecretRequest) returns (PushSecretResponse) { }  
+  rpc PushSecret (PushSecretRequest) returns (PushSecretResponse) { }
+  rpc PullRSAKey (PullRSAKeyRequest) returns (PullRSAKeyResponse) { }      
 }
 
 enum SecretType {
@@ -68,7 +69,8 @@ message QuoteRequest {
 message QuoteResponse {
   string uid = 1;
   bytes attestation = 2;
-  bytes signature = 3;  
+  bytes signature = 3;
+  bytes eventlog = 4;  
 }
 
 message PushSecretRequest {
@@ -80,4 +82,16 @@ message PushSecretRequest {
 message PushSecretResponse {
   string uid = 1;
   bytes verification = 2;  
+}
+
+message PullRSAKeyRequest {
+  string uid = 1;
+  int32 pcr = 2;
+}
+
+message PullRSAKeyResponse {
+  string uid = 1;
+  bytes rsaPublicKey = 2;
+  bytes signature = 3;
+  bytes attestation = 4;
 }
