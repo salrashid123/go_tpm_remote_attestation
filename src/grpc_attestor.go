@@ -99,8 +99,8 @@ const (
 	importedKeyFile = "importedKey.bin"
 	akPubFile       = "akPub.bin"
 	akPrivFile      = "akPriv.bin"
-	signPubFile     = "signPub.bin"
-	signPrivFile    = "signPriv.bin"
+	ukPubFile       = "ukPub.bin"
+	ukPrivFile      = "ukPriv.bin"
 	ekFile          = "ek.bin"
 )
 
@@ -855,6 +855,17 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	glog.V(20).Infof("     Unrestricted ukPub: %v,", hex.EncodeToString(ukPub))
 	glog.V(20).Infof("     Unrestricted ukPriv: %v,", hex.EncodeToString(ukPriv))
 
+	glog.V(10).Infof("     Write (ukPub) ========")
+	err = ioutil.WriteFile(ukPubFile, ukPub, 0644)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Save failed for ukPub: %v", err))
+	}
+	glog.V(10).Infof("     Write (ukPriv) ========")
+	err = ioutil.WriteFile(ukPrivFile, ukPriv, 0644)
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Save failed for ukPriv: %v", err))
+	}
+
 	tpm2.FlushContext(rwc, sessCreateHandle)
 
 	// Load the unrestricted key
@@ -920,7 +931,7 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 
 	// // Now Sign some arbitrary data with the unrestricted Key
 
-	dataToSign := []byte("secret")
+	dataToSign := []byte(in.Uid)
 	digest, hashValidation, err := tpm2.Hash(rwc, tpm2.AlgSHA256, dataToSign, tpm2.HandleOwner)
 	if err != nil {
 		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Hash failed unexpectedly: %v", err))
@@ -933,7 +944,7 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	if err != nil {
 		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error Signing: %v", err))
 	}
-	glog.V(10).Infof("     Signature data:  %s", base64.RawStdEncoding.EncodeToString([]byte(sig.RSA.Signature)))
+	glog.V(10).Infof("     Test Signature:  %s", base64.RawStdEncoding.EncodeToString([]byte(sig.RSA.Signature)))
 
 	// Verify the Certification value:
 	glog.V(20).Infof("     Read and Decode (attestion)")
@@ -1010,10 +1021,11 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	glog.V(10).Infof("     Attestation Verified")
 
 	res := &verifier.PullRSAKeyResponse{
-		Uid:          in.Uid,
-		RsaPublicKey: ukPubPEM,
-		Signature:    csig,
-		Attestation:  attestation,
+		Uid:                  in.Uid,
+		RsaPublicKey:         ukPubPEM,
+		TestSignature:        []byte(sig.RSA.Signature),
+		AttestationSignature: csig,
+		Attestation:          attestation,
 	}
 	glog.V(10).Infof("     Returning PullRSAKeyResponse")
 	return res, nil
