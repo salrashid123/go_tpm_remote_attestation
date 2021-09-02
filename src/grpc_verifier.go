@@ -354,18 +354,22 @@ func main() {
 		HashAlg:   tpm2.AlgSHA256,
 		Signature: signature,
 	}
-	decoded, err := hex.DecodeString(*expectedPCRValue)
+	hexPCRValue, err := hex.DecodeString(*expectedPCRValue)
 	if err != nil {
-		glog.Fatalf("DecodeAttestationData(%v) failed: %v", attestation, err)
+		glog.Fatalf("Decode failed for provided PCRValue (%v) failed: %v", attestation, err)
 	}
-	hash := sha256.Sum256(decoded)
+	pcrHash := sha256.Sum256(hexPCRValue)
 
 	glog.V(5).Infof("     Expected PCR Value:           --> %s", *expectedPCRValue)
-	glog.V(5).Infof("     sha256 of Expected PCR Value: --> %x", hash)
+	glog.V(5).Infof("     sha256 of Expected PCR Value: --> %x", pcrHash)
+
+	if fmt.Sprintf("%x", pcrHash) != hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest) {
+		glog.Fatalf("Unexpected PCR hash Value expected: %s  Got %s", fmt.Sprintf("%x", pcrHash), hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
+	}
 
 	glog.V(2).Infof("     Decoding PublicKey for AK ========")
 
-	// use the AK from the original attestation
+	// use the AK from the original attestation to verify the signature of the Attestation
 	// rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
 	hsh := crypto.SHA256.New()
 	hsh.Write(attestation)
@@ -373,10 +377,7 @@ func main() {
 		glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
 	}
 
-	if fmt.Sprintf("%x", hash) != hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest) {
-		glog.Fatalf("Unexpected PCR hash Value expected: %s  Got %s", fmt.Sprintf("%x", hash), hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
-	}
-
+	// Now compare the nonce that is embedded within the attestation.  This should match the one we sent in earlier.
 	if string(cc) != string(att.ExtraData) {
 		glog.Fatalf("Unexpected secret Value expected: %v  Got %v", string(cc), string(att.ExtraData))
 	}
@@ -435,6 +436,9 @@ func main() {
 			glog.Fatalf("Unable to marshall ImportBlob: ", err)
 		}
 
+		// Print out the hash of the AES key.
+		//  If the attestor was able to extract this key, the PushSecret.Verification
+		//  value will be the same hash (eg, both the verifier and attestor has the same key)
 		hasher := sha256.New()
 		hasher.Write([]byte(*aes256Key))
 		glog.V(10).Infof("     Hash of AES Key:  %s", base64.RawStdEncoding.EncodeToString(hasher.Sum(nil)))
@@ -470,7 +474,10 @@ func main() {
 			glog.Fatalf("failed to parse private Key: " + err.Error())
 		}
 
-		dataToSign := []byte("secret")
+		// Generate a test signature using this RSA key.
+		//  If the attestor was able to import this RSA key, the PushSecret.Verification
+		//  value will include the same signature (eg, both the verifier and attestor has the same key)
+		dataToSign := []byte(*u)
 		digest := sha256.Sum256(dataToSign)
 		signature, err := rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, digest[:])
 		if err != nil {
@@ -559,7 +566,7 @@ func main() {
 	if err := rsa.VerifyPKCS1v15(ukrsaPub, crypto.SHA256, uhsh.Sum(nil), psResponse.TestSignature); err != nil {
 		glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
 	}
-	glog.V(10).Infof("     Test Signature Verified Verified")
+	glog.V(10).Infof("     Test Signature Verified")
 
 	params := tpm2.Public{
 		Type:    tpm2.AlgRSA,

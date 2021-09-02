@@ -701,7 +701,7 @@ func (s *server) PushSecret(ctx context.Context, in *verifier.PushSecretRequest)
 		}
 		defer tpm2.FlushContext(rwc, session)
 
-		dataToSign := []byte("secret")
+		dataToSign := []byte(in.Uid)
 		digest := sha256.Sum256(dataToSign)
 
 		if err = tpm2.PolicyPCR(rwc, session, nil, tpm2.PCRSelection{tpm2.AlgSHA256, []int{*pcr}}); err != nil {
