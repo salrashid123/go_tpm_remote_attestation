@@ -285,6 +285,7 @@ func main() {
 		b[i] = letterRunes[mrnd.Intn(len(letterRunes))]
 	}
 	nonce := string(b)
+	glog.V(10).Infof("     Sending Nonce: %s", nonce)
 	credBlob, encryptedSecret0, err := tpm2.MakeCredential(rwc, ekh, []byte(nonce), keyName)
 	if err != nil {
 		glog.Fatalf("MakeCredential failed: %v", err)
@@ -307,14 +308,19 @@ func main() {
 		glog.Fatalf("Error ActivateCredential: %v", err)
 	}
 
-	glog.V(10).Infof("     Secret: %s", string(acResponse.Secret))
-	glog.V(10).Infof("     Nonce: %s", nonce)
+	glog.V(10).Infof("     Returned Secret: %s", string(acResponse.Secret))
+
+	if string(acResponse.Secret) != nonce {
+		glog.Fatalf(fmt.Sprintf("Error Expected Nonce [%s]does not match provided secret: [%s]", nonce, string(acResponse.Secret)), err)
+	}
+	glog.V(5).Infof("     Attestation Complete")
 
 	glog.V(5).Infof("=============== Quote/Verify ===============")
 	cc := make([]rune, 32)
 	for i := range b {
 		cc[i] = letterRunes[mrnd.Intn(len(letterRunes))]
 	}
+	glog.V(10).Infof("     Sending Quote with Nonce: %s", string(cc))
 	qReq := &pb.QuoteRequest{
 		Uid:    *u,
 		Pcr:    int32(*pcr),
@@ -336,9 +342,9 @@ func main() {
 		glog.Fatalf("DecodeAttestationData(%v) failed: %v", attestation, err)
 	}
 
-	glog.V(20).Infof("     Attestation ExtraData (nonce): %s ", string(att.ExtraData))
-	glog.V(20).Infof("     Attestation PCR#: %v ", att.AttestedQuoteInfo.PCRSelection.PCRs)
-	glog.V(20).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
+	glog.V(10).Infof("     Attestation ExtraData (nonce): %s ", string(att.ExtraData))
+	glog.V(10).Infof("     Attestation PCR#: %v ", att.AttestedQuoteInfo.PCRSelection.PCRs)
+	glog.V(10).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
 
 	if string(cc) != string(att.ExtraData) {
 		glog.Fatalf("Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), string(cc))
@@ -506,7 +512,7 @@ func main() {
 		glog.Fatalf("Error PullRSAKey: %v", err)
 	}
 
-	glog.V(20).Infof("     SigningKey %s\n", psResponse.RsaPublicKey)
+	glog.V(20).Infof("     SigningKey \n%s", psResponse.RsaPublicKey)
 	glog.V(20).Infof("     SigningKey Attestation %s\n", base64.StdEncoding.EncodeToString(psResponse.Attestation))
 	glog.V(20).Infof("     SigningKey Attestation Signature %s\n", base64.StdEncoding.EncodeToString(psResponse.Signature))
 

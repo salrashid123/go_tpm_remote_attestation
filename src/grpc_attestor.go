@@ -843,9 +843,8 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 
 	pcrSelection23 := tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrList}
 
-	// what i'd really want is a child key of aKkeyHandle but there's some policy i'm isssing
+	// what i'd really want is a child key of aKkeyHandle but there's some policy i'm missing
 	// error code 0x1d : a policy check failed exit status 1
-	//ukPriv, ukPub, _, _, _, err := tpm2.CreateKeyUsingAuth(rwc, ekh, pcrSelection23, authCommandCreateAuth, emptyPassword, unrestrictedKeyParams)
 	//ukPriv, ukPub, _, _, _, err := tpm2.CreateKey(rwc, aKkeyHandle, pcrSelection23, emptyPassword, emptyPassword, unrestrictedKeyParams)
 
 	ukPriv, ukPub, _, _, _, err := tpm2.CreateKeyUsingAuth(rwc, ekh, pcrSelection23, authCommandCreateAuth, emptyPassword, unrestrictedKeyParams)
