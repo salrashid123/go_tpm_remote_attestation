@@ -11,13 +11,18 @@ It basically an implementation in go of
 
 Attestation:
 
+( Images taken from [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html) )
+
+
 ![images/diag1.png](images/diag1.png)
 
 Quote/Verify:
 
 ![images/diag2.png](images/diag2.png)
 
-( Images taken from [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html) )
+EventLog
+
+![images/diag3.png](images/diag3.png)
 
 >>> **NOTE** the code and procedure outlined here is **NOT** supported by google.
 
