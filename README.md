@@ -26,7 +26,6 @@ EventLog
 
 >>> **NOTE** the code and procedure outlined here is **NOT** supported by google.
 
-This is a 'minimal' variation of [TPM based Secret Sharing with Google Compute Engine](https://github.com/salrashid123/tpm_key_distribution) without using GCE specific metadata.
 
 You can use this standalone to setup a gRPC client/server for remote attestation.
 
