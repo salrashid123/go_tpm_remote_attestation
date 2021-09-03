@@ -3,11 +3,10 @@
 
 This repo contains a sample `gRPC` client server application that uses a Trusted Platform Module for:
 
-It basically an implementation in go of
-
 * TPM [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html)
 * TPM [Quote-Verify](https://github.com/salrashid123/tpm2/tree/master/quote_verify)
 * Sealed and PCR bound Transfer of RSA or AES keys.
+* Parse TPM EventLog
 
 Attestation:
 
