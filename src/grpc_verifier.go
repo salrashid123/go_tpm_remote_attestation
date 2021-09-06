@@ -22,6 +22,7 @@ import (
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -30,6 +31,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"math/big"
 	mrnd "math/rand"
 	"time"
 	"verifier"
@@ -57,7 +59,8 @@ var (
 	pcr              = flag.Int("pcr", 0, "PCR Value to use")
 	u                = flag.String("uid", uuid.New().String(), "uid of client")
 
-	caCert          = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to trust")
+	caCert          = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to Trust and to use for X509 Certificates")
+	caKey           = flag.String("cakey", "certs/CA_key.pem", "CA Key to sign x509")
 	rwc             io.ReadWriteCloser
 	importMode      = flag.String("importMode", "AES", "RSA|AES")
 	aes256Key       = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES key to export")
@@ -402,6 +405,81 @@ func main() {
 		glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
 	}
 	glog.V(2).Infof("     EventLog Verified ")
+
+	// Now issue a x509 cert thats associated with the AK.
+	//  this next step is just for demonstration and uses a CA authority the Verifier has access to.
+	//  Normally, this x509 is sent back to the attestor so that it'd have an x509 for the attested
+	//  key.
+	glog.V(2).Infof("     Generate Test Certificate for AK ")
+
+	var notBefore time.Time
+	notBefore = time.Now()
+
+	notAfter := notBefore.Add(time.Hour * 24 * 365)
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		glog.Fatalf("Failed to generate serial number: %v", err)
+	}
+
+	cn := "verify.esodemoapp2.com"
+
+	ca_pem, err = ioutil.ReadFile(*caCert)
+	if err != nil {
+		glog.Fatalf("failed to load root CA certificates  error=%v", err)
+	}
+	block, _ := pem.Decode(ca_pem)
+	if block == nil {
+		glog.Fatalf("Unable to decode %s %v", *caCert, err)
+	}
+	ca, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		glog.Fatalf("Unable to parse %s %v", *caCert, err)
+	}
+
+	keyPEMBytes, err := ioutil.ReadFile(*caKey)
+	if err != nil {
+		glog.Fatalf("Unable to read %s  %v", *caKey, err)
+	}
+	privPem, _ := pem.Decode(keyPEMBytes)
+	parsedKey, err := x509.ParsePKCS1PrivateKey(privPem.Bytes)
+	if err != nil {
+		glog.Fatalf("Unable to parse %s %v", *caKey, err)
+	}
+
+	ct := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization:       []string{"Acme Co"},
+			OrganizationalUnit: []string{"Enterprise"},
+			Locality:           []string{"Mountain View"},
+			Province:           []string{"California"},
+			Country:            []string{"US"},
+			CommonName:         cn,
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		DNSNames:              []string{cn},
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+	}
+
+	cert_b, err := x509.CreateCertificate(rand.Reader, ct, ca, ap, parsedKey)
+	if err != nil {
+		glog.Fatalf("Failed to createCertificate: %v", err)
+	}
+
+	akCertPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert_b,
+		},
+	)
+
+	glog.V(10).Infof("     X509 issued by Verifier for Ak: \n%v", string(akCertPEM))
 
 	glog.V(2).Infof("     <-- End verifyQuote()")
 
