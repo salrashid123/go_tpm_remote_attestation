@@ -143,24 +143,24 @@ Begin Unrestricted SigningKey Transfer
 
 ```log
 $ go run src/grpc_attestor.go --grpcport :50051 \
- --cacert certs/CA_crt.pem --servercert certs/server_crt.pem \
+ --caCertTLS certs/CA_crt.pem --servercert certs/server_crt.pem \
  --serverkey certs/server_key.pem --pcr=0 --v=10 -alsologtostderr
 
-I0904 20:53:27.977637   12020 grpc_attestor.go:1117] Starting gRPC server on port :50051
-I0904 20:53:35.362421   12020 grpc_attestor.go:126] >> inbound request
-I0904 20:53:35.362454   12020 grpc_attestor.go:146] HealthCheck called for Service [verifier.VerifierServer]
-I0904 20:53:35.363889   12020 grpc_attestor.go:126] >> inbound request
-I0904 20:53:35.363945   12020 grpc_attestor.go:160] ======= GetPlatformCert ========
-I0904 20:53:35.363963   12020 grpc_attestor.go:161]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:53:35.373366   12020 grpc_attestor.go:170]      TPM Manufacturer: GOOG
+I0906 15:59:52.870938   16695 grpc_attestor.go:1119] Starting gRPC server on port :50051
+I0906 16:02:42.151385   16695 grpc_attestor.go:126] >> inbound request
+I0906 16:02:42.151418   16695 grpc_attestor.go:146] HealthCheck called for Service [verifier.VerifierServer]
+I0906 16:02:42.152887   16695 grpc_attestor.go:126] >> inbound request
+I0906 16:02:42.152911   16695 grpc_attestor.go:160] ======= GetPlatformCert ========
+I0906 16:02:42.152947   16695 grpc_attestor.go:161]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.168326   16695 grpc_attestor.go:170]      TPM Manufacturer: GOOG
 CERTIFICATE
-I0904 20:53:35.373754   12020 grpc_attestor.go:185]      Found Platform Cert Issuer CN=tpm_ek_v1_cloud_host_root-signer-0-2018-04-06T10:58:26-07:00 K:1\, 1:Pw003HsFYO4:0:18,OU=Cloud,O=Google LLC,L=Mountain View,ST=California,C=US ========
-I0904 20:53:35.373783   12020 grpc_attestor.go:186]      Returning GetPlatformCert ========
-I0904 20:53:35.374811   12020 grpc_attestor.go:126] >> inbound request
-I0904 20:53:35.374832   12020 grpc_attestor.go:194] ======= GetEKCert ========
-I0904 20:53:35.374839   12020 grpc_attestor.go:195]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:53:35.374847   12020 grpc_attestor.go:201] =============== Load EncryptionKey and Certifcate from NV ===============
-I0904 20:53:35.380452   12020 grpc_attestor.go:217]      Encryption PEM 
+I0906 16:02:42.168622   16695 grpc_attestor.go:185]      Found Platform Cert Issuer CN=tpm_ek_v1_cloud_host_root-signer-0-2018-04-06T10:58:26-07:00 K:1\, 1:Pw003HsFYO4:0:18,OU=Cloud,O=Google LLC,L=Mountain View,ST=California,C=US ========
+I0906 16:02:42.168643   16695 grpc_attestor.go:186]      Returning GetPlatformCert ========
+I0906 16:02:42.169575   16695 grpc_attestor.go:126] >> inbound request
+I0906 16:02:42.169596   16695 grpc_attestor.go:194] ======= GetEKCert ========
+I0906 16:02:42.169605   16695 grpc_attestor.go:195]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.169612   16695 grpc_attestor.go:201] =============== Load EncryptionKey and Certifcate from NV ===============
+I0906 16:02:42.175201   16695 grpc_attestor.go:217]      Encryption PEM 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwsY6zrTncJqdkbccZuoe
 2eyDcvd2FzsCBDCyD6E31O2vMmy0Co/w8sqDutyeTZ4N6LvirGSdQxNZ/iv5nLRB
@@ -170,15 +170,15 @@ GcioHkfu8dROyoTUhrRn56ap4bwI0LsoGwiMfSw2ITFsJXHFkXcshe2ev+z29jHd
 LspYW5wt+FEm1c1IYS076L4dk+yEUVZZ1JQ3iaHKn3/KDb5d5/1+yz1heBEdz83e
 ZwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:53:35.394444   12020 grpc_attestor.go:235]      Encryption Issuer x509 tpm_ek_v1_cloud_host-signer-0-2020-10-22T14:02:08-07:00 K:1, 2:HBNpA3TPAbM:0:18
-I0904 20:53:35.394501   12020 grpc_attestor.go:236]      Returning GetEKCert ========
-I0904 20:53:35.396676   12020 grpc_attestor.go:126] >> inbound request
-I0904 20:53:35.396711   12020 grpc_attestor.go:244] ======= GetAK ========
-I0904 20:53:35.396720   12020 grpc_attestor.go:245]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:53:35.398613   12020 grpc_attestor.go:252]      Current PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f
-I0904 20:53:35.398640   12020 grpc_attestor.go:257]      createPrimary
-I0904 20:53:35.483519   12020 grpc_attestor.go:288]      ekPub Name: 000b4bd5d7f30dc3a1975ae9529404f2ec73ae5a404669c5e87d74186fa2a4c280db
-I0904 20:53:35.483571   12020 grpc_attestor.go:289]      ekPubPEM: 
+I0906 16:02:42.189594   16695 grpc_attestor.go:235]      Encryption Issuer x509 tpm_ek_v1_cloud_host-signer-0-2020-10-22T14:02:08-07:00 K:1, 2:HBNpA3TPAbM:0:18
+I0906 16:02:42.189627   16695 grpc_attestor.go:236]      Returning GetEKCert ========
+I0906 16:02:42.190883   16695 grpc_attestor.go:126] >> inbound request
+I0906 16:02:42.190909   16695 grpc_attestor.go:244] ======= GetAK ========
+I0906 16:02:42.190915   16695 grpc_attestor.go:245]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.192728   16695 grpc_attestor.go:252]      Current PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f
+I0906 16:02:42.192758   16695 grpc_attestor.go:257]      createPrimary
+I0906 16:02:42.305726   16695 grpc_attestor.go:288]      ekPub Name: 000b4bd5d7f30dc3a1975ae9529404f2ec73ae5a404669c5e87d74186fa2a4c280db
+I0906 16:02:42.305772   16695 grpc_attestor.go:289]      ekPubPEM: 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwsY6zrTncJqdkbccZuoe
 2eyDcvd2FzsCBDCyD6E31O2vMmy0Co/w8sqDutyeTZ4N6LvirGSdQxNZ/iv5nLRB
@@ -188,85 +188,86 @@ GcioHkfu8dROyoTUhrRn56ap4bwI0LsoGwiMfSw2ITFsJXHFkXcshe2ev+z29jHd
 LspYW5wt+FEm1c1IYS076L4dk+yEUVZZ1JQ3iaHKn3/KDb5d5/1+yz1heBEdz83e
 ZwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:53:35.483605   12020 grpc_attestor.go:296]      CreateKeyUsingAuth
-I0904 20:53:35.645518   12020 grpc_attestor.go:336]      ContextSave (ek)
-I0904 20:53:35.656437   12020 grpc_attestor.go:347]      ContextLoad (ek)
-I0904 20:53:35.665498   12020 grpc_attestor.go:358]      LoadUsingAuth
-I0904 20:53:35.674241   12020 grpc_attestor.go:386]      AK keyName 0022000bdfb1b38d76787b289442fefc2a77d7b7f749597384ec826886af164d0868d08e
-I0904 20:53:35.677790   12020 grpc_attestor.go:408]      akPubPEM: 
+I0906 16:02:42.305810   16695 grpc_attestor.go:296]      CreateKeyUsingAuth
+I0906 16:02:42.456327   16695 grpc_attestor.go:336]      ContextSave (ek)
+I0906 16:02:42.467327   16695 grpc_attestor.go:347]      ContextLoad (ek)
+I0906 16:02:42.476754   16695 grpc_attestor.go:358]      LoadUsingAuth
+I0906 16:02:42.484828   16695 grpc_attestor.go:386]      AK keyName 0022000ba646ae5a0111d66ec5ad26bd559dc7caad94ba0a3f15376fed9d090d377a3433
+I0906 16:02:42.488658   16695 grpc_attestor.go:408]      akPubPEM: 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvm+Bhj6f6boDkTQabhyb
-+uiXytAjLITRDQr0aFV+HTuSkhU3Nsxz567tiBmJhBLw/kxxm1h7vWZqORCYRyV0
-aiAC+TKfiL3soqjCpL98cDe6gWFDfzqNlKvGMJfRgiQlM2CVf5t6XLSTDQ6V6+kQ
-i4uWPcBO+re7hKvF4TGwyut5rfz9TUzEfzv3WSwg8+XAlOftKCDrV4aVApCQYizm
-HX9V4seFg3/5aAQw+Vh4kuoJcELXUUgeLLQnc1ml6yIJvMxabOunZTQ2+yUdophe
-dt9BKfWlT7xw0Cm/BRZrI2DH2CgqUPFsHczhPYpdWOyk4v+Tss3+nVHWGd8NSHSb
-KwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5HCNm4gQ+2jeq0Lb0PSt
+NR96/X9/IkMVZmuLgOaVl69fnZJ80v5oUBd8cLexe/8UBdkMS36U/SfGsEYVZVIy
+9X+gSZpV/g7o/WE3yvVmz7n4Gpt6CCbx9TeHsV27k7iIc2DgUZFL5oAqr6eOzvBF
+NoABUXmXVnkV/14v3ppTetVeuT5WnK5dIEf8DoHbT3ICTjpIq9571s18iImzOt8V
+tp6J+PjLxlNYkMP1gcr6T1Y0OcFlw48TnwbdFYhDIyUZ+lv3DoTdDTGuwyi3uHDW
+ph65SkJiCnyXDVFHefgCE8pnGfTssSLP86QOIzwhlihfVSIyigWr+vratH7P2Dxm
+nwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:53:35.677857   12020 grpc_attestor.go:410]      Write (akPub) ========
-I0904 20:53:35.678103   12020 grpc_attestor.go:415]      Write (akPriv) ========
-I0904 20:53:35.678226   12020 grpc_attestor.go:425]      Returning GetAK ========
-I0904 20:53:35.697344   12020 grpc_attestor.go:126] >> inbound request
-I0904 20:53:35.697382   12020 grpc_attestor.go:437] ======= ActivateCredential ========
-I0904 20:53:35.697393   12020 grpc_attestor.go:438]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:53:35.697403   12020 grpc_attestor.go:440]      ContextLoad (ek)
-I0904 20:53:35.706117   12020 grpc_attestor.go:451]      Read (akPub)
-I0904 20:53:35.706237   12020 grpc_attestor.go:456]      Read (akPriv)
-I0904 20:53:35.714032   12020 grpc_attestor.go:487]      keyName 0022000bdfb1b38d76787b289442fefc2a77d7b7f749597384ec826886af164d0868d08e
-I0904 20:53:35.714071   12020 grpc_attestor.go:489]      ActivateCredentialUsingAuth
-I0904 20:53:35.725351   12020 grpc_attestor.go:537]      <--  activateCredential()
-I0904 20:53:35.733299   12020 grpc_attestor.go:126] >> inbound request
-I0904 20:53:35.733335   12020 grpc_attestor.go:547] ======= Quote ========
-I0904 20:53:35.733341   12020 grpc_attestor.go:548]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:53:35.735130   12020 grpc_attestor.go:555]      PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
-I0904 20:53:35.735163   12020 grpc_attestor.go:560]      ContextLoad (ek) ========
-I0904 20:53:35.743491   12020 grpc_attestor.go:570]      LoadUsingAuth ========
-I0904 20:53:35.747094   12020 grpc_attestor.go:592]      Read (akPub) ========
-I0904 20:53:35.747253   12020 grpc_attestor.go:597]      Read (akPriv) ========
-I0904 20:53:35.752005   12020 grpc_attestor.go:609]      AK keyName 0022000bdfb1b38d76787b289442fefc2a77d7b7f749597384ec826886af164d0868d08e
-I0904 20:53:35.759001   12020 grpc_attestor.go:624]      <-- End Quote
-I0904 20:53:35.767231   12020 grpc_attestor.go:126] >> inbound request
-I0904 20:53:35.767275   12020 grpc_attestor.go:636] ======= PushSecret ========
-I0904 20:53:35.767284   12020 grpc_attestor.go:637]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:53:35.767295   12020 grpc_attestor.go:640]      Loading EndorsementKeyRSA
-I0904 20:53:35.772980   12020 grpc_attestor.go:655]      Importing External Key
-I0904 20:53:35.794255   12020 grpc_attestor.go:660]      <-- End importKey()
-I0904 20:53:35.794324   12020 grpc_attestor.go:664]      Hash of imported Key bZeQ9G0KuKpHVwfZuobcMf7tL/ViU1maVaJCAY+QjfU=
-I0904 20:53:35.798350   12020 grpc_attestor.go:126] >> inbound request
-I0904 20:53:35.798384   12020 grpc_attestor.go:745] ======= PullRSAKey ========
-I0904 20:53:35.798395   12020 grpc_attestor.go:746]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:53:35.798404   12020 grpc_attestor.go:748] ======= Generate UnrestrictedKey ========
-I0904 20:53:35.798410   12020 grpc_attestor.go:750]      ContextLoad (ek) ========
-I0904 20:53:35.807404   12020 grpc_attestor.go:761]      Loading AttestationKey
-I0904 20:53:35.816301   12020 grpc_attestor.go:797]      AK keyName: ACIAC9+xs412eHsolEL+/Cp317f3SVlzhOyCaIavFk0IaNCO,
-I0904 20:53:35.817940   12020 grpc_attestor.go:821]      akPub PEM 
+I0906 16:02:42.488717   16695 grpc_attestor.go:410]      Write (akPub) ========
+I0906 16:02:42.488984   16695 grpc_attestor.go:415]      Write (akPriv) ========
+I0906 16:02:42.489133   16695 grpc_attestor.go:425]      Returning GetAK ========
+I0906 16:02:42.509771   16695 grpc_attestor.go:126] >> inbound request
+I0906 16:02:42.509808   16695 grpc_attestor.go:437] ======= ActivateCredential ========
+I0906 16:02:42.509833   16695 grpc_attestor.go:438]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.509841   16695 grpc_attestor.go:440]      ContextLoad (ek)
+I0906 16:02:42.518171   16695 grpc_attestor.go:451]      Read (akPub)
+I0906 16:02:42.518364   16695 grpc_attestor.go:456]      Read (akPriv)
+I0906 16:02:42.526972   16695 grpc_attestor.go:487]      keyName 0022000ba646ae5a0111d66ec5ad26bd559dc7caad94ba0a3f15376fed9d090d377a3433
+I0906 16:02:42.527091   16695 grpc_attestor.go:489]      ActivateCredentialUsingAuth
+I0906 16:02:42.539755   16695 grpc_attestor.go:537]      <--  activateCredential()
+I0906 16:02:42.548257   16695 grpc_attestor.go:126] >> inbound request
+I0906 16:02:42.548322   16695 grpc_attestor.go:547] ======= Quote ========
+I0906 16:02:42.548330   16695 grpc_attestor.go:548]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.550440   16695 grpc_attestor.go:555]      PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
+I0906 16:02:42.550492   16695 grpc_attestor.go:560]      ContextLoad (ek) ========
+I0906 16:02:42.559632   16695 grpc_attestor.go:570]      LoadUsingAuth ========
+I0906 16:02:42.563225   16695 grpc_attestor.go:592]      Read (akPub) ========
+I0906 16:02:42.563318   16695 grpc_attestor.go:597]      Read (akPriv) ========
+I0906 16:02:42.568124   16695 grpc_attestor.go:609]      AK keyName 0022000ba646ae5a0111d66ec5ad26bd559dc7caad94ba0a3f15376fed9d090d377a3433
+I0906 16:02:42.575422   16695 grpc_attestor.go:624]      <-- End Quote
+I0906 16:02:42.587605   16695 grpc_attestor.go:126] >> inbound request
+I0906 16:02:42.587646   16695 grpc_attestor.go:636] ======= PushSecret ========
+I0906 16:02:42.587715   16695 grpc_attestor.go:637]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.587724   16695 grpc_attestor.go:640]      Loading EndorsementKeyRSA
+I0906 16:02:42.594288   16695 grpc_attestor.go:655]      Importing External Key
+I0906 16:02:42.616577   16695 grpc_attestor.go:660]      <-- End importKey()
+I0906 16:02:42.616635   16695 grpc_attestor.go:664]      Hash of imported Key bZeQ9G0KuKpHVwfZuobcMf7tL/ViU1maVaJCAY+QjfU=
+I0906 16:02:42.621055   16695 grpc_attestor.go:126] >> inbound request
+I0906 16:02:42.621095   16695 grpc_attestor.go:746] ======= PullRSAKey ========
+I0906 16:02:42.621113   16695 grpc_attestor.go:747]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.621128   16695 grpc_attestor.go:749] ======= Generate UnrestrictedKey ========
+I0906 16:02:42.621134   16695 grpc_attestor.go:751]      ContextLoad (ek) ========
+I0906 16:02:42.629578   16695 grpc_attestor.go:762]      Loading AttestationKey
+I0906 16:02:42.638447   16695 grpc_attestor.go:798]      AK keyName: ACIAC6ZGrloBEdZuxa0mvVWdx8qtlLoKPxU3b+2dCQ03ejQz,
+I0906 16:02:42.640042   16695 grpc_attestor.go:822]      akPub PEM 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvm+Bhj6f6boDkTQabhyb
-+uiXytAjLITRDQr0aFV+HTuSkhU3Nsxz567tiBmJhBLw/kxxm1h7vWZqORCYRyV0
-aiAC+TKfiL3soqjCpL98cDe6gWFDfzqNlKvGMJfRgiQlM2CVf5t6XLSTDQ6V6+kQ
-i4uWPcBO+re7hKvF4TGwyut5rfz9TUzEfzv3WSwg8+XAlOftKCDrV4aVApCQYizm
-HX9V4seFg3/5aAQw+Vh4kuoJcELXUUgeLLQnc1ml6yIJvMxabOunZTQ2+yUdophe
-dt9BKfWlT7xw0Cm/BRZrI2DH2CgqUPFsHczhPYpdWOyk4v+Tss3+nVHWGd8NSHSb
-KwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5HCNm4gQ+2jeq0Lb0PSt
+NR96/X9/IkMVZmuLgOaVl69fnZJ80v5oUBd8cLexe/8UBdkMS36U/SfGsEYVZVIy
+9X+gSZpV/g7o/WE3yvVmz7n4Gpt6CCbx9TeHsV27k7iIc2DgUZFL5oAqr6eOzvBF
+NoABUXmXVnkV/14v3ppTetVeuT5WnK5dIEf8DoHbT3ICTjpIq9571s18iImzOt8V
+tp6J+PjLxlNYkMP1gcr6T1Y0OcFlw48TnwbdFYhDIyUZ+lv3DoTdDTGuwyi3uHDW
+ph65SkJiCnyXDVFHefgCE8pnGfTssSLP86QOIzwhlihfVSIyigWr+vratH7P2Dxm
+nwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:53:35.817985   12020 grpc_attestor.go:825]      ======= CreateKeyUsingAuthUnrestricted ========
-I0904 20:53:35.823112   12020 grpc_attestor.go:855]      PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
-I0904 20:53:35.895929   12020 grpc_attestor.go:871]      Write (ukPub) ========
-I0904 20:53:35.896243   12020 grpc_attestor.go:876]      Write (ukPriv) ========
-I0904 20:53:35.905908   12020 grpc_attestor.go:932]      uakPub PEM 
+I0906 16:02:42.640101   16695 grpc_attestor.go:826]      ======= CreateKeyUsingAuthUnrestricted ========
+I0906 16:02:42.645249   16695 grpc_attestor.go:856]      PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
+I0906 16:02:42.743985   16695 grpc_attestor.go:872]      Write (ukPub) ========
+I0906 16:02:42.744223   16695 grpc_attestor.go:877]      Write (ukPriv) ========
+I0906 16:02:42.754539   16695 grpc_attestor.go:933]      uakPub PEM 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy5QdH4aE/o/aPkHBtIFM
-7TkMTCNyLf6TlMrdZaRFsS5xFpHSk0HlclrmixaxaIevCWb0Mdn3H/Vc4HUlAxbl
-O4vIKTCk8W4QsCmyjushTppdv8+wxl147gZcEk1493a3vXA/vTEW4J0BgQDxv36C
-y5DGja+xwQhu6sMIRwLkEgOOXzHkAH5ZqnyZE+Y50IBrQQk8ckGlT9DE+Y0Lnb6w
-S6Z3pLP6vmVXqCeE7a2IfNAz0mTZbjAzTPEJ8i0fG4NUEjBIo5rLPpbP+oygGi89
-5sTwzwOMFNjSRfvzwDWyKZq6JO7Hlo5lH2BOvvh2jLv1TkVyWJiJjcfQoztXhwF+
-CQIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5NuN4iA65YkAy77DcHt7
+Z4+vMNUKl9VmrPS+xck/GmLhabIWeLPN0TRTFg9fPrpvIPcr9DNuug5s42OAI1Ej
+jkNNUIStE6Y65n4R3vtA5OYqC+DOXgIQA5YPlQnDMjv15DKmwJqK3WsvL3ZPUMOF
+wQVqk1avaMy/vuz/u+7vIGydt8PKU+pDr7Zs1W7/9LMrbf4qUYPCuyT8TcHs8olD
+U+5ozzQbazZq9RF9dWcesTEJkIt224Sp3pv2ROc5Y2O23W3g//Mch6EEuGg+Mc1Z
+7+DFwwpGgiErjUoxLs17E6Om060Rjxa7ztTYCUZNWirWl5IffSdGPED62Ph0hrp/
+1wIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:53:35.920975   12020 grpc_attestor.go:960]      Test Signature:  pHlV1dI8htANMSVCU0RLDVlZ2A6p+IDyzFfUI61KjyfNP4H1u0UOIjiAMnmfZiQxCAb1xU4aEO2Ngx9rxyjG7oXtLLvQPOO4w5Xthjc4Ob3TC9P0qxaS0avK+dMRzJ70jocLcI6T1lsCsrpypmfAyCRyKtkfhejgoAgi3uCYaiK7jjXcqa5uBRzlBv842XTWMyzuLi+aWrDASTVH6yhc0j4IqXPG0asyYL7aa9XCGxc7L9UtUudor230mIKCMEFRSMxy8khYmjrL/vlyWHbxAwW+9vENRsFZ7EKunaEPq4apfvuzD0VZfTd+11ueTSmBGg81M2htxyPs0BBbWgP3gA
-I0904 20:53:35.921117   12020 grpc_attestor.go:1008]      Decoding PublicKey for AK ========
-I0904 20:53:35.921261   12020 grpc_attestor.go:1034]      Attestation Verified
-I0904 20:53:35.921290   12020 grpc_attestor.go:1043]      Returning PullRSAKeyResponse
+I0906 16:02:42.762546   16695 grpc_attestor.go:948]      Data to sign: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.771708   16695 grpc_attestor.go:962]      Test Signature:  zhe5rznT1oAhdZBxhdQZgPZY5JzMoxTe69QofwKpEjI2OEy980eik4uREZJVqX7nP95i4N4REcCQplaTruruBtVDgLnacdjZJTn7hgI+YR72mD52Eyzu8WEbLdNXyuTiastwB0NRiKhnrhofzUowajdpT9DKDOsYktx3Z3DErcVtBIUUpKIyKPKwFT+KZNQRrJkE4phl6gNwfIUYLXNg8BDbvCah7kEPvLW/DLlMHZjXc2ZRjHZICKD71OiP1ZQmsEAc2cZzEM+5N4XNHWSKIIOpHYr1EVEGbcfFmLjpJvK5AOXn6ELySQYaYAvBmBak7mbuJrETVbLug1W8bd+iBQ
+I0906 16:02:42.771863   16695 grpc_attestor.go:1010]      Decoding PublicKey for AK ========
+I0906 16:02:42.772054   16695 grpc_attestor.go:1036]      Attestation Verified
+I0906 16:02:42.772084   16695 grpc_attestor.go:1045]      Returning PullRSAKeyResponse
 ```
 
 #### Verifier AES
@@ -275,15 +276,16 @@ I0904 20:53:35.921290   12020 grpc_attestor.go:1043]      Returning PullRSAKeyRe
 $ go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
    -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" --expectedPCRSHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
    --host verify.esodemoapp2.com:50051 --pcr=0 --expectedPCRValue 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f \
+   --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem \
    --v=10 -alsologtostderr 
 
-I0904 20:53:35.363131   27461 grpc_verifier.go:140] RPC HealthChekStatus:SERVING
-I0904 20:53:35.363354   27461 grpc_verifier.go:144] =============== GetPlatformCert ===============
-I0904 20:53:35.374355   27461 grpc_verifier.go:153] =============== GetPlatformCert Returned from remote ===============
-I0904 20:53:35.374437   27461 grpc_verifier.go:171]     Platform Cert Issuer tpm_ek_v1_cloud_host_root-signer-0-2018-04-06T10:58:26-07:00 K:1, 1:Pw003HsFYO4:0:18
-I0904 20:53:35.395095   27461 grpc_verifier.go:184] =============== GetEKCert Returned from remote ===============
-I0904 20:53:35.395358   27461 grpc_verifier.go:202]     EkCert Cert Issuer tpm_ek_v1_cloud_host-signer-0-2020-10-22T14:02:08-07:00 K:1, 2:HBNpA3TPAbM:0:18
-I0904 20:53:35.395453   27461 grpc_verifier.go:203]     EkCert Public Key 
+I0906 16:02:42.152001   15283 grpc_verifier.go:143] RPC HealthChekStatus:SERVING
+I0906 16:02:42.152307   15283 grpc_verifier.go:147] =============== GetPlatformCert ===============
+I0906 16:02:42.168990   15283 grpc_verifier.go:156] =============== GetPlatformCert Returned from remote ===============
+I0906 16:02:42.169104   15283 grpc_verifier.go:174]     Platform Cert Issuer tpm_ek_v1_cloud_host_root-signer-0-2018-04-06T10:58:26-07:00 K:1, 1:Pw003HsFYO4:0:18
+I0906 16:02:42.190174   15283 grpc_verifier.go:186] =============== GetEKCert Returned from remote ===============
+I0906 16:02:42.190288   15283 grpc_verifier.go:204]     EkCert Cert Issuer tpm_ek_v1_cloud_host-signer-0-2020-10-22T14:02:08-07:00 K:1, 2:HBNpA3TPAbM:0:18
+I0906 16:02:42.190305   15283 grpc_verifier.go:205]     EkCert Public Key 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwsY6zrTncJqdkbccZuoe
 2eyDcvd2FzsCBDCyD6E31O2vMmy0Co/w8sqDutyeTZ4N6LvirGSdQxNZ/iv5nLRB
@@ -294,9 +296,9 @@ LspYW5wt+FEm1c1IYS076L4dk+yEUVZZ1JQ3iaHKn3/KDb5d5/1+yz1heBEdz83e
 ZwIDAQAB
 -----END PUBLIC KEY-----
 
-I0904 20:53:35.396034   27461 grpc_verifier.go:206] =============== GetAKCert ===============
-I0904 20:53:35.685444   27461 grpc_verifier.go:218] =============== MakeCredential ===============
-I0904 20:53:35.685607   27461 grpc_verifier.go:240]      Decoded EkPublic Key: 
+I0906 16:02:42.190326   15283 grpc_verifier.go:208] =============== GetAKCert ===============
+I0906 16:02:42.496886   15283 grpc_verifier.go:220] =============== MakeCredential ===============
+I0906 16:02:42.497190   15283 grpc_verifier.go:242]      Decoded EkPublic Key: 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwsY6zrTncJqdkbccZuoe
 2eyDcvd2FzsCBDCyD6E31O2vMmy0Co/w8sqDutyeTZ4N6LvirGSdQxNZ/iv5nLRB
@@ -306,68 +308,118 @@ GcioHkfu8dROyoTUhrRn56ap4bwI0LsoGwiMfSw2ITFsJXHFkXcshe2ev+z29jHd
 LspYW5wt+FEm1c1IYS076L4dk+yEUVZZ1JQ3iaHKn3/KDb5d5/1+yz1heBEdz83e
 ZwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:53:35.689611   27461 grpc_verifier.go:268]      Decoded AkPub: 
+I0906 16:02:42.501391   15283 grpc_verifier.go:270]      Decoded AkPub: 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvm+Bhj6f6boDkTQabhyb
-+uiXytAjLITRDQr0aFV+HTuSkhU3Nsxz567tiBmJhBLw/kxxm1h7vWZqORCYRyV0
-aiAC+TKfiL3soqjCpL98cDe6gWFDfzqNlKvGMJfRgiQlM2CVf5t6XLSTDQ6V6+kQ
-i4uWPcBO+re7hKvF4TGwyut5rfz9TUzEfzv3WSwg8+XAlOftKCDrV4aVApCQYizm
-HX9V4seFg3/5aAQw+Vh4kuoJcELXUUgeLLQnc1ml6yIJvMxabOunZTQ2+yUdophe
-dt9BKfWlT7xw0Cm/BRZrI2DH2CgqUPFsHczhPYpdWOyk4v+Tss3+nVHWGd8NSHSb
-KwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5HCNm4gQ+2jeq0Lb0PSt
+NR96/X9/IkMVZmuLgOaVl69fnZJ80v5oUBd8cLexe/8UBdkMS36U/SfGsEYVZVIy
+9X+gSZpV/g7o/WE3yvVmz7n4Gpt6CCbx9TeHsV27k7iIc2DgUZFL5oAqr6eOzvBF
+NoABUXmXVnkV/14v3ppTetVeuT5WnK5dIEf8DoHbT3ICTjpIq9571s18iImzOt8V
+tp6J+PjLxlNYkMP1gcr6T1Y0OcFlw48TnwbdFYhDIyUZ+lv3DoTdDTGuwyi3uHDW
+ph65SkJiCnyXDVFHefgCE8pnGfTssSLP86QOIzwhlihfVSIyigWr+vratH7P2Dxm
+nwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:53:35.689658   27461 grpc_verifier.go:271]      AK Default parameter match template
-I0904 20:53:35.692908   27461 grpc_verifier.go:280]      Loaded AK KeyName 000bdfb1b38d76787b289442fefc2a77d7b7f749597384ec826886af164d0868d08e
-I0904 20:53:35.692943   27461 grpc_verifier.go:282]      MakeCredential Start
-I0904 20:53:35.692963   27461 grpc_verifier.go:288]      Sending Nonce: VNvcYcZJRcsapVrKpWqIPmzgGCNtINlC
-I0904 20:53:35.696584   27461 grpc_verifier.go:295]      <-- End makeCredential()
-I0904 20:53:35.696620   27461 grpc_verifier.go:300] =============== ActivateCredential ===============
-I0904 20:53:35.732841   27461 grpc_verifier.go:311]      Returned Secret: VNvcYcZJRcsapVrKpWqIPmzgGCNtINlC
-I0904 20:53:35.732874   27461 grpc_verifier.go:316]      Attestation Complete
-I0904 20:53:35.732889   27461 grpc_verifier.go:318] =============== Quote/Verify ===============
-I0904 20:53:35.732905   27461 grpc_verifier.go:323]      Sending Quote with Nonce: QLPAOLraQcmhVWpovCDrQPOtBNhiZkaR
-I0904 20:53:35.765005   27461 grpc_verifier.go:345]      Attestation ExtraData (nonce): QLPAOLraQcmhVWpovCDrQPOtBNhiZkaR 
-I0904 20:53:35.765101   27461 grpc_verifier.go:346]      Attestation PCR#: [0] 
-I0904 20:53:35.765146   27461 grpc_verifier.go:347]      Attestation Hash: 2ba7022b59f2158786ea3ea29a7ad12ff0c6c9d6682da6555d8926075b643b1f 
-I0904 20:53:35.765188   27461 grpc_verifier.go:363]      Expected PCR Value:           --> 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f
-I0904 20:53:35.765217   27461 grpc_verifier.go:364]      sha256 of Expected PCR Value: --> 2ba7022b59f2158786ea3ea29a7ad12ff0c6c9d6682da6555d8926075b643b1f
-I0904 20:53:35.765251   27461 grpc_verifier.go:370]      Decoding PublicKey for AK ========
-I0904 20:53:35.765404   27461 grpc_verifier.go:384]      Attestation Signature Verified 
-I0904 20:53:35.765445   27461 grpc_verifier.go:386]      Reading EventLog
-I0904 20:53:35.765580   27461 grpc_verifier.go:401]      Event Type EV_S_CRTM_VERSION
-I0904 20:53:35.765640   27461 grpc_verifier.go:402]      PCR Index 0
-I0904 20:53:35.765683   27461 grpc_verifier.go:403]      Event Data 47004300450020005600690072007400750061006c0020004600690072006d0077006100720065002000760031000000
-I0904 20:53:35.765726   27461 grpc_verifier.go:404]      Event Digest 3f708bdbaff2006655b540360e16474c100c1310
-I0904 20:53:35.765769   27461 grpc_verifier.go:401]      Event Type EV_NONHOST_INFO
-I0904 20:53:35.765809   27461 grpc_verifier.go:402]      PCR Index 0
-I0904 20:53:35.765852   27461 grpc_verifier.go:403]      Event Data 474345204e6f6e486f7374496e666f0000000000000000000000000000000000
-I0904 20:53:35.765891   27461 grpc_verifier.go:404]      Event Digest 9e8af742718df04092551f27c117723769acfe7e
-I0904 20:53:35.765932   27461 grpc_verifier.go:401]      Event Type EV_SEPARATOR
-I0904 20:53:35.765973   27461 grpc_verifier.go:402]      PCR Index 0
-I0904 20:53:35.766013   27461 grpc_verifier.go:403]      Event Data 00000000
-I0904 20:53:35.766053   27461 grpc_verifier.go:404]      Event Digest 9069ca78e7450a285173431b3e52c5c25299e473
-I0904 20:53:35.766081   27461 grpc_verifier.go:406]      EventLog Verified 
-I0904 20:53:35.766112   27461 grpc_verifier.go:408]      <-- End verifyQuote()
-I0904 20:53:35.766139   27461 grpc_verifier.go:410] =============== PushSecret ===============
-I0904 20:53:35.766174   27461 grpc_verifier.go:412]      Pushing AES
-I0904 20:53:35.766692   27461 grpc_verifier.go:444]      Hash of AES Key:  bZeQ9G0KuKpHVwfZuobcMf7tL/ViU1maVaJCAY+QjfU
-I0904 20:53:35.797736   27461 grpc_verifier.go:511]      Verification bZeQ9G0KuKpHVwfZuobcMf7tL/ViU1maVaJCAY+QjfU
-I0904 20:53:35.797797   27461 grpc_verifier.go:516] =============== PullRSAKey ===============
-I0904 20:53:35.930685   27461 grpc_verifier.go:547]      Attestation of Unrestricted Signing Key Verified
-I0904 20:53:35.930774   27461 grpc_verifier.go:568]      uakPub PEM 
+I0906 16:02:42.501688   15283 grpc_verifier.go:273]      AK Default parameter match template
+I0906 16:02:42.504941   15283 grpc_verifier.go:282]      Loaded AK KeyName 000ba646ae5a0111d66ec5ad26bd559dc7caad94ba0a3f15376fed9d090d377a3433
+I0906 16:02:42.504989   15283 grpc_verifier.go:284]      MakeCredential Start
+I0906 16:02:42.505140   15283 grpc_verifier.go:290]      Sending Nonce: GOQJJEiJytwgfXYjgxKAhOXxQtcZdQyw
+I0906 16:02:42.508776   15283 grpc_verifier.go:297]      <-- End makeCredential()
+I0906 16:02:42.508905   15283 grpc_verifier.go:302] =============== ActivateCredential ===============
+I0906 16:02:42.547423   15283 grpc_verifier.go:313]      Returned Secret: GOQJJEiJytwgfXYjgxKAhOXxQtcZdQyw
+I0906 16:02:42.547473   15283 grpc_verifier.go:318]      Attestation Complete
+I0906 16:02:42.547494   15283 grpc_verifier.go:320] =============== Quote/Verify ===============
+I0906 16:02:42.547518   15283 grpc_verifier.go:325]      Sending Quote with Nonce: TgxUbrXEubFeFOpAtIKIZjoOTSiZadwi
+I0906 16:02:42.580483   15283 grpc_verifier.go:347]      Attestation ExtraData (nonce): TgxUbrXEubFeFOpAtIKIZjoOTSiZadwi 
+I0906 16:02:42.580535   15283 grpc_verifier.go:348]      Attestation PCR#: [0] 
+I0906 16:02:42.580575   15283 grpc_verifier.go:349]      Attestation Hash: 2ba7022b59f2158786ea3ea29a7ad12ff0c6c9d6682da6555d8926075b643b1f 
+I0906 16:02:42.580606   15283 grpc_verifier.go:365]      Expected PCR Value:           --> 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f
+I0906 16:02:42.580625   15283 grpc_verifier.go:366]      sha256 of Expected PCR Value: --> 2ba7022b59f2158786ea3ea29a7ad12ff0c6c9d6682da6555d8926075b643b1f
+I0906 16:02:42.580650   15283 grpc_verifier.go:372]      Decoding PublicKey for AK ========
+I0906 16:02:42.580805   15283 grpc_verifier.go:386]      Attestation Signature Verified 
+I0906 16:02:42.580833   15283 grpc_verifier.go:388]      Reading EventLog
+I0906 16:02:42.580949   15283 grpc_verifier.go:403]      Event Type EV_S_CRTM_VERSION
+I0906 16:02:42.581005   15283 grpc_verifier.go:404]      PCR Index 0
+I0906 16:02:42.581051   15283 grpc_verifier.go:405]      Event Data 47004300450020005600690072007400750061006c0020004600690072006d0077006100720065002000760031000000
+I0906 16:02:42.581133   15283 grpc_verifier.go:406]      Event Digest 3f708bdbaff2006655b540360e16474c100c1310
+I0906 16:02:42.581176   15283 grpc_verifier.go:403]      Event Type EV_NONHOST_INFO
+I0906 16:02:42.581221   15283 grpc_verifier.go:404]      PCR Index 0
+I0906 16:02:42.581275   15283 grpc_verifier.go:405]      Event Data 474345204e6f6e486f7374496e666f0000000000000000000000000000000000
+I0906 16:02:42.581322   15283 grpc_verifier.go:406]      Event Digest 9e8af742718df04092551f27c117723769acfe7e
+I0906 16:02:42.581368   15283 grpc_verifier.go:403]      Event Type EV_SEPARATOR
+I0906 16:02:42.581417   15283 grpc_verifier.go:404]      PCR Index 0
+I0906 16:02:42.581464   15283 grpc_verifier.go:405]      Event Data 00000000
+I0906 16:02:42.581514   15283 grpc_verifier.go:406]      Event Digest 9069ca78e7450a285173431b3e52c5c25299e473
+I0906 16:02:42.581546   15283 grpc_verifier.go:408]      EventLog Verified 
+I0906 16:02:42.581573   15283 grpc_verifier.go:414]      Generate Test Certificate for AK 
+I0906 16:02:42.586338   15283 grpc_verifier.go:483]      X509 issued by Verifier for Ak: 
+-----BEGIN CERTIFICATE-----
+MIID1TCCAr2gAwIBAgIRAIwMVX0rfs+T0Q0ERVb/iX8wDQYJKoZIhvcNAQELBQAw
+bzELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcTDU1v
+dW50YWluIFZpZXcxDzANBgNVBAoTBkdvb2dsZTETMBEGA1UECxMKRW50ZXJwcmlz
+ZTENMAsGA1UEAxMETXlDQTAeFw0yMTA5MDYxNjAyNDJaFw0yMjA5MDYxNjAyNDJa
+MIGCMQswCQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMN
+TW91bnRhaW4gVmlldzEQMA4GA1UEChMHQWNtZSBDbzETMBEGA1UECxMKRW50ZXJw
+cmlzZTEfMB0GA1UEAxMWdmVyaWZ5LmVzb2RlbW9hcHAyLmNvbTCCASIwDQYJKoZI
+hvcNAQEBBQADggEPADCCAQoCggEBAORwjZuIEPto3qtC29D0rTUfev1/fyJDFWZr
+i4DmlZevX52SfNL+aFAXfHC3sXv/FAXZDEt+lP0nxrBGFWVSMvV/oEmaVf4O6P1h
+N8r1Zs+5+Bqbeggm8fU3h7Fdu5O4iHNg4FGRS+aAKq+njs7wRTaAAVF5l1Z5Ff9e
+L96aU3rVXrk+VpyuXSBH/A6B209yAk46SKvee9bNfIiJszrfFbaeifj4y8ZTWJDD
+9YHK+k9WNDnBZcOPE58G3RWIQyMlGfpb9w6E3Q0xrsMot7hw1qYeuUpCYgp8lw1R
+R3n4AhPKZxn07LEiz/OkDiM8IZYoX1UiMooFq/r62rR+z9g8Zp8CAwEAAaNYMFYw
+DgYDVR0PAQH/BAQDAgeAMBMGA1UdJQQMMAoGCCsGAQUFBwMDMAwGA1UdEwEB/wQC
+MAAwIQYDVR0RBBowGIIWdmVyaWZ5LmVzb2RlbW9hcHAyLmNvbTANBgkqhkiG9w0B
+AQsFAAOCAQEAllMhEHF01yfvVzMaEm4seowMA3Rti9yTB1rakEhE1oxR+T59e4kC
+MiLDRgi5zMePxStbD8nWikbDwquowVYDU3bQ/IBiM3FA4wLKC6NkK/RF0n8neKZm
+rmFkDICpm44QEJCEOkuxox3N9mcad/MRWjsyu2pHGwnvGJ9JxDuDHfxofSoUH31N
+0XsSsW53OiA6E0HA36YRaDVpLj6mJlUQi7+2IlKdbGLdxhk7rxpychlwjAKnpMQ6
+4FOTZ1XBIPmBtip8HxqPmKFCDxVngRtkjBrcdv0OexHP5BLquiud93Jjk+rfwDoW
+EzmZOLTwppjsTTT7s1C0Bc83nvTr+0rgdQ==
+-----END CERTIFICATE-----
+I0906 16:02:42.586390   15283 grpc_verifier.go:485]      <-- End verifyQuote()
+I0906 16:02:42.586411   15283 grpc_verifier.go:487] =============== PushSecret ===============
+I0906 16:02:42.586430   15283 grpc_verifier.go:489]      Pushing AES
+I0906 16:02:42.586731   15283 grpc_verifier.go:521]      Hash of AES Key:  bZeQ9G0KuKpHVwfZuobcMf7tL/ViU1maVaJCAY+QjfU
+I0906 16:02:42.620167   15283 grpc_verifier.go:589]      Verification bZeQ9G0KuKpHVwfZuobcMf7tL/ViU1maVaJCAY+QjfU
+I0906 16:02:42.620336   15283 grpc_verifier.go:594] =============== PullRSAKey ===============
+I0906 16:02:42.780942   15283 grpc_verifier.go:625]      Attestation of Unrestricted Signing Key Verified
+I0906 16:02:42.781080   15283 grpc_verifier.go:646]      uakPub PEM 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAy5QdH4aE/o/aPkHBtIFM
-7TkMTCNyLf6TlMrdZaRFsS5xFpHSk0HlclrmixaxaIevCWb0Mdn3H/Vc4HUlAxbl
-O4vIKTCk8W4QsCmyjushTppdv8+wxl147gZcEk1493a3vXA/vTEW4J0BgQDxv36C
-y5DGja+xwQhu6sMIRwLkEgOOXzHkAH5ZqnyZE+Y50IBrQQk8ckGlT9DE+Y0Lnb6w
-S6Z3pLP6vmVXqCeE7a2IfNAz0mTZbjAzTPEJ8i0fG4NUEjBIo5rLPpbP+oygGi89
-5sTwzwOMFNjSRfvzwDWyKZq6JO7Hlo5lH2BOvvh2jLv1TkVyWJiJjcfQoztXhwF+
-CQIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5NuN4iA65YkAy77DcHt7
+Z4+vMNUKl9VmrPS+xck/GmLhabIWeLPN0TRTFg9fPrpvIPcr9DNuug5s42OAI1Ej
+jkNNUIStE6Y65n4R3vtA5OYqC+DOXgIQA5YPlQnDMjv15DKmwJqK3WsvL3ZPUMOF
+wQVqk1avaMy/vuz/u+7vIGydt8PKU+pDr7Zs1W7/9LMrbf4qUYPCuyT8TcHs8olD
+U+5ozzQbazZq9RF9dWcesTEJkIt224Sp3pv2ROc5Y2O23W3g//Mch6EEuGg+Mc1Z
+7+DFwwpGgiErjUoxLs17E6Om060Rjxa7ztTYCUZNWirWl5IffSdGPED62Ph0hrp/
+1wIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:53:35.930818   27461 grpc_verifier.go:573]      SigningKey Test Signature pHlV1dI8htANMSVCU0RLDVlZ2A6p+IDyzFfUI61KjyfNP4H1u0UOIjiAMnmfZiQxCAb1xU4aEO2Ngx9rxyjG7oXtLLvQPOO4w5Xthjc4Ob3TC9P0qxaS0avK+dMRzJ70jocLcI6T1lsCsrpypmfAyCRyKtkfhejgoAgi3uCYaiK7jjXcqa5uBRzlBv842XTWMyzuLi+aWrDASTVH6yhc0j4IqXPG0asyYL7aa9XCGxc7L9UtUudor230mIKCMEFRSMxy8khYmjrL/vlyWHbxAwW+9vENRsFZ7EKunaEPq4apfvuzD0VZfTd+11ueTSmBGg81M2htxyPs0BBbWgP3gA==
-I0904 20:53:35.931032   27461 grpc_verifier.go:580]      Test Signature Verified
-I0904 20:53:35.931099   27461 grpc_verifier.go:601]      Unrestricted RSA Public key parameters matches AttestedCertifyInfo  true
-I0904 20:53:35.931141   27461 grpc_verifier.go:603]      Pulled Signing Key  complete 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.781266   15283 grpc_verifier.go:651]      SigningKey Test Signature zhe5rznT1oAhdZBxhdQZgPZY5JzMoxTe69QofwKpEjI2OEy980eik4uREZJVqX7nP95i4N4REcCQplaTruruBtVDgLnacdjZJTn7hgI+YR72mD52Eyzu8WEbLdNXyuTiastwB0NRiKhnrhofzUowajdpT9DKDOsYktx3Z3DErcVtBIUUpKIyKPKwFT+KZNQRrJkE4phl6gNwfIUYLXNg8BDbvCah7kEPvLW/DLlMHZjXc2ZRjHZICKD71OiP1ZQmsEAc2cZzEM+5N4XNHWSKIIOpHYr1EVEGbcfFmLjpJvK5AOXn6ELySQYaYAvBmBak7mbuJrETVbLug1W8bd+iBQ==
+I0906 16:02:42.781344   15283 grpc_verifier.go:652]      Data to verify signature with: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:02:42.781519   15283 grpc_verifier.go:659]      Test Signature Verified
+I0906 16:02:42.781628   15283 grpc_verifier.go:680]      Unrestricted RSA Public key parameters matches AttestedCertifyInfo  true
+I0906 16:02:42.785967   15283 grpc_verifier.go:718]      X509 issued by Verifier for unrestricted Key: 
+-----BEGIN CERTIFICATE-----
+MIID0TCCArmgAwIBAgIRAIwMVX0rfs+T0Q0ERVb/iX8wDQYJKoZIhvcNAQELBQAw
+bzELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcTDU1v
+dW50YWluIFZpZXcxDzANBgNVBAoTBkdvb2dsZTETMBEGA1UECxMKRW50ZXJwcmlz
+ZTENMAsGA1UEAxMETXlDQTAeFw0yMTA5MDYxNjAyNDJaFw0yMjA5MDYxNjAyNDJa
+MIGCMQswCQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMN
+TW91bnRhaW4gVmlldzEQMA4GA1UEChMHQWNtZSBDbzETMBEGA1UECxMKRW50ZXJw
+cmlzZTEfMB0GA1UEAxMWdmVyaWZ5LmVzb2RlbW9hcHAyLmNvbTCCASIwDQYJKoZI
+hvcNAQEBBQADggEPADCCAQoCggEBAOTbjeIgOuWJAMu+w3B7e2ePrzDVCpfVZqz0
+vsXJPxpi4WmyFnizzdE0UxYPXz66byD3K/QzbroObONjgCNRI45DTVCErROmOuZ+
+Ed77QOTmKgvgzl4CEAOWD5UJwzI79eQypsCait1rLy92T1DDhcEFapNWr2jMv77s
+/7vu7yBsnbfDylPqQ6+2bNVu//SzK23+KlGDwrsk/E3B7PKJQ1PuaM80G2s2avUR
+fXVnHrExCZCLdtuEqd6b9kTnOWNjtt1t4P/zHIehBLhoPjHNWe/gxcMKRoIhK41K
+MS7NexOjptOtEY8Wu87U2AlGTVoq1peSH30nRjxA+tj4dIa6f9cCAwEAAaNUMFIw
+DgYDVR0PAQH/BAQDAgeAMA8GA1UdJQQIMAYGBFUdJQAwDAYDVR0TAQH/BAIwADAh
+BgNVHREEGjAYghZ2ZXJpZnkuZXNvZGVtb2FwcDIuY29tMA0GCSqGSIb3DQEBCwUA
+A4IBAQBQSU62JE7kOa7XdbZMtJSjGTeeG/7GeetkWav8dSoWOJbpHD5YxDhM9Z3M
+ZUh6Bbucidoiz7A2UwtZTH1oVKGrf+b9bLqxKCNf/jSzIEgzvyQgNOfJKG2ZCNVY
+M473NehW38fgzOcAzjYPo/w4EPa5rw1y4XAZ8oRmrZlDt6K8VBy5iYhPWzleUARe
+z9dt2XIthttt7wBORTbAzc8pWJvecwSeG/3jHtw8uWOj7VYmFxgttvfIyNtiz5RN
+DGm6iLHK8GyKDYpl+8Mkzbyvj1+Pb2dnJACx6lUYXT6O8uwMYwE4mO07ngxJuI8M
+z+OH56Eg0ZXW2cShe30i/zQsAIj+
+-----END CERTIFICATE-----
+I0906 16:02:42.786188   15283 grpc_verifier.go:720]      Pulled Signing Key  complete 369c327d-ad1f-401c-aa91-d9b0e69bft67
 ```
 
 ### RSA
@@ -375,26 +427,26 @@ I0904 20:53:35.931141   27461 grpc_verifier.go:603]      Pulled Signing Key  com
 #### Attestor RSA
 
 ```log
-$ go run src/grpc_attestor.go --grpcport :50051 --cacert certs/CA_crt.pem \
+$ go run src/grpc_attestor.go --grpcport :50051 --caCertTLS certs/CA_crt.pem \
   --servercert certs/server_crt.pem \
   --serverkey certs/server_key.pem --pcr=0 \
   --v=10 -alsologtostderr
 
-I0904 20:52:14.372279   11972 grpc_attestor.go:1117] Starting gRPC server on port :50051
-I0904 20:52:22.585006   11972 grpc_attestor.go:126] >> inbound request
-I0904 20:52:22.585043   11972 grpc_attestor.go:146] HealthCheck called for Service [verifier.VerifierServer]
-I0904 20:52:22.586623   11972 grpc_attestor.go:126] >> inbound request
-I0904 20:52:22.586647   11972 grpc_attestor.go:160] ======= GetPlatformCert ========
-I0904 20:52:22.586652   11972 grpc_attestor.go:161]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:52:22.599360   11972 grpc_attestor.go:170]      TPM Manufacturer: GOOG
+I0906 16:03:29.762952   16742 grpc_attestor.go:1119] Starting gRPC server on port :50051
+I0906 16:03:39.265298   16742 grpc_attestor.go:126] >> inbound request
+I0906 16:03:39.265330   16742 grpc_attestor.go:146] HealthCheck called for Service [verifier.VerifierServer]
+I0906 16:03:39.266689   16742 grpc_attestor.go:126] >> inbound request
+I0906 16:03:39.266715   16742 grpc_attestor.go:160] ======= GetPlatformCert ========
+I0906 16:03:39.266723   16742 grpc_attestor.go:161]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.286109   16742 grpc_attestor.go:170]      TPM Manufacturer: GOOG
 CERTIFICATE
-I0904 20:52:22.599630   11972 grpc_attestor.go:185]      Found Platform Cert Issuer CN=tpm_ek_v1_cloud_host_root-signer-0-2018-04-06T10:58:26-07:00 K:1\, 1:Pw003HsFYO4:0:18,OU=Cloud,O=Google LLC,L=Mountain View,ST=California,C=US ========
-I0904 20:52:22.599658   11972 grpc_attestor.go:186]      Returning GetPlatformCert ========
-I0904 20:52:22.601089   11972 grpc_attestor.go:126] >> inbound request
-I0904 20:52:22.601116   11972 grpc_attestor.go:194] ======= GetEKCert ========
-I0904 20:52:22.601123   11972 grpc_attestor.go:195]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:52:22.601131   11972 grpc_attestor.go:201] =============== Load EncryptionKey and Certifcate from NV ===============
-I0904 20:52:22.605878   11972 grpc_attestor.go:217]      Encryption PEM 
+I0906 16:03:39.286362   16742 grpc_attestor.go:185]      Found Platform Cert Issuer CN=tpm_ek_v1_cloud_host_root-signer-0-2018-04-06T10:58:26-07:00 K:1\, 1:Pw003HsFYO4:0:18,OU=Cloud,O=Google LLC,L=Mountain View,ST=California,C=US ========
+I0906 16:03:39.286384   16742 grpc_attestor.go:186]      Returning GetPlatformCert ========
+I0906 16:03:39.287527   16742 grpc_attestor.go:126] >> inbound request
+I0906 16:03:39.287547   16742 grpc_attestor.go:194] ======= GetEKCert ========
+I0906 16:03:39.287552   16742 grpc_attestor.go:195]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.287572   16742 grpc_attestor.go:201] =============== Load EncryptionKey and Certifcate from NV ===============
+I0906 16:03:39.293566   16742 grpc_attestor.go:217]      Encryption PEM 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwsY6zrTncJqdkbccZuoe
 2eyDcvd2FzsCBDCyD6E31O2vMmy0Co/w8sqDutyeTZ4N6LvirGSdQxNZ/iv5nLRB
@@ -404,15 +456,15 @@ GcioHkfu8dROyoTUhrRn56ap4bwI0LsoGwiMfSw2ITFsJXHFkXcshe2ev+z29jHd
 LspYW5wt+FEm1c1IYS076L4dk+yEUVZZ1JQ3iaHKn3/KDb5d5/1+yz1heBEdz83e
 ZwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:22.620775   11972 grpc_attestor.go:235]      Encryption Issuer x509 tpm_ek_v1_cloud_host-signer-0-2020-10-22T14:02:08-07:00 K:1, 2:HBNpA3TPAbM:0:18
-I0904 20:52:22.620821   11972 grpc_attestor.go:236]      Returning GetEKCert ========
-I0904 20:52:22.622889   11972 grpc_attestor.go:126] >> inbound request
-I0904 20:52:22.622926   11972 grpc_attestor.go:244] ======= GetAK ========
-I0904 20:52:22.622936   11972 grpc_attestor.go:245]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:52:22.624755   11972 grpc_attestor.go:252]      Current PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f
-I0904 20:52:22.624786   11972 grpc_attestor.go:257]      createPrimary
-I0904 20:52:22.707356   11972 grpc_attestor.go:288]      ekPub Name: 000b4bd5d7f30dc3a1975ae9529404f2ec73ae5a404669c5e87d74186fa2a4c280db
-I0904 20:52:22.707400   11972 grpc_attestor.go:289]      ekPubPEM: 
+I0906 16:03:39.308133   16742 grpc_attestor.go:235]      Encryption Issuer x509 tpm_ek_v1_cloud_host-signer-0-2020-10-22T14:02:08-07:00 K:1, 2:HBNpA3TPAbM:0:18
+I0906 16:03:39.308170   16742 grpc_attestor.go:236]      Returning GetEKCert ========
+I0906 16:03:39.309604   16742 grpc_attestor.go:126] >> inbound request
+I0906 16:03:39.309630   16742 grpc_attestor.go:244] ======= GetAK ========
+I0906 16:03:39.309636   16742 grpc_attestor.go:245]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.310416   16742 grpc_attestor.go:252]      Current PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f
+I0906 16:03:39.310435   16742 grpc_attestor.go:257]      createPrimary
+I0906 16:03:39.392885   16742 grpc_attestor.go:288]      ekPub Name: 000b4bd5d7f30dc3a1975ae9529404f2ec73ae5a404669c5e87d74186fa2a4c280db
+I0906 16:03:39.392921   16742 grpc_attestor.go:289]      ekPubPEM: 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwsY6zrTncJqdkbccZuoe
 2eyDcvd2FzsCBDCyD6E31O2vMmy0Co/w8sqDutyeTZ4N6LvirGSdQxNZ/iv5nLRB
@@ -422,49 +474,49 @@ GcioHkfu8dROyoTUhrRn56ap4bwI0LsoGwiMfSw2ITFsJXHFkXcshe2ev+z29jHd
 LspYW5wt+FEm1c1IYS076L4dk+yEUVZZ1JQ3iaHKn3/KDb5d5/1+yz1heBEdz83e
 ZwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:22.707436   11972 grpc_attestor.go:296]      CreateKeyUsingAuth
-I0904 20:52:22.810857   11972 grpc_attestor.go:336]      ContextSave (ek)
-I0904 20:52:22.821312   11972 grpc_attestor.go:347]      ContextLoad (ek)
-I0904 20:52:22.830123   11972 grpc_attestor.go:358]      LoadUsingAuth
-I0904 20:52:22.838723   11972 grpc_attestor.go:386]      AK keyName 0022000bc46d2ba2950d39f872307639eca8288a62eedb3d505beaaa6fc26fe94b9e5d4a
-I0904 20:52:22.842217   11972 grpc_attestor.go:408]      akPubPEM: 
+I0906 16:03:39.392956   16742 grpc_attestor.go:296]      CreateKeyUsingAuth
+I0906 16:03:39.485763   16742 grpc_attestor.go:336]      ContextSave (ek)
+I0906 16:03:39.496024   16742 grpc_attestor.go:347]      ContextLoad (ek)
+I0906 16:03:39.503874   16742 grpc_attestor.go:358]      LoadUsingAuth
+I0906 16:03:39.512298   16742 grpc_attestor.go:386]      AK keyName 0022000b75afd591852ae04f1587cf717dfe8b61737b3550fa83e75e0e07f10eb37e970e
+I0906 16:03:39.515787   16742 grpc_attestor.go:408]      akPubPEM: 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxf/fRxyg51aqec7Hyn/L
-x0ULLEv42P4dF1mt0dgCIAimlHhjBNxja144mm8DOQpzA6XlPl8A8nrS4U+qOrVp
-wGuW33I8uZfYyDnhkEUsASDgcTu4PPsfgKOe1XZdlHMWsH7dYaE8VOvUux0NALz6
-bcq5iDb3ug24IBNbS52Fq2tJO84W0obBDk6S0rrw9W0qPDWBVWJ0KaA7hbVsWKZj
-F3BWhpsJrVD48TcW/IBM5WbjchS2ADFk0TRKw7Vg6xFtD2j3ZZGeMk3nEAzfLAHS
-01l3vrJ1VAwhy242AJCylm7pQ5CqwTWwQMB1MjO/17G0tpKaU4mxGC2h0szdJS3U
-1QIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuFQqmRqf4tfujeMHAd65
+ZCdfa6ubKjnbqHPwIYT2z8dxGfA4im7mc6aLYShG9uesJFBh33DLg66teV6EzMYW
+w16FfKRCzO5ahvOCwn4n15ZQ5qaRuLa9cc0Jh/k5fE/3oesUv/YW3c7WsDndgjhl
+7sRAKxvzrY1SXekM2l35uffT3mhTEsx/Pm0w/OrNWoI6EE6L9tVAMKlfOQwLxg8l
+FNcwLm358tsyUFy+EglzVSQNkeMUmD5SxJQemppnh7bLUnA4vZrzeBrRLqCJSmdL
+bsDGSH1TPGNAZA29EYUw8Na0VYvF6wqj+ZP2HIaBEyakXOD1nX6etjU15ooPw5M/
+bwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:22.842275   11972 grpc_attestor.go:410]      Write (akPub) ========
-I0904 20:52:22.842502   11972 grpc_attestor.go:415]      Write (akPriv) ========
-I0904 20:52:22.842632   11972 grpc_attestor.go:425]      Returning GetAK ========
-I0904 20:52:22.861558   11972 grpc_attestor.go:126] >> inbound request
-I0904 20:52:22.861600   11972 grpc_attestor.go:437] ======= ActivateCredential ========
-I0904 20:52:22.861608   11972 grpc_attestor.go:438]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:52:22.861616   11972 grpc_attestor.go:440]      ContextLoad (ek)
-I0904 20:52:22.870571   11972 grpc_attestor.go:451]      Read (akPub)
-I0904 20:52:22.870686   11972 grpc_attestor.go:456]      Read (akPriv)
-I0904 20:52:22.879268   11972 grpc_attestor.go:487]      keyName 0022000bc46d2ba2950d39f872307639eca8288a62eedb3d505beaaa6fc26fe94b9e5d4a
-I0904 20:52:22.879312   11972 grpc_attestor.go:489]      ActivateCredentialUsingAuth
-I0904 20:52:22.890362   11972 grpc_attestor.go:537]      <--  activateCredential()
-I0904 20:52:22.898800   11972 grpc_attestor.go:126] >> inbound request
-I0904 20:52:22.898949   11972 grpc_attestor.go:547] ======= Quote ========
-I0904 20:52:22.898964   11972 grpc_attestor.go:548]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:52:22.900782   11972 grpc_attestor.go:555]      PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
-I0904 20:52:22.900807   11972 grpc_attestor.go:560]      ContextLoad (ek) ========
-I0904 20:52:22.909390   11972 grpc_attestor.go:570]      LoadUsingAuth ========
-I0904 20:52:22.912757   11972 grpc_attestor.go:592]      Read (akPub) ========
-I0904 20:52:22.912853   11972 grpc_attestor.go:597]      Read (akPriv) ========
-I0904 20:52:22.917359   11972 grpc_attestor.go:609]      AK keyName 0022000bc46d2ba2950d39f872307639eca8288a62eedb3d505beaaa6fc26fe94b9e5d4a
-I0904 20:52:22.924122   11972 grpc_attestor.go:624]      <-- End Quote
-I0904 20:52:22.937067   11972 grpc_attestor.go:126] >> inbound request
-I0904 20:52:22.937105   11972 grpc_attestor.go:636] ======= PushSecret ========
-I0904 20:52:22.937117   11972 grpc_attestor.go:637]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:52:22.937125   11972 grpc_attestor.go:640]      Loading EndorsementKeyRSA
-I0904 20:52:22.943308   11972 grpc_attestor.go:668]      Loading ImportSigningKey
-I0904 20:52:22.967221   11972 grpc_attestor.go:687]      Public portion of RSA Keypair to import: 
+I0906 16:03:39.515837   16742 grpc_attestor.go:410]      Write (akPub) ========
+I0906 16:03:39.516027   16742 grpc_attestor.go:415]      Write (akPriv) ========
+I0906 16:03:39.516135   16742 grpc_attestor.go:425]      Returning GetAK ========
+I0906 16:03:39.535363   16742 grpc_attestor.go:126] >> inbound request
+I0906 16:03:39.535393   16742 grpc_attestor.go:437] ======= ActivateCredential ========
+I0906 16:03:39.535400   16742 grpc_attestor.go:438]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.535410   16742 grpc_attestor.go:440]      ContextLoad (ek)
+I0906 16:03:39.544597   16742 grpc_attestor.go:451]      Read (akPub)
+I0906 16:03:39.544689   16742 grpc_attestor.go:456]      Read (akPriv)
+I0906 16:03:39.552149   16742 grpc_attestor.go:487]      keyName 0022000b75afd591852ae04f1587cf717dfe8b61737b3550fa83e75e0e07f10eb37e970e
+I0906 16:03:39.552184   16742 grpc_attestor.go:489]      ActivateCredentialUsingAuth
+I0906 16:03:39.564760   16742 grpc_attestor.go:537]      <--  activateCredential()
+I0906 16:03:39.572541   16742 grpc_attestor.go:126] >> inbound request
+I0906 16:03:39.572570   16742 grpc_attestor.go:547] ======= Quote ========
+I0906 16:03:39.572579   16742 grpc_attestor.go:548]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.574372   16742 grpc_attestor.go:555]      PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
+I0906 16:03:39.574397   16742 grpc_attestor.go:560]      ContextLoad (ek) ========
+I0906 16:03:39.583235   16742 grpc_attestor.go:570]      LoadUsingAuth ========
+I0906 16:03:39.586671   16742 grpc_attestor.go:592]      Read (akPub) ========
+I0906 16:03:39.586739   16742 grpc_attestor.go:597]      Read (akPriv) ========
+I0906 16:03:39.591700   16742 grpc_attestor.go:609]      AK keyName 0022000b75afd591852ae04f1587cf717dfe8b61737b3550fa83e75e0e07f10eb37e970e
+I0906 16:03:39.598339   16742 grpc_attestor.go:624]      <-- End Quote
+I0906 16:03:39.613581   16742 grpc_attestor.go:126] >> inbound request
+I0906 16:03:39.613619   16742 grpc_attestor.go:636] ======= PushSecret ========
+I0906 16:03:39.613629   16742 grpc_attestor.go:637]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.613636   16742 grpc_attestor.go:640]      Loading EndorsementKeyRSA
+I0906 16:03:39.620371   16742 grpc_attestor.go:668]      Loading ImportSigningKey
+I0906 16:03:39.646418   16742 grpc_attestor.go:687]      Public portion of RSA Keypair to import: 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqwK/eG8GB9TC8adQB0ph
 +R8qZPePz6bVlKE+8mk1pqVxqpOS3odGID2yCVdflMO7apOmyzs3NOrulcGqhtc6
@@ -474,44 +526,46 @@ I97KMb1acCm9aRi0A9odZUsQLduVqhwKALw+U5+aMInT/vI4JS0KLlzZfvov3wPR
 PgaZnhDCLs2gr/BDM4mJAMZ4Tp9FMdeeg8fSCVbx75cyLTPwD2RQDKNBXxI+9LIj
 9QIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:22.967266   11972 grpc_attestor.go:689]      Saving Key Handle as importedKey.bin
-I0904 20:52:22.975919   11972 grpc_attestor.go:702]     Generating Test Signature ========
-I0904 20:52:22.984659   11972 grpc_attestor.go:731]      Test Signature data:  FBdOOCvkAdCPxuxXSzomtLx5ayURHGEsWMIiP90ve4zqvLGDOLH9mE5MGbPbdpYF2HUxwh4r1ISVbYCdZV7O/1CI68LN1uDLjaMNwOaQAs1FMoeLdGfD04mLVBQ/i67hLBEZj3WY0m0mwo1W7anyKYyav1L/rAWB0W+guT02zibxhaI+CemixLAXObthWHFsfipmmZNJPvApNP8Ro4MtBbla4S3UYi1HCEHlLOpmvFHvPwoG1WBr529CltzQ5xf/NfBpQ/nhlDTNkpgka40uEX5qoW1uRYIZOtbmTZcgb1FPqEEW2+GUH7TvVNFhTdL6lSLstVNfnokGPHWoDiErqw
-I0904 20:52:22.996582   11972 grpc_attestor.go:126] >> inbound request
-I0904 20:52:22.996617   11972 grpc_attestor.go:745] ======= PullRSAKey ========
-I0904 20:52:22.996625   11972 grpc_attestor.go:746]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
-I0904 20:52:22.996636   11972 grpc_attestor.go:748] ======= Generate UnrestrictedKey ========
-I0904 20:52:22.996643   11972 grpc_attestor.go:750]      ContextLoad (ek) ========
-I0904 20:52:23.004822   11972 grpc_attestor.go:761]      Loading AttestationKey
-I0904 20:52:23.012791   11972 grpc_attestor.go:797]      AK keyName: ACIAC8RtK6KVDTn4cjB2OeyoKIpi7ts9UFvqqm/Cb+lLnl1K,
-I0904 20:52:23.014199   11972 grpc_attestor.go:821]      akPub PEM 
+I0906 16:03:39.646498   16742 grpc_attestor.go:689]      Saving Key Handle as importedKey.bin
+I0906 16:03:39.655673   16742 grpc_attestor.go:702]      Generating Test Signature ========
+I0906 16:03:39.657699   16742 grpc_attestor.go:717]      Data to sign: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.664871   16742 grpc_attestor.go:732]      Test Signature data:  FBdOOCvkAdCPxuxXSzomtLx5ayURHGEsWMIiP90ve4zqvLGDOLH9mE5MGbPbdpYF2HUxwh4r1ISVbYCdZV7O/1CI68LN1uDLjaMNwOaQAs1FMoeLdGfD04mLVBQ/i67hLBEZj3WY0m0mwo1W7anyKYyav1L/rAWB0W+guT02zibxhaI+CemixLAXObthWHFsfipmmZNJPvApNP8Ro4MtBbla4S3UYi1HCEHlLOpmvFHvPwoG1WBr529CltzQ5xf/NfBpQ/nhlDTNkpgka40uEX5qoW1uRYIZOtbmTZcgb1FPqEEW2+GUH7TvVNFhTdL6lSLstVNfnokGPHWoDiErqw
+I0906 16:03:39.677494   16742 grpc_attestor.go:126] >> inbound request
+I0906 16:03:39.677540   16742 grpc_attestor.go:746] ======= PullRSAKey ========
+I0906 16:03:39.677581   16742 grpc_attestor.go:747]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.677595   16742 grpc_attestor.go:749] ======= Generate UnrestrictedKey ========
+I0906 16:03:39.677608   16742 grpc_attestor.go:751]      ContextLoad (ek) ========
+I0906 16:03:39.685777   16742 grpc_attestor.go:762]      Loading AttestationKey
+I0906 16:03:39.694305   16742 grpc_attestor.go:798]      AK keyName: ACIAC3Wv1ZGFKuBPFYfPcX3+i2FzezVQ+oPnXg4H8Q6zfpcO,
+I0906 16:03:39.696005   16742 grpc_attestor.go:822]      akPub PEM 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxf/fRxyg51aqec7Hyn/L
-x0ULLEv42P4dF1mt0dgCIAimlHhjBNxja144mm8DOQpzA6XlPl8A8nrS4U+qOrVp
-wGuW33I8uZfYyDnhkEUsASDgcTu4PPsfgKOe1XZdlHMWsH7dYaE8VOvUux0NALz6
-bcq5iDb3ug24IBNbS52Fq2tJO84W0obBDk6S0rrw9W0qPDWBVWJ0KaA7hbVsWKZj
-F3BWhpsJrVD48TcW/IBM5WbjchS2ADFk0TRKw7Vg6xFtD2j3ZZGeMk3nEAzfLAHS
-01l3vrJ1VAwhy242AJCylm7pQ5CqwTWwQMB1MjO/17G0tpKaU4mxGC2h0szdJS3U
-1QIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuFQqmRqf4tfujeMHAd65
+ZCdfa6ubKjnbqHPwIYT2z8dxGfA4im7mc6aLYShG9uesJFBh33DLg66teV6EzMYW
+w16FfKRCzO5ahvOCwn4n15ZQ5qaRuLa9cc0Jh/k5fE/3oesUv/YW3c7WsDndgjhl
+7sRAKxvzrY1SXekM2l35uffT3mhTEsx/Pm0w/OrNWoI6EE6L9tVAMKlfOQwLxg8l
+FNcwLm358tsyUFy+EglzVSQNkeMUmD5SxJQemppnh7bLUnA4vZrzeBrRLqCJSmdL
+bsDGSH1TPGNAZA29EYUw8Na0VYvF6wqj+ZP2HIaBEyakXOD1nX6etjU15ooPw5M/
+bwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:23.014241   11972 grpc_attestor.go:825]      ======= CreateKeyUsingAuthUnrestricted ========
-I0904 20:52:23.019374   11972 grpc_attestor.go:855]      PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
-I0904 20:52:23.087041   11972 grpc_attestor.go:871]      Write (ukPub) ========
-I0904 20:52:23.087345   11972 grpc_attestor.go:876]      Write (ukPriv) ========
-I0904 20:52:23.097091   11972 grpc_attestor.go:932]      uakPub PEM 
+I0906 16:03:39.696058   16742 grpc_attestor.go:826]      ======= CreateKeyUsingAuthUnrestricted ========
+I0906 16:03:39.701727   16742 grpc_attestor.go:856]      PCR 0 Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
+I0906 16:03:39.837902   16742 grpc_attestor.go:872]      Write (ukPub) ========
+I0906 16:03:39.838239   16742 grpc_attestor.go:877]      Write (ukPriv) ========
+I0906 16:03:39.848338   16742 grpc_attestor.go:933]      uakPub PEM 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt5DZ7e08h1W3uFggPkLB
-dJ7ACPWD9ugNHGBIVwjnebJfz89LWoA+4p/6qcVPnRrpwH53uibWfF4s1Eq09sum
-jdMXHN/UJ5XrZhq8cB0/oAJ6cJhxyoqoSjXXmcH2gfnECZUmtLSza7yGMiy2fHA6
-z2hzEo6Hp61CPK8k+Wu1iDc9xTvEjKKAp1PTHAfEReZcrEFKps+xNesTKNUJc/Vx
-7YeHqhQL6PzAvZKdnfwdNHBfcdiA1sKzggMu80njSl3MAQk/ydLLx6QRLpUDwdKk
-p3d+CJ0SVdiQkcvNekxi5WlwXtTvBwPhfF42G3ueTAA2lyUvMtjU6neJ3/MA9oEL
-FwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwB/ERFgyUVLKG8pzjOEJ
+N5xi2qL56BWQrA1zRMi4t+U/Zlja5EaWbgjpoBurkiOZJMVvn5RF3Th0FGgM9idp
+9CnFk1lG0srLhLHd8mC07JEtO3eUidhTBnVYhikeer9lhwBELBWD6LfDKyj7Ge39
+gjUET5k548H5oW/T+MvPe6jbh2Jpx6cmKrMHkZztxiM3Lq0qFEmlnCo6t85vfM8S
+HkjKlCxJqfcmHm1TW8KpQ+baSmyhza3UGknxAUeqF8/FdkTDjaaqpwHtKmtoPLgw
+REp4Q6BAOu1jdm9V8zZywE9+J5dr7qLdxdaFfk+4y3PmiiOpJwW32q/yv9Tz5NMk
+IwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:23.111489   11972 grpc_attestor.go:960]      Test Signature:  lrRBMbycAAVuPs1TeQDBUU+dPIrx377zuyHVrWWs+DlvugPGToIdFVegQPoxNMoyaLHX0zXHArs8myWgZETz09cnrmHP72M8Nq66n/iDbwuhz08lKMGlB+syZBZeA2YJYBBtk/kXektRr++49By77RfLsUT/PD2qw8ubzRQ0XN1f+xOS0DpURINIlem//XClzRAVkHcnF58qXJKOFHH1hQZJ1K5q7SSTLU3BDVYz/bMauJ+IWGQsJ/b3QbD4Sb2w9fkq47AXg9TQFcSfZXK6G497F7Y6Vja2LaAgq2OT2kahRlyFJ43P+GpymXjpePzan6oIQ8qsEh65kliKktlm2A
-I0904 20:52:23.111616   11972 grpc_attestor.go:1008]      Decoding PublicKey for AK ========
-I0904 20:52:23.111791   11972 grpc_attestor.go:1034]      Attestation Verified
-I0904 20:52:23.111824   11972 grpc_attestor.go:1043]      Returning PullRSAKeyResponse
+I0906 16:03:39.856173   16742 grpc_attestor.go:948]      Data to sign: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.864586   16742 grpc_attestor.go:962]      Test Signature:  Jta/Js2ixcNNbFN78CV9wVourU/1gzi2wyWh+uf+UGYuTYqxSCsaojFt1+2X63Q5BJMqXCkTgf3rqewmlEAq7EJ7Ny0VrVjFacps4vgyrQ+FMn0EvJfz6PlD8Mv4h6VB0UfEf8SA9JPnJiW1CRmVSJzT5ulxxeK9pjuq+OUMhrl4oOeX2yMsT/b6fmUQo2cvmmmnrW8GSkCTXG2pxrfUEXXeiO/Da7IoeVVsgJnZnZ77JsspfsTZtfrkDOlcTqshhbNYoc9vgG23THf6UXq6TAhMHN3+hrIS7cGfZWSsymlhI7xQq+gMljX1nWcuZMsux8DhgqiF29pZgqSWlV856w
+I0906 16:03:39.864722   16742 grpc_attestor.go:1010]      Decoding PublicKey for AK ========
+I0906 16:03:39.864875   16742 grpc_attestor.go:1036]      Attestation Verified
+I0906 16:03:39.864906   16742 grpc_attestor.go:1045]      Returning PullRSAKeyResponse
 ```
 
 #### Verifier RSA
@@ -520,16 +574,17 @@ I0904 20:52:23.111824   11972 grpc_attestor.go:1043]      Returning PullRSAKeyRe
 $ go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
   --pcr=0  --expectedPCRValue 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f  --rsaCert=certs/tpm_client.crt \
   --expectedPCRSHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
+  --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem \
   --rsaKey=certs/tpm_client.key  --host verify.esodemoapp2.com:50051   \
   --v=10 -alsologtostderr 
 
-I0904 20:52:22.585756   27400 grpc_verifier.go:140] RPC HealthChekStatus:SERVING
-I0904 20:52:22.586016   27400 grpc_verifier.go:144] =============== GetPlatformCert ===============
-I0904 20:52:22.600387   27400 grpc_verifier.go:153] =============== GetPlatformCert Returned from remote ===============
-I0904 20:52:22.600625   27400 grpc_verifier.go:171]     Platform Cert Issuer tpm_ek_v1_cloud_host_root-signer-0-2018-04-06T10:58:26-07:00 K:1, 1:Pw003HsFYO4:0:18
-I0904 20:52:22.621486   27400 grpc_verifier.go:184] =============== GetEKCert Returned from remote ===============
-I0904 20:52:22.621712   27400 grpc_verifier.go:202]     EkCert Cert Issuer tpm_ek_v1_cloud_host-signer-0-2020-10-22T14:02:08-07:00 K:1, 2:HBNpA3TPAbM:0:18
-I0904 20:52:22.621803   27400 grpc_verifier.go:203]     EkCert Public Key 
+I0906 16:03:39.265818   15340 grpc_verifier.go:143] RPC HealthChekStatus:SERVING
+I0906 16:03:39.266057   15340 grpc_verifier.go:147] =============== GetPlatformCert ===============
+I0906 16:03:39.286790   15340 grpc_verifier.go:156] =============== GetPlatformCert Returned from remote ===============
+I0906 16:03:39.286926   15340 grpc_verifier.go:174]     Platform Cert Issuer tpm_ek_v1_cloud_host_root-signer-0-2018-04-06T10:58:26-07:00 K:1, 1:Pw003HsFYO4:0:18
+I0906 16:03:39.308672   15340 grpc_verifier.go:186] =============== GetEKCert Returned from remote ===============
+I0906 16:03:39.308930   15340 grpc_verifier.go:204]     EkCert Cert Issuer tpm_ek_v1_cloud_host-signer-0-2020-10-22T14:02:08-07:00 K:1, 2:HBNpA3TPAbM:0:18
+I0906 16:03:39.309027   15340 grpc_verifier.go:205]     EkCert Public Key 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwsY6zrTncJqdkbccZuoe
 2eyDcvd2FzsCBDCyD6E31O2vMmy0Co/w8sqDutyeTZ4N6LvirGSdQxNZ/iv5nLRB
@@ -540,9 +595,9 @@ LspYW5wt+FEm1c1IYS076L4dk+yEUVZZ1JQ3iaHKn3/KDb5d5/1+yz1heBEdz83e
 ZwIDAQAB
 -----END PUBLIC KEY-----
 
-I0904 20:52:22.622314   27400 grpc_verifier.go:206] =============== GetAKCert ===============
-I0904 20:52:22.850027   27400 grpc_verifier.go:218] =============== MakeCredential ===============
-I0904 20:52:22.850242   27400 grpc_verifier.go:240]      Decoded EkPublic Key: 
+I0906 16:03:39.309133   15340 grpc_verifier.go:208] =============== GetAKCert ===============
+I0906 16:03:39.523539   15340 grpc_verifier.go:220] =============== MakeCredential ===============
+I0906 16:03:39.523775   15340 grpc_verifier.go:242]      Decoded EkPublic Key: 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwsY6zrTncJqdkbccZuoe
 2eyDcvd2FzsCBDCyD6E31O2vMmy0Co/w8sqDutyeTZ4N6LvirGSdQxNZ/iv5nLRB
@@ -552,70 +607,122 @@ GcioHkfu8dROyoTUhrRn56ap4bwI0LsoGwiMfSw2ITFsJXHFkXcshe2ev+z29jHd
 LspYW5wt+FEm1c1IYS076L4dk+yEUVZZ1JQ3iaHKn3/KDb5d5/1+yz1heBEdz83e
 ZwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:22.854055   27400 grpc_verifier.go:268]      Decoded AkPub: 
+I0906 16:03:39.527747   15340 grpc_verifier.go:270]      Decoded AkPub: 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxf/fRxyg51aqec7Hyn/L
-x0ULLEv42P4dF1mt0dgCIAimlHhjBNxja144mm8DOQpzA6XlPl8A8nrS4U+qOrVp
-wGuW33I8uZfYyDnhkEUsASDgcTu4PPsfgKOe1XZdlHMWsH7dYaE8VOvUux0NALz6
-bcq5iDb3ug24IBNbS52Fq2tJO84W0obBDk6S0rrw9W0qPDWBVWJ0KaA7hbVsWKZj
-F3BWhpsJrVD48TcW/IBM5WbjchS2ADFk0TRKw7Vg6xFtD2j3ZZGeMk3nEAzfLAHS
-01l3vrJ1VAwhy242AJCylm7pQ5CqwTWwQMB1MjO/17G0tpKaU4mxGC2h0szdJS3U
-1QIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuFQqmRqf4tfujeMHAd65
+ZCdfa6ubKjnbqHPwIYT2z8dxGfA4im7mc6aLYShG9uesJFBh33DLg66teV6EzMYW
+w16FfKRCzO5ahvOCwn4n15ZQ5qaRuLa9cc0Jh/k5fE/3oesUv/YW3c7WsDndgjhl
+7sRAKxvzrY1SXekM2l35uffT3mhTEsx/Pm0w/OrNWoI6EE6L9tVAMKlfOQwLxg8l
+FNcwLm358tsyUFy+EglzVSQNkeMUmD5SxJQemppnh7bLUnA4vZrzeBrRLqCJSmdL
+bsDGSH1TPGNAZA29EYUw8Na0VYvF6wqj+ZP2HIaBEyakXOD1nX6etjU15ooPw5M/
+bwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:22.854579   27400 grpc_verifier.go:271]      AK Default parameter match template
-I0904 20:52:22.857361   27400 grpc_verifier.go:280]      Loaded AK KeyName 000bc46d2ba2950d39f872307639eca8288a62eedb3d505beaaa6fc26fe94b9e5d4a
-I0904 20:52:22.857459   27400 grpc_verifier.go:282]      MakeCredential Start
-I0904 20:52:22.857526   27400 grpc_verifier.go:288]      Sending Nonce: XiZrVoOibUQCFqHydxRTBzdpjUhekPgW
-I0904 20:52:22.860724   27400 grpc_verifier.go:295]      <-- End makeCredential()
-I0904 20:52:22.860827   27400 grpc_verifier.go:300] =============== ActivateCredential ===============
-I0904 20:52:22.897709   27400 grpc_verifier.go:311]      Returned Secret: XiZrVoOibUQCFqHydxRTBzdpjUhekPgW
-I0904 20:52:22.898016   27400 grpc_verifier.go:316]      Attestation Complete
-I0904 20:52:22.898106   27400 grpc_verifier.go:318] =============== Quote/Verify ===============
-I0904 20:52:22.898246   27400 grpc_verifier.go:323]      Sending Quote with Nonce: lHZInJrNuUPDNwreSyfYAEvzvWRMLZFd
-I0904 20:52:22.929640   27400 grpc_verifier.go:345]      Attestation ExtraData (nonce): lHZInJrNuUPDNwreSyfYAEvzvWRMLZFd 
-I0904 20:52:22.929805   27400 grpc_verifier.go:346]      Attestation PCR#: [0] 
-I0904 20:52:22.929912   27400 grpc_verifier.go:347]      Attestation Hash: 2ba7022b59f2158786ea3ea29a7ad12ff0c6c9d6682da6555d8926075b643b1f 
-I0904 20:52:22.930114   27400 grpc_verifier.go:363]      Expected PCR Value:           --> 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f
-I0904 20:52:22.930199   27400 grpc_verifier.go:364]      sha256 of Expected PCR Value: --> 2ba7022b59f2158786ea3ea29a7ad12ff0c6c9d6682da6555d8926075b643b1f
-I0904 20:52:22.930285   27400 grpc_verifier.go:370]      Decoding PublicKey for AK ========
-I0904 20:52:22.930458   27400 grpc_verifier.go:384]      Attestation Signature Verified 
-I0904 20:52:22.930542   27400 grpc_verifier.go:386]      Reading EventLog
-I0904 20:52:22.930699   27400 grpc_verifier.go:401]      Event Type EV_S_CRTM_VERSION
-I0904 20:52:22.930795   27400 grpc_verifier.go:402]      PCR Index 0
-I0904 20:52:22.930889   27400 grpc_verifier.go:403]      Event Data 47004300450020005600690072007400750061006c0020004600690072006d0077006100720065002000760031000000
-I0904 20:52:22.930989   27400 grpc_verifier.go:404]      Event Digest 3f708bdbaff2006655b540360e16474c100c1310
-I0904 20:52:22.931086   27400 grpc_verifier.go:401]      Event Type EV_NONHOST_INFO
-I0904 20:52:22.931182   27400 grpc_verifier.go:402]      PCR Index 0
-I0904 20:52:22.931275   27400 grpc_verifier.go:403]      Event Data 474345204e6f6e486f7374496e666f0000000000000000000000000000000000
-I0904 20:52:22.931373   27400 grpc_verifier.go:404]      Event Digest 9e8af742718df04092551f27c117723769acfe7e
-I0904 20:52:22.931466   27400 grpc_verifier.go:401]      Event Type EV_SEPARATOR
-I0904 20:52:22.931589   27400 grpc_verifier.go:402]      PCR Index 0
-I0904 20:52:22.931678   27400 grpc_verifier.go:403]      Event Data 00000000
-I0904 20:52:22.931771   27400 grpc_verifier.go:404]      Event Digest 9069ca78e7450a285173431b3e52c5c25299e473
-I0904 20:52:22.931844   27400 grpc_verifier.go:406]      EventLog Verified 
-I0904 20:52:22.931916   27400 grpc_verifier.go:408]      <-- End verifyQuote()
-I0904 20:52:22.932009   27400 grpc_verifier.go:410] =============== PushSecret ===============
-I0904 20:52:22.932078   27400 grpc_verifier.go:412]      Pushing RSA
-I0904 20:52:22.932251   27400 grpc_verifier.go:465]      Loaded x509 CN=Enterprise Subordinate CA,OU=Enterprise,O=Google,C=US
-I0904 20:52:22.936038   27400 grpc_verifier.go:488]      Test signature data:  FBdOOCvkAdCPxuxXSzomtLx5ayURHGEsWMIiP90ve4zqvLGDOLH9mE5MGbPbdpYF2HUxwh4r1ISVbYCdZV7O/1CI68LN1uDLjaMNwOaQAs1FMoeLdGfD04mLVBQ/i67hLBEZj3WY0m0mwo1W7anyKYyav1L/rAWB0W+guT02zibxhaI+CemixLAXObthWHFsfipmmZNJPvApNP8Ro4MtBbla4S3UYi1HCEHlLOpmvFHvPwoG1WBr529CltzQ5xf/NfBpQ/nhlDTNkpgka40uEX5qoW1uRYIZOtbmTZcgb1FPqEEW2+GUH7TvVNFhTdL6lSLstVNfnokGPHWoDiErqw
-I0904 20:52:22.936157   27400 grpc_verifier.go:489]      <-- End generateCertificate()
-I0904 20:52:22.996010   27400 grpc_verifier.go:511]      Verification FBdOOCvkAdCPxuxXSzomtLx5ayURHGEsWMIiP90ve4zqvLGDOLH9mE5MGbPbdpYF2HUxwh4r1ISVbYCdZV7O/1CI68LN1uDLjaMNwOaQAs1FMoeLdGfD04mLVBQ/i67hLBEZj3WY0m0mwo1W7anyKYyav1L/rAWB0W+guT02zibxhaI+CemixLAXObthWHFsfipmmZNJPvApNP8Ro4MtBbla4S3UYi1HCEHlLOpmvFHvPwoG1WBr529CltzQ5xf/NfBpQ/nhlDTNkpgka40uEX5qoW1uRYIZOtbmTZcgb1FPqEEW2+GUH7TvVNFhTdL6lSLstVNfnokGPHWoDiErqw
-I0904 20:52:22.996094   27400 grpc_verifier.go:516] =============== PullRSAKey ===============
-I0904 20:52:23.121295   27400 grpc_verifier.go:547]      Attestation of Unrestricted Signing Key Verified
-I0904 20:52:23.121383   27400 grpc_verifier.go:568]      uakPub PEM 
+I0906 16:03:39.527793   15340 grpc_verifier.go:273]      AK Default parameter match template
+I0906 16:03:39.531078   15340 grpc_verifier.go:282]      Loaded AK KeyName 000b75afd591852ae04f1587cf717dfe8b61737b3550fa83e75e0e07f10eb37e970e
+I0906 16:03:39.531109   15340 grpc_verifier.go:284]      MakeCredential Start
+I0906 16:03:39.531143   15340 grpc_verifier.go:290]      Sending Nonce: KxISfNQJOeFCjzRFcYjypzTEtXhEJiUu
+I0906 16:03:39.534599   15340 grpc_verifier.go:297]      <-- End makeCredential()
+I0906 16:03:39.534645   15340 grpc_verifier.go:302] =============== ActivateCredential ===============
+I0906 16:03:39.571928   15340 grpc_verifier.go:313]      Returned Secret: KxISfNQJOeFCjzRFcYjypzTEtXhEJiUu
+I0906 16:03:39.571974   15340 grpc_verifier.go:318]      Attestation Complete
+I0906 16:03:39.571996   15340 grpc_verifier.go:320] =============== Quote/Verify ===============
+I0906 16:03:39.572017   15340 grpc_verifier.go:325]      Sending Quote with Nonce: ekQNDOmxxzbVlCGzZUbJvRTaJWXhEZVh
+I0906 16:03:39.603628   15340 grpc_verifier.go:347]      Attestation ExtraData (nonce): ekQNDOmxxzbVlCGzZUbJvRTaJWXhEZVh 
+I0906 16:03:39.603726   15340 grpc_verifier.go:348]      Attestation PCR#: [0] 
+I0906 16:03:39.603779   15340 grpc_verifier.go:349]      Attestation Hash: 2ba7022b59f2158786ea3ea29a7ad12ff0c6c9d6682da6555d8926075b643b1f 
+I0906 16:03:39.603813   15340 grpc_verifier.go:365]      Expected PCR Value:           --> 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f
+I0906 16:03:39.603840   15340 grpc_verifier.go:366]      sha256 of Expected PCR Value: --> 2ba7022b59f2158786ea3ea29a7ad12ff0c6c9d6682da6555d8926075b643b1f
+I0906 16:03:39.603872   15340 grpc_verifier.go:372]      Decoding PublicKey for AK ========
+I0906 16:03:39.604034   15340 grpc_verifier.go:386]      Attestation Signature Verified 
+I0906 16:03:39.604065   15340 grpc_verifier.go:388]      Reading EventLog
+I0906 16:03:39.604183   15340 grpc_verifier.go:403]      Event Type EV_S_CRTM_VERSION
+I0906 16:03:39.604239   15340 grpc_verifier.go:404]      PCR Index 0
+I0906 16:03:39.604285   15340 grpc_verifier.go:405]      Event Data 47004300450020005600690072007400750061006c0020004600690072006d0077006100720065002000760031000000
+I0906 16:03:39.604337   15340 grpc_verifier.go:406]      Event Digest 3f708bdbaff2006655b540360e16474c100c1310
+I0906 16:03:39.604381   15340 grpc_verifier.go:403]      Event Type EV_NONHOST_INFO
+I0906 16:03:39.604429   15340 grpc_verifier.go:404]      PCR Index 0
+I0906 16:03:39.604474   15340 grpc_verifier.go:405]      Event Data 474345204e6f6e486f7374496e666f0000000000000000000000000000000000
+I0906 16:03:39.604519   15340 grpc_verifier.go:406]      Event Digest 9e8af742718df04092551f27c117723769acfe7e
+I0906 16:03:39.604565   15340 grpc_verifier.go:403]      Event Type EV_SEPARATOR
+I0906 16:03:39.604611   15340 grpc_verifier.go:404]      PCR Index 0
+I0906 16:03:39.604659   15340 grpc_verifier.go:405]      Event Data 00000000
+I0906 16:03:39.604704   15340 grpc_verifier.go:406]      Event Digest 9069ca78e7450a285173431b3e52c5c25299e473
+I0906 16:03:39.604731   15340 grpc_verifier.go:408]      EventLog Verified 
+I0906 16:03:39.604760   15340 grpc_verifier.go:414]      Generate Test Certificate for AK 
+I0906 16:03:39.609135   15340 grpc_verifier.go:483]      X509 issued by Verifier for Ak: 
+-----BEGIN CERTIFICATE-----
+MIID1DCCArygAwIBAgIQQjg+qH8FA9aa9aQk2gJSqzANBgkqhkiG9w0BAQsFADBv
+MQswCQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMNTW91
+bnRhaW4gVmlldzEPMA0GA1UEChMGR29vZ2xlMRMwEQYDVQQLEwpFbnRlcnByaXNl
+MQ0wCwYDVQQDEwRNeUNBMB4XDTIxMDkwNjE2MDMzOVoXDTIyMDkwNjE2MDMzOVow
+gYIxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFAYDVQQHEw1N
+b3VudGFpbiBWaWV3MRAwDgYDVQQKEwdBY21lIENvMRMwEQYDVQQLEwpFbnRlcnBy
+aXNlMR8wHQYDVQQDExZ2ZXJpZnkuZXNvZGVtb2FwcDIuY29tMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuFQqmRqf4tfujeMHAd65ZCdfa6ubKjnbqHPw
+IYT2z8dxGfA4im7mc6aLYShG9uesJFBh33DLg66teV6EzMYWw16FfKRCzO5ahvOC
+wn4n15ZQ5qaRuLa9cc0Jh/k5fE/3oesUv/YW3c7WsDndgjhl7sRAKxvzrY1SXekM
+2l35uffT3mhTEsx/Pm0w/OrNWoI6EE6L9tVAMKlfOQwLxg8lFNcwLm358tsyUFy+
+EglzVSQNkeMUmD5SxJQemppnh7bLUnA4vZrzeBrRLqCJSmdLbsDGSH1TPGNAZA29
+EYUw8Na0VYvF6wqj+ZP2HIaBEyakXOD1nX6etjU15ooPw5M/bwIDAQABo1gwVjAO
+BgNVHQ8BAf8EBAMCB4AwEwYDVR0lBAwwCgYIKwYBBQUHAwMwDAYDVR0TAQH/BAIw
+ADAhBgNVHREEGjAYghZ2ZXJpZnkuZXNvZGVtb2FwcDIuY29tMA0GCSqGSIb3DQEB
+CwUAA4IBAQAfnZX/QWuvFLX75jZhK0JG0KckR/6heWs2UDXAzuFfMH3Hat8MeIQ6
+WsZW8sdWRbOX8ALa92jl5DGd462ix6gYYXemr7nYN5F7FkRMGuvtqW8Thm/z4J1b
+rNklfRXANPQ/AcvAKeUc+V9H75X1lMPTWkTmayBIGQLZqzEQ07H5Cg91cLIIeaW5
+Qg5SRZhxuiZENJ50U07Nw7TFStYBIXuEb38pq0rSuYqPeunL02YlDfpeRG3NR2uL
+/V0Tpw9z3bOyYPCxO8KlFXa7xI1J1I7klKnJyln50Ip+Bi+ht1s+d33HpZ8/N9qP
+UxfVkcVq43PJ9FxyXMsBs+BH1VlOKuPv
+-----END CERTIFICATE-----
+I0906 16:03:39.609251   15340 grpc_verifier.go:485]      <-- End verifyQuote()
+I0906 16:03:39.609296   15340 grpc_verifier.go:487] =============== PushSecret ===============
+I0906 16:03:39.609330   15340 grpc_verifier.go:489]      Pushing RSA
+I0906 16:03:39.609565   15340 grpc_verifier.go:542]      Loaded x509 CN=Enterprise Subordinate CA,OU=Enterprise,O=Google,C=US
+I0906 16:03:39.609740   15340 grpc_verifier.go:558]      Data to sign: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.612380   15340 grpc_verifier.go:566]      Test signature data:  FBdOOCvkAdCPxuxXSzomtLx5ayURHGEsWMIiP90ve4zqvLGDOLH9mE5MGbPbdpYF2HUxwh4r1ISVbYCdZV7O/1CI68LN1uDLjaMNwOaQAs1FMoeLdGfD04mLVBQ/i67hLBEZj3WY0m0mwo1W7anyKYyav1L/rAWB0W+guT02zibxhaI+CemixLAXObthWHFsfipmmZNJPvApNP8Ro4MtBbla4S3UYi1HCEHlLOpmvFHvPwoG1WBr529CltzQ5xf/NfBpQ/nhlDTNkpgka40uEX5qoW1uRYIZOtbmTZcgb1FPqEEW2+GUH7TvVNFhTdL6lSLstVNfnokGPHWoDiErqw
+I0906 16:03:39.612425   15340 grpc_verifier.go:567]      <-- End generateCertificate()
+I0906 16:03:39.676909   15340 grpc_verifier.go:589]      Verification FBdOOCvkAdCPxuxXSzomtLx5ayURHGEsWMIiP90ve4zqvLGDOLH9mE5MGbPbdpYF2HUxwh4r1ISVbYCdZV7O/1CI68LN1uDLjaMNwOaQAs1FMoeLdGfD04mLVBQ/i67hLBEZj3WY0m0mwo1W7anyKYyav1L/rAWB0W+guT02zibxhaI+CemixLAXObthWHFsfipmmZNJPvApNP8Ro4MtBbla4S3UYi1HCEHlLOpmvFHvPwoG1WBr529CltzQ5xf/NfBpQ/nhlDTNkpgka40uEX5qoW1uRYIZOtbmTZcgb1FPqEEW2+GUH7TvVNFhTdL6lSLstVNfnokGPHWoDiErqw
+I0906 16:03:39.676975   15340 grpc_verifier.go:594] =============== PullRSAKey ===============
+I0906 16:03:39.873070   15340 grpc_verifier.go:625]      Attestation of Unrestricted Signing Key Verified
+I0906 16:03:39.873302   15340 grpc_verifier.go:646]      uakPub PEM 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt5DZ7e08h1W3uFggPkLB
-dJ7ACPWD9ugNHGBIVwjnebJfz89LWoA+4p/6qcVPnRrpwH53uibWfF4s1Eq09sum
-jdMXHN/UJ5XrZhq8cB0/oAJ6cJhxyoqoSjXXmcH2gfnECZUmtLSza7yGMiy2fHA6
-z2hzEo6Hp61CPK8k+Wu1iDc9xTvEjKKAp1PTHAfEReZcrEFKps+xNesTKNUJc/Vx
-7YeHqhQL6PzAvZKdnfwdNHBfcdiA1sKzggMu80njSl3MAQk/ydLLx6QRLpUDwdKk
-p3d+CJ0SVdiQkcvNekxi5WlwXtTvBwPhfF42G3ueTAA2lyUvMtjU6neJ3/MA9oEL
-FwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwB/ERFgyUVLKG8pzjOEJ
+N5xi2qL56BWQrA1zRMi4t+U/Zlja5EaWbgjpoBurkiOZJMVvn5RF3Th0FGgM9idp
+9CnFk1lG0srLhLHd8mC07JEtO3eUidhTBnVYhikeer9lhwBELBWD6LfDKyj7Ge39
+gjUET5k548H5oW/T+MvPe6jbh2Jpx6cmKrMHkZztxiM3Lq0qFEmlnCo6t85vfM8S
+HkjKlCxJqfcmHm1TW8KpQ+baSmyhza3UGknxAUeqF8/FdkTDjaaqpwHtKmtoPLgw
+REp4Q6BAOu1jdm9V8zZywE9+J5dr7qLdxdaFfk+4y3PmiiOpJwW32q/yv9Tz5NMk
+IwIDAQAB
 -----END PUBLIC KEY-----
-I0904 20:52:23.121427   27400 grpc_verifier.go:573]      SigningKey Test Signature lrRBMbycAAVuPs1TeQDBUU+dPIrx377zuyHVrWWs+DlvugPGToIdFVegQPoxNMoyaLHX0zXHArs8myWgZETz09cnrmHP72M8Nq66n/iDbwuhz08lKMGlB+syZBZeA2YJYBBtk/kXektRr++49By77RfLsUT/PD2qw8ubzRQ0XN1f+xOS0DpURINIlem//XClzRAVkHcnF58qXJKOFHH1hQZJ1K5q7SSTLU3BDVYz/bMauJ+IWGQsJ/b3QbD4Sb2w9fkq47AXg9TQFcSfZXK6G497F7Y6Vja2LaAgq2OT2kahRlyFJ43P+GpymXjpePzan6oIQ8qsEh65kliKktlm2A==
-I0904 20:52:23.121594   27400 grpc_verifier.go:580]      Test Signature Verified
-I0904 20:52:23.121658   27400 grpc_verifier.go:601]      Unrestricted RSA Public key parameters matches AttestedCertifyInfo  true
-I0904 20:52:23.121702   27400 grpc_verifier.go:603]      Pulled Signing Key  complete 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.873458   15340 grpc_verifier.go:651]      SigningKey Test Signature Jta/Js2ixcNNbFN78CV9wVourU/1gzi2wyWh+uf+UGYuTYqxSCsaojFt1+2X63Q5BJMqXCkTgf3rqewmlEAq7EJ7Ny0VrVjFacps4vgyrQ+FMn0EvJfz6PlD8Mv4h6VB0UfEf8SA9JPnJiW1CRmVSJzT5ulxxeK9pjuq+OUMhrl4oOeX2yMsT/b6fmUQo2cvmmmnrW8GSkCTXG2pxrfUEXXeiO/Da7IoeVVsgJnZnZ77JsspfsTZtfrkDOlcTqshhbNYoc9vgG23THf6UXq6TAhMHN3+hrIS7cGfZWSsymlhI7xQq+gMljX1nWcuZMsux8DhgqiF29pZgqSWlV856w==
+I0906 16:03:39.873547   15340 grpc_verifier.go:652]      Data to verify signature with: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0906 16:03:39.873772   15340 grpc_verifier.go:659]      Test Signature Verified
+I0906 16:03:39.873885   15340 grpc_verifier.go:680]      Unrestricted RSA Public key parameters matches AttestedCertifyInfo  true
+I0906 16:03:39.878263   15340 grpc_verifier.go:718]      X509 issued by Verifier for unrestricted Key: 
+-----BEGIN CERTIFICATE-----
+MIID0DCCArigAwIBAgIQQjg+qH8FA9aa9aQk2gJSqzANBgkqhkiG9w0BAQsFADBv
+MQswCQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEWMBQGA1UEBxMNTW91
+bnRhaW4gVmlldzEPMA0GA1UEChMGR29vZ2xlMRMwEQYDVQQLEwpFbnRlcnByaXNl
+MQ0wCwYDVQQDEwRNeUNBMB4XDTIxMDkwNjE2MDMzOVoXDTIyMDkwNjE2MDMzOVow
+gYIxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFAYDVQQHEw1N
+b3VudGFpbiBWaWV3MRAwDgYDVQQKEwdBY21lIENvMRMwEQYDVQQLEwpFbnRlcnBy
+aXNlMR8wHQYDVQQDExZ2ZXJpZnkuZXNvZGVtb2FwcDIuY29tMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwB/ERFgyUVLKG8pzjOEJN5xi2qL56BWQrA1z
+RMi4t+U/Zlja5EaWbgjpoBurkiOZJMVvn5RF3Th0FGgM9idp9CnFk1lG0srLhLHd
+8mC07JEtO3eUidhTBnVYhikeer9lhwBELBWD6LfDKyj7Ge39gjUET5k548H5oW/T
++MvPe6jbh2Jpx6cmKrMHkZztxiM3Lq0qFEmlnCo6t85vfM8SHkjKlCxJqfcmHm1T
+W8KpQ+baSmyhza3UGknxAUeqF8/FdkTDjaaqpwHtKmtoPLgwREp4Q6BAOu1jdm9V
+8zZywE9+J5dr7qLdxdaFfk+4y3PmiiOpJwW32q/yv9Tz5NMkIwIDAQABo1QwUjAO
+BgNVHQ8BAf8EBAMCB4AwDwYDVR0lBAgwBgYEVR0lADAMBgNVHRMBAf8EAjAAMCEG
+A1UdEQQaMBiCFnZlcmlmeS5lc29kZW1vYXBwMi5jb20wDQYJKoZIhvcNAQELBQAD
+ggEBAC/qGT+/ugU01p/SelUlhFYYYBtiykr6vT4bojqzdPvoifJGnU1QjIMNfwHC
+tsRMf6VZHya4axbHUXCz7hrti48C71mYRRtFg3glbBTmfW8J47/uHr7uv4w2ozKX
+8noI4aDaFTbptai6xH8fI0061RNdlCDQ5mhZRxu2HmwbfJDRrSPjI3yJPYV8jkTP
+jAsSO5R+wywFs0UCFZCabDZlrbq/9z4g9pfiwaA9s6J57jWrrupXbnuX5xAnVgKV
+7UvH5xiBKDfkuAXvNq09X3XJ1/27RoPyHG/rQKVOrVTYKXRZ3QhYz5UxjUVfeDIf
+wx2YTR9kcNB6HeRX479/MI0nH0M=
+-----END CERTIFICATE-----
+I0906 16:03:39.878458   15340 grpc_verifier.go:720]      Pulled Signing Key  complete 369c327d-ad1f-401c-aa91-d9b0e69bft67
+
 ```
 
 

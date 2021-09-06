@@ -30,6 +30,7 @@ COPY --from=build /app/certs/server_key.pem /certs
 COPY --from=build /app/certs/tpm_client.crt /certs
 COPY --from=build /app/certs/tpm_client.key /certs
 COPY --from=build /app/certs/CA_crt.pem /certs
+COPY --from=build /app/certs/CA_key.pem /certs
 COPY --from=build /app/bin /
 
 

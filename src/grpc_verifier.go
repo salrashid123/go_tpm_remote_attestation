@@ -59,8 +59,9 @@ var (
 	pcr              = flag.Int("pcr", 0, "PCR Value to use")
 	u                = flag.String("uid", uuid.New().String(), "uid of client")
 
-	caCert          = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to Trust and to use for X509 Certificates")
-	caKey           = flag.String("cakey", "certs/CA_key.pem", "CA Key to sign x509")
+	caCertTLS       = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to Trust for TLS")
+	caCertIssuer    = flag.String("caCertIssuer", "certs/CA_crt.pem", "CA Certificate to issue X509 Certificates")
+	caKeyIssuer     = flag.String("caKeyIssuer", "certs/CA_key.pem", "CA Key to sign x509")
 	rwc             io.ReadWriteCloser
 	importMode      = flag.String("importMode", "AES", "RSA|AES")
 	aes256Key       = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES key to export")
@@ -107,7 +108,7 @@ func main() {
 
 	var tlsCfg tls.Config
 	rootCAs := x509.NewCertPool()
-	ca_pem, err := ioutil.ReadFile(*caCert)
+	ca_pem, err := ioutil.ReadFile(*caCertTLS)
 	if err != nil {
 		glog.Fatalf("failed to load root CA certificates  error=%v", err)
 	}
@@ -425,27 +426,27 @@ func main() {
 
 	cn := "verify.esodemoapp2.com"
 
-	ca_pem, err = ioutil.ReadFile(*caCert)
+	ca_pem, err = ioutil.ReadFile(*caCertIssuer)
 	if err != nil {
 		glog.Fatalf("failed to load root CA certificates  error=%v", err)
 	}
 	block, _ := pem.Decode(ca_pem)
 	if block == nil {
-		glog.Fatalf("Unable to decode %s %v", *caCert, err)
+		glog.Fatalf("Unable to decode %s %v", *caCertIssuer, err)
 	}
 	ca, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		glog.Fatalf("Unable to parse %s %v", *caCert, err)
+		glog.Fatalf("Unable to parse %s %v", *caCertIssuer, err)
 	}
 
-	keyPEMBytes, err := ioutil.ReadFile(*caKey)
+	keyPEMBytes, err := ioutil.ReadFile(*caKeyIssuer)
 	if err != nil {
-		glog.Fatalf("Unable to read %s  %v", *caKey, err)
+		glog.Fatalf("Unable to read %s  %v", *caKeyIssuer, err)
 	}
 	privPem, _ := pem.Decode(keyPEMBytes)
 	parsedKey, err := x509.ParsePKCS1PrivateKey(privPem.Bytes)
 	if err != nil {
-		glog.Fatalf("Unable to parse %s %v", *caKey, err)
+		glog.Fatalf("Unable to parse %s %v", *caKeyIssuer, err)
 	}
 
 	ct := &x509.Certificate{
@@ -462,7 +463,7 @@ func main() {
 		NotAfter:              notAfter,
 		DNSNames:              []string{cn},
 		KeyUsage:              x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
 		BasicConstraintsValid: true,
 		IsCA:                  false,
 	}
@@ -677,6 +678,44 @@ func main() {
 		glog.Fatalf("     AttestedCertifyInfo.MatchesPublic(%v) failed: %v", att, err)
 	}
 	glog.V(10).Infof("     Unrestricted RSA Public key parameters matches AttestedCertifyInfo  %v", ok)
+
+	// Same as with AK.  Now that we have an unrestricted Key on the remote TPM, issue an x509 for it
+	//  for use later on
+
+	cn = "verify.esodemoapp2.com"
+
+	ct = &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization:       []string{"Acme Co"},
+			OrganizationalUnit: []string{"Enterprise"},
+			Locality:           []string{"Mountain View"},
+			Province:           []string{"California"},
+			Country:            []string{"US"},
+			CommonName:         cn,
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		DNSNames:              []string{cn},
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		BasicConstraintsValid: true,
+		IsCA:                  false,
+	}
+
+	cert_b, err = x509.CreateCertificate(rand.Reader, ct, ca, ukrsaPub, parsedKey)
+	if err != nil {
+		glog.Fatalf("Failed to createCertificate: %v", err)
+	}
+
+	ukCertPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert_b,
+		},
+	)
+
+	glog.V(10).Infof("     X509 issued by Verifier for unrestricted Key: \n%v", string(ukCertPEM))
 
 	glog.V(5).Infof("     Pulled Signing Key  complete %v", psResponse.Uid)
 }

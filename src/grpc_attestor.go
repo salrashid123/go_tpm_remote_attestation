@@ -57,7 +57,7 @@ import (
 
 var (
 	grpcport   = flag.String("grpcport", "", "grpcport")
-	caCert     = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to trust")
+	caCertTLS  = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to trust")
 	pcr        = flag.Int("pcr", 0, "PCR bank imported Secrets are bound to during AES import or RSA signing")
 	serverCert = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
 	serverKey  = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
@@ -1083,9 +1083,9 @@ func main() {
 	}
 
 	var tlsConfig *tls.Config
-	ca, err := ioutil.ReadFile(*caCert)
+	ca, err := ioutil.ReadFile(*caCertTLS)
 	if err != nil {
-		glog.Fatalf("Faild to read CA Certificate file %s: %v", *caCert, err)
+		glog.Fatalf("Faild to read CA Certificate file %s: %v", *caCertTLS, err)
 	}
 	caCertPool := x509.NewCertPool()
 	caCertPool.AppendCertsFromPEM(ca)
