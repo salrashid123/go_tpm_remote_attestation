@@ -160,6 +160,17 @@ func (s *server) GetPlatformCert(ctx context.Context, in *verifier.GetPlatformCe
 	glog.V(2).Infof("======= GetPlatformCert ========")
 	glog.V(5).Infof("     client provided uid: %s", in.Uid)
 
+	// Print the manufacturer
+	//  from https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf)
+	// on GCE instances, Manufacturer: GOOG
+	man, err := tpm2.GetManufacturer(rwc)
+	if err != nil {
+		return &verifier.GetPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable read manufacturer from TPM %v", err))
+	}
+	glog.V(5).Infof("     TPM Manufacturer: %s", string(man))
+
+	// For now, just read the Platfrom cert from file. The x509 we are reading from disk is Google Cloud's default signer
+	//   for Shielded VMs
 	r, err := ioutil.ReadFile(*platformCert)
 	if err != nil {
 		return &verifier.GetPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to load platform certificate from file %v", err))
@@ -302,6 +313,8 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 		return &verifier.GetAKResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
 
+	// Alternatively, on GCE
+	//  https://pkg.go.dev/github.com/google/go-tpm-tools@v0.3.0-alpha7/client#GceAttestationKeyRSA
 	authCommandCreateAuth := tpm2.AuthCommand{Session: sessCreateHandle, Attributes: tpm2.AttrContinueSession}
 
 	akPriv, akPub, creationData, creationHash, creationTicket, err := tpm2.CreateKeyUsingAuth(rwc, ekh, pcrSelection23, authCommandCreateAuth, emptyPassword, client.AKTemplateRSA())
@@ -686,7 +699,7 @@ func (s *server) PushSecret(ctx context.Context, in *verifier.PushSecretRequest)
 		}
 		defer tpm2.FlushContext(rwc, keyHandle)
 
-		glog.V(10).Infof("    Generating Test Signature ========")
+		glog.V(10).Infof("     Generating Test Signature ========")
 		session, _, err := tpm2.StartAuthSession(
 			rwc,
 			tpm2.HandleNull,
@@ -701,6 +714,7 @@ func (s *server) PushSecret(ctx context.Context, in *verifier.PushSecretRequest)
 		}
 		defer tpm2.FlushContext(rwc, session)
 
+		glog.V(10).Infof("     Data to sign: %s", in.Uid)
 		dataToSign := []byte(in.Uid)
 		digest := sha256.Sum256(dataToSign)
 
@@ -931,6 +945,7 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 
 	// // Now Sign some arbitrary data with the unrestricted Key
 
+	glog.V(10).Infof("     Data to sign: %s", in.Uid)
 	dataToSign := []byte(in.Uid)
 	digest, hashValidation, err := tpm2.Hash(rwc, tpm2.AlgSHA256, dataToSign, tpm2.HandleOwner)
 	if err != nil {
