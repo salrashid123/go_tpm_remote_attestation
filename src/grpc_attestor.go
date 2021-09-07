@@ -125,8 +125,11 @@ func authUnaryInterceptor(
 ) (interface{}, error) {
 	glog.V(2).Infof(">> inbound request")
 	// optionally check for metadata or custom headers
-	// md, _ := metadata.FromIncomingContext(ctx)
-	// newCtx := context.WithValue(ctx, contextKey("idtoken"), "someheader")
+	// md, ok := metadata.FromIncomingContext(ctx)
+	// if !ok {
+	// 	return nil, grpc.Errorf(codes.Unauthenticated, "could not recall RPC metadata")
+	// }
+	// newCtx := context.WithValue(ctx, contextKey("someKey"), "someValue")
 	// return handler(newCtx, req)
 
 	return handler(ctx, req)
@@ -159,7 +162,8 @@ func (s *hserver) Watch(in *healthpb.HealthCheckRequest, srv healthpb.Health_Wat
 func (s *server) GetPlatformCert(ctx context.Context, in *verifier.GetPlatformCertRequest) (*verifier.GetPlatformCertResponse, error) {
 	glog.V(2).Infof("======= GetPlatformCert ========")
 	glog.V(5).Infof("     client provided uid: %s", in.Uid)
-
+	// mdKey := ctx.Value(contextKey("someKey")).(string)
+	// glog.V(5).Infof("     MD Key: %s", mdKey)
 	// Print the manufacturer
 	//  from https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf)
 	// on GCE instances, Manufacturer: GOOG

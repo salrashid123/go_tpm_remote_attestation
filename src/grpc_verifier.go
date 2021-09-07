@@ -416,13 +416,14 @@ func main() {
 	var notBefore time.Time
 	notBefore = time.Now()
 
-	notAfter := notBefore.Add(time.Hour * 24 * 365)
+	notAfter := notBefore.Add(time.Hour * 24)
 
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(2), 20)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
 		glog.Fatalf("Failed to generate serial number: %v", err)
 	}
+	glog.V(10).Infof("     Issuing certificate with serialNumber %d", serialNumber)
 
 	cn := "verify.esodemoapp2.com"
 
@@ -680,9 +681,21 @@ func main() {
 	glog.V(10).Infof("     Unrestricted RSA Public key parameters matches AttestedCertifyInfo  %v", ok)
 
 	// Same as with AK.  Now that we have an unrestricted Key on the remote TPM, issue an x509 for it
-	//  for use later on
+	//  for use later on (eg, send this pack in another gRPC call back to the attestor).  The attestor
+	//  can use this x509 to setup mTLS (if so, set ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},)
 
-	cn = "verify.esodemoapp2.com"
+	notBefore = time.Now()
+
+	notAfter = notBefore.Add(time.Hour * 24)
+
+	serialNumberLimit = new(big.Int).Lsh(big.NewInt(2), 20)
+	serialNumber, err = rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		glog.Fatalf("Failed to generate serial number: %v", err)
+	}
+	glog.V(10).Infof("     Issuing certificate with serialNumber %d", serialNumber)
+
+	cn = "mtls,server.anotherdomain.com"
 
 	ct = &x509.Certificate{
 		SerialNumber: serialNumber,
