@@ -112,30 +112,33 @@ Begin Quote/Verify
 10. Attestor generates EventLog 
 11. Attestor returns Quote and EventLog to Verifier 
 12. Verifier checks signature of the Attestation is by the AK and the PCR values from the Quote.  Verifier replays the eventLog to confirm derived PCR value.
+13. Verifier uses CA private key to sign an x509 certificate tied to the AK.  The verifier _could_ return this x509 back to the attestor over a new (unimplemented) gRPC API call.
 
 End Quote/Verify
 
 Begin Sealed Transfer (PushSecret)
 
-13. Verifier uses EK to encrypt either a local RSA or AES Key 
-14. Verifier transmits encrypted Key to Attestor 
-15. Attestor either decrypts the AES key or imports the External RSA key into its TPM
-16. Attestor generates a test signature using the RSA key or calculates the Hash value of AES key.
-17. Attestor returns the signature or hash to Verifier. 
-18. Verifier confirms the signature value or hash (thereby confirming the Attestor decoded the RSA or AES key)
+14. Verifier uses EK to encrypt either a local RSA or AES Key 
+15. Verifier transmits encrypted Key to Attestor 
+16. Attestor either decrypts the AES key or imports the External RSA key into its TPM
+17. Attestor generates a test signature using the RSA key or calculates the Hash value of AES key.
+18. Attestor returns the signature or hash to Verifier. 
+19. Verifier confirms the signature value or hash (thereby confirming the Attestor decoded the RSA or AES key)
 
 End Sealed Transfer
 
 Begin Unrestricted SigningKey Transfer (PullSecret)
 
-19. Verifier Requests Unrestricted Signing Key
-20. Attestor generates RSA Key on TPM as a child of EK
-21. Attestor uses AK to [Certify](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_certify.1.md) the new key
-22. Attestor transmits the Public RSA key and test signature over some preshared data.
-23. Verifier uses AK to confirm the authenticity of the Certification and RSA Public key is attested.
-24. Verifier uses RSA Public key to verify the signature provided over preshared data
+20. Verifier Requests Unrestricted Signing Key
+21. Attestor generates RSA Key on TPM as a child of EK
+22. Attestor uses AK to [Certify](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_certify.1.md) the new key
+23. Attestor transmits the Public RSA key and test signature over some preshared data.
+24. Verifier uses AK to confirm the authenticity of the Certification and RSA Public key is attested.
+25. Verifier uses RSA Public key to verify the signature provided over preshared data
+26. Verifier uses CA private key to sign an x509certificate tied to the SigningKey.  The verifier _could_ return this x509 back to the attestor over a new (unimplemented) gRPC API call.
+    The attestor could use this x509 and private key on its TPM to create an mTLS connection.  See [crypto.Signer for TPM](https://github.com/salrashid123/signer#usage-tls) and [mTLS with TPM bound private key](https://github.com/salrashid123/go_tpm_https_embed) 
 
-Begin Unrestricted SigningKey Transfer
+End Unrestricted SigningKey Transfer
 
 ### AES
 
