@@ -8,6 +8,16 @@ This repo contains a sample `gRPC` client server application that uses a Trusted
 * Sealed and PCR bound Transfer of RSA or AES keys.
 * Parse TPM EventLog
 
+
+Note: there are two branches to this repository:  `push` and `pull`
+
+The main difference between them is which side initiates communication to attest a TPM.
+
+* In the `push` model, the `verifier` is a remote server which *makes* an outbound API call _to_ the TPM device (`attestor`).  The TPM device now performs remote attestation but is driven by the the API calls from the remote server.
+
+* In the `pull` model, the `verifier` is a remote server which *receives* an outbound API call _from_ the TPM device (`attestor`).  The TPM device is in control of when to initiate and perform remote attestation.
+
+
 Attestation:
 
 ( Images taken from [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html) )
