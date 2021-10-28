@@ -94,6 +94,21 @@ var (
 			KeyBits: 2048,
 		},
 	}
+
+	unrestrictedKeyParams = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth | tpm2.FlagSign,
+		AuthPolicy: []byte{},
+		RSAParameters: &tpm2.RSAParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgRSASSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			KeyBits: 2048,
+		},
+	}
 )
 
 const (
@@ -657,7 +672,6 @@ func generateCertificate(cn string) (cert []byte, key []byte, retErr error) {
 func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*verifier.OfferCSRResponse, error) {
 	glog.V(2).Infof("======= OfferCSR ========")
 	glog.V(10).Infof("     client provided uid: %s", in.Uid)
-	glog.V(10).Infof("     client provided certificate: \n%s", string(in.PublicKey))
 	glog.V(10).Infof("     client provided csr: \n%s", string(in.Csr))
 
 	glog.V(20).Infof("     SigningKey Attestation %s\n", base64.StdEncoding.EncodeToString(in.Attestation))
@@ -679,7 +693,6 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("DecodePublic failed: %v", err)
 	}
 	rsaPub := rsa.PublicKey{E: int(p.RSAParameters.Exponent()), N: p.RSAParameters.Modulus()}
-	//rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
 	ahsh := crypto.SHA256.New()
 	ahsh.Write(in.Attestation)
 
@@ -687,6 +700,36 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("VerifyPKCS1v15 failed: %v", err)
 	}
 	glog.V(10).Infof("     Attestation of Unrestricted Signing Key Verified")
+
+	// now verify that the public key provided is the same as the one that was attested
+	// also verify that the key template matches what we expect for an unrestricted key
+	tPub, err := tpm2.DecodePublic(in.PublicKey)
+	if err != nil {
+		return &verifier.OfferCSRResponse{}, fmt.Errorf("Error Decode Unrestricted key Public %v", tPub)
+	}
+
+	up, err := tPub.Key()
+	if err != nil {
+		return &verifier.OfferCSRResponse{}, fmt.Errorf("ukPub.Key() failed: %s", err)
+	}
+	ukBytes, err := x509.MarshalPKIXPublicKey(up)
+	if err != nil {
+		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to convert ukPub: %v", err)
+	}
+
+	ukPubPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "PUBLIC KEY",
+			Bytes: ukBytes,
+		},
+	)
+	glog.V(10).Infof("     Decoded UkPub: \n%v", string(ukPubPEM))
+
+	if tPub.MatchesTemplate(unrestrictedKeyParams) {
+		glog.V(10).Infof("     Unrestricted key parameter matchs template")
+	} else {
+		return &verifier.OfferCSRResponse{}, fmt.Errorf("uK does not have correct template parameters")
+	}
 
 	// now extract the public key from the CSR
 	b, _ := pem.Decode(in.Csr)
@@ -696,20 +739,13 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to parse CSR %v", err)
 	}
 
-	glog.V(10).Infof("     Verifying if Public key from CSR matches attested Public key")
 	rkey, ok := csrobj.PublicKey.(*rsa.PublicKey)
 	if !ok {
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to extract public key from CSR %v", err)
 	}
 
-	blk, _ := pem.Decode(in.PublicKey)
-	bbr := blk.Bytes
-
-	ifc, err := x509.ParsePKIXPublicKey(bbr)
-	if err != nil {
-		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to extract public key from CSR %v", err)
-	}
-	fkey, ok := ifc.(*rsa.PublicKey)
+	glog.V(10).Infof("     Verifying if Public key from CSR matches attested Public key")
+	fkey, ok := up.(*rsa.PublicKey)
 	if !ok {
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to extract public key from CSR %v", err)
 	}

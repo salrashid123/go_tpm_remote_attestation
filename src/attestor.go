@@ -618,14 +618,19 @@ func generateCSR(cn, san string) (publicKey []byte, csr []byte, attestationSigna
 		return []byte(""), []byte(""), []byte(""), []byte(""), fmt.Errorf("Failed to create CSR: %s", err)
 	}
 
-	pemdata := pem.EncodeToMemory(
+	csrData := pem.EncodeToMemory(
 		&pem.Block{
 			Type:  "CERTIFICATE REQUEST",
 			Bytes: csrBytes,
 		},
 	)
-	glog.V(10).Infof("CSR \n%s\n", string(pemdata))
-	return ukPubPEM, pemdata, csig, attestation, nil
+	glog.V(10).Infof("CSR \n%s\n", string(csrData))
+
+	ukPubEncoded, err := utPub.Encode()
+	if err != nil {
+		return []byte(""), []byte(""), []byte(""), []byte(""), fmt.Errorf("Failed to encode UKPub CSR: %s", err)
+	}
+	return ukPubEncoded, csrData, csig, attestation, nil
 
 }
 

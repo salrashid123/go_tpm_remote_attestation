@@ -49,9 +49,11 @@ service Verifier {
   Attestor generates an RSA key on TPM
   Attestor Certifies the RSA key using AK and receives attestation blob
   Attestor uses RSA key to generate a CSR
-  Attestor sends CSR, attestation blob to Verifier
+  Attestor sends TPM wire format for the generated RSA Public, CSR, attestation blob to Verifier
   Verifier confirms AK signed the attestation blog
   Verifier extracts the RSA public key from CSR and confirms it matches the key encoded into the attestation blob
+  Verifier checks that the TPM wire format for the public key has the correct TPM template 
+  Verifier extracts the RSA Public key from the TPM Wire format and cross checks with the CSR's RSA Public key   
   Verifier uses CA to sign the CSR
   Verifier returns x509 to Attestor
   rpc OfferCSR (OfferCSRRequest) returns (OfferCSRResponse) { }  
