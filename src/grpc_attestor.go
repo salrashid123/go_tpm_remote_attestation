@@ -56,13 +56,13 @@ import (
 )
 
 var (
-	grpcport   = flag.String("grpcport", "", "grpcport")
-	caCertTLS  = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to trust")
-	pcr        = flag.Int("pcr", 0, "PCR bank imported Secrets are bound to during AES import or RSA signing")
-	serverCert = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
-	serverKey  = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
-	nonces     = make(map[string]string)
-
+	grpcport     = flag.String("grpcport", "", "grpcport")
+	caCertTLS    = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to trust")
+	pcr          = flag.Int("pcr", 0, "PCR bank imported Secrets are bound to during AES import or RSA signing")
+	serverCert   = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
+	serverKey    = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
+	nonces       = make(map[string]string)
+	readEventLog = flag.Bool("readEventLog", false, "Reading Event Log")
 	platformCert = flag.String("platformCert", "certs/tpm_ek_intermediate_2.crt", "Platform x509 cert (DER)")
 	rwc          io.ReadWriteCloser
 
@@ -619,12 +619,14 @@ func (s *server) Quote(ctx context.Context, in *verifier.QuoteRequest) (*verifie
 	glog.V(20).Infof("     Quote Hex %v", hex.EncodeToString(attestation))
 	glog.V(20).Infof("     Quote Sig %v", hex.EncodeToString(sig.RSA.Signature))
 
-	glog.V(20).Infof("     Getting EventLog")
-	evtLog, err := client.GetEventLog(rwc)
-	if err != nil {
-		return &verifier.QuoteResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to get event log: %v", err))
+	evtLog := []byte("")
+	if *readEventLog {
+		glog.V(20).Infof("     Getting EventLog")
+		evtLog, err = client.GetEventLog(rwc)
+		if err != nil {
+			return &verifier.QuoteResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to get event log: %v", err))
+		}
 	}
-
 	glog.V(5).Infof("     <-- End Quote")
 
 	res := &verifier.QuoteResponse{

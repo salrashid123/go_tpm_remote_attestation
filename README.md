@@ -158,7 +158,7 @@ End Unrestricted SigningKey Transfer
 
 ```log
 $ go run src/grpc_attestor.go --grpcport :50051 \
- --caCertTLS certs/CA_crt.pem --servercert certs/server_crt.pem \
+ --caCertTLS certs/CA_crt.pem --servercert certs/server_crt.pem --readEventLog \
  --serverkey certs/server_key.pem --pcr=0 --v=10 -alsologtostderr
 
 I0906 15:59:52.870938   16695 grpc_attestor.go:1119] Starting gRPC server on port :50051
@@ -288,7 +288,7 @@ I0906 16:02:42.772084   16695 grpc_attestor.go:1045]      Returning PullRSAKeyRe
 #### Verifier AES
 
 ```log
-$ go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
+$ go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 --readEventLog \
    -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" --expectedPCRSHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
    --host verify.esodemoapp2.com:50051 --pcr=0 --expectedPCRValue 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f \
    --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem \
@@ -443,7 +443,7 @@ I0906 16:02:42.786188   15283 grpc_verifier.go:720]      Pulled Signing Key  com
 
 ```log
 $ go run src/grpc_attestor.go --grpcport :50051 --caCertTLS certs/CA_crt.pem \
-  --servercert certs/server_crt.pem \
+  --servercert certs/server_crt.pem --readEventLog \
   --serverkey certs/server_key.pem --pcr=0 \
   --v=10 -alsologtostderr
 
@@ -588,7 +588,7 @@ I0906 16:03:39.864906   16742 grpc_attestor.go:1045]      Returning PullRSAKeyRe
 ```log
 $ go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
   --pcr=0  --expectedPCRValue 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f  --rsaCert=certs/tpm_client.crt \
-  --expectedPCRSHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
+  --expectedPCRSHA1 0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea --readEventLog \
   --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem \
   --rsaKey=certs/tpm_client.key  --host verify.esodemoapp2.com:50051   \
   --v=10 -alsologtostderr 

@@ -65,6 +65,7 @@ var (
 	rwc             io.ReadWriteCloser
 	importMode      = flag.String("importMode", "AES", "RSA|AES")
 	aes256Key       = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES key to export")
+	readEventLog    = flag.Bool("readEventLog", false, "Reading Event Log")
 	exportedRSACert = flag.String("rsaCert", "certs/tpm_client.crt", "RSA Public certificate for the key to export")
 	exportedRSAKey  = flag.String("rsaKey", "certs/tpm_client.key", "RSA key to export")
 	letterRunes     = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -399,28 +400,29 @@ func main() {
 	}
 	glog.V(2).Infof("     Attestation Signature Verified ")
 
-	glog.V(2).Infof("     Reading EventLog")
-	bt, err := hex.DecodeString(*expectedPCRSHA1)
-	if err != nil {
-		glog.Fatalf("Error decoding pcr %v", err)
+	if *readEventLog {
+		glog.V(2).Infof("     Reading EventLog")
+		bt, err := hex.DecodeString(*expectedPCRSHA1)
+		if err != nil {
+			glog.Fatalf("Error decoding pcr %v", err)
+		}
+		evtLogPcrMap := map[uint32][]byte{uint32(*pcr): bt}
+
+		pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA1, Pcrs: evtLogPcrMap}
+
+		events, err := server.ParseAndVerifyEventLog(qResponse.Eventlog, pcrs)
+		if err != nil {
+			glog.Fatalf("Failed to parse EventLog: %v", err)
+		}
+
+		for _, event := range events {
+			glog.V(2).Infof("     Event Type %v\n", event.Type)
+			glog.V(2).Infof("     PCR Index %d\n", event.Index)
+			glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
+			glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
+		}
+		glog.V(2).Infof("     EventLog Verified ")
 	}
-	evtLogPcrMap := map[uint32][]byte{uint32(*pcr): bt}
-
-	pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA1, Pcrs: evtLogPcrMap}
-
-	events, err := server.ParseAndVerifyEventLog(qResponse.Eventlog, pcrs)
-	if err != nil {
-		glog.Fatalf("Failed to parse EventLog: %v", err)
-	}
-
-	for _, event := range events {
-		glog.V(2).Infof("     Event Type %v\n", event.Type)
-		glog.V(2).Infof("     PCR Index %d\n", event.Index)
-		glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
-		glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
-	}
-	glog.V(2).Infof("     EventLog Verified ")
-
 	// Now issue a x509 cert thats associated with the AK.
 	//  this next step is just for demonstration and uses a CA authority the Verifier has access to.
 	//  Normally, this x509 is sent back to the attestor so that it'd have an x509 for the attested
