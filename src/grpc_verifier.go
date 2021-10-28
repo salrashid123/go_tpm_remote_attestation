@@ -75,6 +75,20 @@ var (
 		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
 		"transient": []tpm2.HandleType{tpm2.HandleTypeTransient},
 	}
+	unrestrictedKeyParams = tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth | tpm2.FlagSign,
+		AuthPolicy: []byte{},
+		RSAParameters: &tpm2.RSAParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgRSASSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			KeyBits: 2048,
+		},
+	}
 )
 
 func main() {
@@ -603,7 +617,6 @@ func main() {
 		glog.Fatalf("Error PullRSAKey: %v", err)
 	}
 
-	glog.V(20).Infof("     SigningKey \n%s", psResponse.RsaPublicKey)
 	glog.V(20).Infof("     SigningKey Attestation %s\n", base64.StdEncoding.EncodeToString(psResponse.Attestation))
 	glog.V(20).Infof("     SigningKey Attestation Signature %s\n", base64.StdEncoding.EncodeToString(psResponse.AttestationSignature))
 
@@ -625,22 +638,36 @@ func main() {
 	}
 	glog.V(10).Infof("     Attestation of Unrestricted Signing Key Verified")
 
-	// load the unrestricted key
-	ukblock, _ := pem.Decode(psResponse.RsaPublicKey)
-	if ukblock == nil {
-		glog.Fatalf("     Unable to decode Signingkey")
+	// now verify that the public key provided is the same as the one that was attested
+	// also verify that the key template matches what we expect for an unrestricted key
+	uPub, err := tpm2.DecodePublic(psResponse.TpmPublicKey)
+	if err != nil {
+		glog.Fatalf("Error Decode Unrestricted key Public %v", err)
 	}
 
-	ukrra, err := x509.ParsePKIXPublicKey(ukblock.Bytes)
+	up, err := uPub.Key()
 	if err != nil {
-		glog.Fatalf("     Unable to ParsePKIXPublicKey rsa Key from PEM %v", err)
+		glog.Fatalf("ukPub.Key() failed: %s", err)
 	}
-	ukrsaPub := ukrra.(*rsa.PublicKey)
+	fkey, ok := up.(*rsa.PublicKey)
+	if !ok {
+		glog.Fatalf("Unable to extract public key from CSR %v", err)
+	}
+	if uPub.MatchesTemplate(unrestrictedKeyParams) {
+		glog.V(10).Infof("     Unrestricted key parameter matches template")
+	} else {
+		glog.Fatalf("uK does not have correct template parameters")
+	}
+
+	ukBytes, err := x509.MarshalPKIXPublicKey(up)
+	if err != nil {
+		glog.Fatalf("Unable to convert ukPub: %v", err)
+	}
 
 	ukPubPEM := pem.EncodeToMemory(
 		&pem.Block{
 			Type:  "PUBLIC KEY",
-			Bytes: ukblock.Bytes,
+			Bytes: ukBytes,
 		},
 	)
 
@@ -654,7 +681,7 @@ func main() {
 	uhsh := crypto.SHA256.New()
 	uhsh.Write([]byte(*u))
 
-	if err := rsa.VerifyPKCS1v15(ukrsaPub, crypto.SHA256, uhsh.Sum(nil), psResponse.TestSignature); err != nil {
+	if err := rsa.VerifyPKCS1v15(fkey, crypto.SHA256, uhsh.Sum(nil), psResponse.TestSignature); err != nil {
 		glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
 	}
 	glog.V(10).Infof("     Test Signature Verified")
@@ -671,10 +698,10 @@ func main() {
 				Hash: tpm2.AlgSHA256,
 			},
 			KeyBits:    2048,
-			ModulusRaw: ukrsaPub.N.Bytes(),
+			ModulusRaw: fkey.N.Bytes(),
 		},
 	}
-	ok, err := att.AttestedCertifyInfo.Name.MatchesPublic(params)
+	ok, err = att.AttestedCertifyInfo.Name.MatchesPublic(params)
 	if err != nil {
 		glog.Fatalf("     AttestedCertifyInfo.MatchesPublic(%v) failed: %v", att, err)
 	}
@@ -716,7 +743,7 @@ func main() {
 		IsCA:                  false,
 	}
 
-	cert_b, err = x509.CreateCertificate(rand.Reader, ct, ca, ukrsaPub, parsedKey)
+	cert_b, err = x509.CreateCertificate(rand.Reader, ct, ca, up, parsedKey)
 	if err != nil {
 		glog.Fatalf("Failed to createCertificate: %v", err)
 	}

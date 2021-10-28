@@ -1039,9 +1039,14 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	}
 	glog.V(10).Infof("     Attestation Verified")
 
+	ukPubEncoded, err := utPub.Encode()
+	if err != nil {
+		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Failed to extract TPM Wireformat for unrestricted key: %v", err))
+	}
+
 	res := &verifier.PullRSAKeyResponse{
 		Uid:                  in.Uid,
-		RsaPublicKey:         ukPubPEM,
+		TpmPublicKey:         ukPubEncoded,
 		TestSignature:        []byte(sig.RSA.Signature),
 		AttestationSignature: csig,
 		Attestation:          attestation,

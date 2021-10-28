@@ -91,7 +91,7 @@ message PullRSAKeyRequest {
 
 message PullRSAKeyResponse {
   string uid = 1;
-  bytes rsaPublicKey = 2;
+  bytes tpm_public_key = 2;
   bytes test_signature = 3;
   bytes attestation_signature = 4;
   bytes attestation = 5;
