@@ -685,7 +685,6 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	glog.V(20).Infof("     Attestation AttestedCertifyInfo.Name.Digest.Value: %s", hex.EncodeToString(att.AttestedCertifyInfo.Name.Digest.Value))
 
 	// Verify signature of Attestation by using the PEM Public key for AK
-	// note, wer'e blindly using the UID provided by the client here
 	nn := registry[in.Uid]
 	akPub := nn.AkPub
 	p, err := tpm2.DecodePublic(akPub)
@@ -701,8 +700,7 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	}
 	glog.V(10).Infof("     Attestation of Unrestricted Signing Key Verified")
 
-	// now verify that the public key provided is the same as the one that was attested
-	// also verify that the key template matches what we expect for an unrestricted key
+	// now verify that the public key provided is the same as in the CSR and that the "Template" is what we expect
 	tPub, err := tpm2.DecodePublic(in.PublicKey)
 	if err != nil {
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Error Decode Unrestricted key Public %v", tPub)
@@ -751,8 +749,33 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	}
 
 	if !rkey.Equal(fkey) {
-		return &verifier.OfferCSRResponse{}, fmt.Errorf("Public Key provided does not match key in attestaton")
+		return &verifier.OfferCSRResponse{}, fmt.Errorf("Public Key provided does not match key in CSR")
 	}
+	// this is the critical step, confirm the that the attestationblob that we just verified contains the public key in the template
+	// we expect
+
+	// the tpm2.Public is the same unrestrictedKeyParams
+	params := tpm2.Public{
+		Type:    tpm2.AlgRSA,
+		NameAlg: tpm2.AlgSHA256,
+		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
+			tpm2.FlagUserWithAuth | tpm2.FlagSign,
+		AuthPolicy: []byte{},
+		RSAParameters: &tpm2.RSAParams{
+			Sign: &tpm2.SigScheme{
+				Alg:  tpm2.AlgRSASSA,
+				Hash: tpm2.AlgSHA256,
+			},
+			KeyBits:    2048,
+			ModulusRaw: fkey.N.Bytes(), // note, we're adding in the public key here to the template
+		},
+	}
+	ok, err = att.AttestedCertifyInfo.Name.MatchesPublic(params)
+	if err != nil {
+		return &verifier.OfferCSRResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("     AttestedCertifyInfo.MatchesPublic(%v) failed: %v", att, err))
+	}
+	glog.V(10).Infof("     Unrestricted RSA Public key parameters matches AttestedCertifyInfo  %v", ok)
+
 	crt, err := signCSR(in.Csr)
 	if err != nil {
 		return &verifier.OfferCSRResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to Generate CSR %v", err))
