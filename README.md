@@ -137,6 +137,7 @@ go run src/verifier.go \
    --servercert certs/server_crt.pem \
    --serverkey certs/server_key.pem \
    --usemTLS \
+   --readEventLog \
    --v=10 -alsologtostderr 
 
 ## Attestor
@@ -149,8 +150,8 @@ go run src/attestor.go  \
    --clientcert certs/client_crt.pem \
    --clientkey certs/client_key.pem \
    --usemTLS  \
+   --readEventLog \
    --v=10 -alsologtostderr
-   
 ```
 
 ### RSA
@@ -165,6 +166,7 @@ go run src/verifier.go \
    --servercert certs/server_crt.pem \
    --serverkey certs/server_key.pem \
    --usemTLS \
+   --readEventLog \
    --v=10 -alsologtostderr 
 
 ## Attestor
@@ -176,7 +178,8 @@ go run src/attestor.go  \
    --cacert certs/CA_crt.pem  \
    --clientcert certs/client_crt.pem \
    --clientkey certs/client_key.pem \
-   --usemTLS  \
+   --usemTLS \
+   --readEventLog \
    --v=10 -alsologtostderr
 ```
 
@@ -198,6 +201,7 @@ go run src/verifier.go \
    --servercert certs/server_crt.pem \
    --serverkey certs/server_key.pem \
    --usemTLS \
+   --readEventLog \
    --v=10 -alsologtostderr 
    
 I1027 12:47:49.625756   18715 verifier.go:198] Using mTLS for initial server connection
@@ -408,7 +412,8 @@ go run src/attestor.go  \
    --cacert certs/CA_crt.pem  \
    --clientcert certs/client_crt.pem \
    --clientkey certs/client_key.pem \
-   --usemTLS  \
+   --usemTLS \
+   --readEventLog \
    --v=10 -alsologtostderr
    
 I1027 12:47:58.639886   24082 attestor.go:187] Using mTLS
@@ -586,6 +591,7 @@ go run src/verifier.go \
    --servercert certs/server_crt.pem \
    --serverkey certs/server_key.pem \
    --usemTLS \
+   --readEventLog \
    --v=10 -alsologtostderr 
 
 I1027 12:50:05.497866   18776 verifier.go:198] Using mTLS for initial server connection
@@ -803,7 +809,8 @@ go run src/attestor.go  \
    --cacert certs/CA_crt.pem  \
    --clientcert certs/client_crt.pem \
    --clientkey certs/client_key.pem \
-   --usemTLS  \
+   --usemTLS \
+   --readEventLog \
    --v=10 -alsologtostderr
 
 I1027 12:50:19.774223   24129 attestor.go:187] Using mTLS

@@ -50,7 +50,6 @@ import (
 	"github.com/google/go-tpm-tools/client"
 	gotpmserver "github.com/google/go-tpm-tools/server"
 	"github.com/google/go-tpm/tpm2"
-	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 
@@ -68,6 +67,7 @@ var (
 	serverCert       = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
 	serverKey        = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
 	usemTLS          = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
+	readEventLog     = flag.Bool("readEventLog", false, "Reading Event Log")
 	registry         = make(map[string]verifier.MakeCredentialRequest)
 	nonces           = make(map[string]string)
 	rwc              io.ReadWriteCloser
@@ -392,15 +392,21 @@ func (s *server) OfferQuote(ctx context.Context, in *verifier.OfferQuoteRequest)
 	glog.V(2).Infof("======= OfferQuote ========")
 	glog.V(5).Infof("     client provided uid: %s", in.Uid)
 
-	nonce := uuid.New().String()
+	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	nonce := make([]rune, 10)
+	for i := range nonce {
+		nonce[i] = letterRunes[mrand.Intn(len(letterRunes))]
+	}
+
+	glog.V(2).Infof("     Sending Nonce %s,", string(nonce))
 	id := in.Uid
 
 	glog.V(2).Infof("     Returning OfferQuoteResponse ========")
-	nonces[id] = nonce
+	nonces[id] = string(nonce)
 	return &verifier.OfferQuoteResponse{
 		Uid:   in.Uid,
 		Pcr:   int32(*pcr),
-		Nonce: nonce,
+		Nonce: string(nonce),
 	}, nil
 }
 
@@ -486,28 +492,29 @@ func verifyQuote(uid string, nonce string, attestation []byte, sigBytes []byte, 
 	}
 	glog.V(2).Infof("     Attestation Signature Verified ")
 
-	glog.V(2).Infof("     Reading EventLog")
-	bt, err := hex.DecodeString(*expectedPCRSHA1)
-	if err != nil {
-		glog.Fatalf("Error decoding pcr %v", err)
+	if *readEventLog {
+		glog.V(2).Infof("     Reading EventLog")
+		bt, err := hex.DecodeString(*expectedPCRSHA1)
+		if err != nil {
+			glog.Fatalf("Error decoding pcr %v", err)
+		}
+		evtLogPcrMap := map[uint32][]byte{uint32(*pcr): bt}
+
+		pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA1, Pcrs: evtLogPcrMap}
+
+		events, err := gotpmserver.ParseAndVerifyEventLog(eventLog, pcrs)
+		if err != nil {
+			return fmt.Errorf("Failed to parse EventLog: %v", err)
+		}
+
+		for _, event := range events {
+			glog.V(2).Infof("     Event Type %v\n", event.Type)
+			glog.V(2).Infof("     PCR Index %d\n", event.Index)
+			glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
+			glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
+		}
+		glog.V(2).Infof("     EventLog Verified ")
 	}
-	evtLogPcrMap := map[uint32][]byte{uint32(*pcr): bt}
-
-	pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA1, Pcrs: evtLogPcrMap}
-
-	events, err := gotpmserver.ParseAndVerifyEventLog(eventLog, pcrs)
-	if err != nil {
-		return fmt.Errorf("Failed to parse EventLog: %v", err)
-	}
-
-	for _, event := range events {
-		glog.V(2).Infof("     Event Type %v\n", event.Type)
-		glog.V(2).Infof("     PCR Index %d\n", event.Index)
-		glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
-		glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
-	}
-	glog.V(2).Infof("     EventLog Verified ")
-
 	glog.V(2).Infof("     <-- End verifyQuote()")
 	return nil
 }

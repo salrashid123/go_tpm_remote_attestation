@@ -77,8 +77,8 @@ var (
 	clientKey       = flag.String("clientkey", "certs/client_key.pem", "Client SSL PrivateKey")
 	usemTLS         = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
 	readCertsFromNV = flag.Bool("readCertsFromNV", true, "Try to read read certificates from NV")
-
-	handleNames = map[string][]tpm2.HandleType{
+	readEventLog    = flag.Bool("readEventLog", false, "Reading Event Log")
+	handleNames     = map[string][]tpm2.HandleType{
 		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
 		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
 		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
@@ -391,7 +391,9 @@ func main() {
 		Attestation:          attestationBytes,
 	}
 
-	oCSR, err := c.OfferCSR(ctx, csrR)
+	ctxWithDeadline, cancel := context.WithDeadline(context.Background(), time.Now().Add(3*time.Second))
+	defer cancel()
+	oCSR, err := c.OfferCSR(ctxWithDeadline, csrR)
 	if err != nil {
 		glog.Fatalf("could not call OfferCSR: %v", err)
 	}
@@ -631,7 +633,6 @@ func generateCSR(cn, san string) (publicKey []byte, csr []byte, attestationSigna
 		return []byte(""), []byte(""), []byte(""), []byte(""), fmt.Errorf("Failed to encode UKPub CSR: %s", err)
 	}
 	return ukPubEncoded, csrData, csig, attestation, nil
-
 }
 
 func importKey(ar pb.GetSecretResponse) (secret string, err error) {
@@ -769,7 +770,6 @@ func quote(reqPCR int, secret string) (attestation []byte, signature []byte, eve
 	glog.V(5).Infof("     PCR %d Value %v ", *pcr, hex.EncodeToString(pcrval))
 
 	pcrSelection23 := tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrList}
-	emptyPassword := ""
 
 	glog.V(10).Infof("     ContextLoad (ek) ========")
 	ekhBytes, err := ioutil.ReadFile(ekFile)
@@ -829,12 +829,14 @@ func quote(reqPCR int, secret string) (attestation []byte, signature []byte, eve
 	glog.V(10).Infof("     Quote Hex %v", hex.EncodeToString(attestation))
 	glog.V(10).Infof("     Quote Sig %v", hex.EncodeToString(sig.RSA.Signature))
 
-	glog.V(20).Infof("     Getting EventLog")
-	evtLog, err := client.GetEventLog(rwc)
-	if err != nil {
-		return []byte(""), []byte(""), []byte(""), fmt.Errorf("failed to get event log: %v", err)
+	evtLog := []byte("")
+	if *readEventLog {
+		glog.V(20).Infof("     Getting EventLog")
+		evtLog, err = client.GetEventLog(rwc)
+		if err != nil {
+			return []byte(""), []byte(""), []byte(""), fmt.Errorf("failed to get event log: %v", err)
+		}
 	}
-
 	glog.V(5).Infof("     <-- End Quote")
 	return attestation, sig.RSA.Signature, evtLog, nil
 }
