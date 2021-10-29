@@ -411,14 +411,7 @@ func main() {
 		glog.Fatalf("could not call OfferCSR: %v", err)
 	}
 
-	signedCert := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "CERTIFICATE",
-			Bytes: oCSR.Cert,
-		},
-	)
-
-	glog.V(10).Infof("     X509 issued by Verifier for unrestricted Key: \n%v", string(signedCert))
+	glog.V(10).Infof("     X509 issued by Verifier for unrestricted Key: \n%v", string(oCSR.Cert))
 
 }
 
@@ -1289,3 +1282,4 @@ func encodeAuthArea(sections ...tpm2.AuthCommand) ([]byte, error) {
 func concat(chunks ...[]byte) ([]byte, error) {
 	return bytes.Join(chunks, nil), nil
 }
+
