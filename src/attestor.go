@@ -65,6 +65,8 @@ const (
 	signCertNVIndex       = 0x01c10000
 	signKeyNVIndex        = 0x01c10001
 	encryptionCertNVIndex = 0x01c00002
+
+	platformCertNVIndex = 0x01c00006 // i don't know where the platform cert is saved if in NV, this is just a guess
 )
 
 var (
@@ -73,12 +75,13 @@ var (
 	pcr        = flag.Int("unsealPcr", 0, "pcr value to unseal against")
 	caCert     = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to trust")
 
-	clientCert      = flag.String("clientcert", "certs/client_crt.pem", "Client SSL Certificate")
-	clientKey       = flag.String("clientkey", "certs/client_key.pem", "Client SSL PrivateKey")
-	usemTLS         = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
-	readCertsFromNV = flag.Bool("readCertsFromNV", true, "Try to read read certificates from NV")
-	readEventLog    = flag.Bool("readEventLog", false, "Reading Event Log")
-	handleNames     = map[string][]tpm2.HandleType{
+	clientCert       = flag.String("clientcert", "certs/client_crt.pem", "Client SSL Certificate")
+	clientKey        = flag.String("clientkey", "certs/client_key.pem", "Client SSL PrivateKey")
+	platformCertFile = flag.String("platformCertFile", "certs/platform_cert.pem", "Platform Certificate File")
+	usemTLS          = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
+	readCertsFromNV  = flag.Bool("readCertsFromNV", true, "Try to read read certificates from NV")
+	readEventLog     = flag.Bool("readEventLog", false, "Reading Event Log")
+	handleNames      = map[string][]tpm2.HandleType{
 		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
 		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
 		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
@@ -239,10 +242,47 @@ func main() {
 	glog.V(10).Infof("     Encryption PEM \n%s", string(ekPubPEM))
 	ekk.Close()
 
+	c := pb.NewVerifierClient(conn)
+
+	glog.V(5).Infof("=============== Sending Platform Certificate ===============")
+
+	// I got the platform_cert.pem  file from examplehere
+	//  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
+	// the platform cert could be in NV
+
+	var platformCert []byte
+	platformCert, err = tpm2.NVRead(rwc, platformCertNVIndex)
+	if err != nil {
+		// our best guess at the platform cert failed...pretend the cert was
+		platformCert, err = ioutil.ReadFile(*platformCertFile)
+		if err != nil {
+			glog.Fatalf("failed to load root Platform certificates  error=%v", err)
+		}
+	}
+
+	pcertPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "ATTRIBUTE CERTIFICATE",
+			Bytes: platformCert,
+		},
+	)
+	glog.V(50).Infof("     Platform Cert: %s", string(pcertPEM))
+
+	pcreq := &pb.OfferPlatformCertRequest{
+		Uid:          *u,
+		PlatformCert: platformCert,
+	}
+	pcresp, err := c.OfferPlatformCert(ctx, pcreq)
+	if err != nil {
+		glog.Fatalf("could not call ActivateCredential: %v", err)
+	}
+	glog.V(5).Infof("    OfferPlatformCert Status %t", pcresp.Ok)
+
+	glog.V(5).Infof("=============== MakeCredential ===============")
+
 	// now reread the EKCert directly from NV
 	//   the EKCertificate (x509) is saved at encryptionCertNVIndex
 	//   the following steps attempts to read that value in directly from NV
-	//   This is currently not supported but i'm adding in code anyway
 
 	ekcertBytes, err := tpm2.NVReadEx(rwc, encryptionCertNVIndex, tpm2.HandleOwner, "", 0)
 	if err != nil {
@@ -258,33 +298,6 @@ func main() {
 	// https://pkg.go.dev/github.com/google/certificate-transparency-go/x509
 	glog.V(10).Infof("     EKCert Encryption Issuer x509 \n%v", encCert.Issuer)
 
-	// GCE VMs saves a signed AKCert to NV, w'ere commenting this out
-	// glog.V(10).Infof("     Load SigningKey and Certifcate ")
-	// kk, err := client.EndorsementKeyFromNvIndex(rwc, signKeyNVIndex)
-	// if err != nil {
-	// 	glog.Errorf("ERROR:  could not get EndorsementKeyFromNvIndex: %v", err)
-	// 	return
-	// }
-	// pubKey := kk.PublicKey().(*rsa.PublicKey)
-	// akBytes, err := x509.MarshalPKIXPublicKey(pubKey)
-	// if err != nil {
-	// 	glog.Errorf("ERROR:  could not get MarshalPKIXPublicKey: %v", err)
-	// 	return
-	// }
-	// akPubPEM := pem.EncodeToMemory(
-	// 	&pem.Block{
-	// 		Type:  "PUBLIC KEY",
-	// 		Bytes: akBytes,
-	// 	},
-	// )
-	// glog.V(10).Infof("     Signing PEM \n%s", string(akPubPEM))
-	// kk.Close()
-
-	// glog.V(5).Infof("     Signing PEM from NV \n[%s]", string(skPubPEM))
-
-	c := pb.NewVerifierClient(conn)
-
-	glog.V(5).Infof("=============== MakeCredential ===============")
 	akName, ekPub, akPub, err := createKeys()
 	if err != nil {
 		glog.Fatalf("Unable to generate EK/AK: %v", err)

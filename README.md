@@ -22,6 +22,10 @@ This gRPC specification in the `pull` model has several methods included in the 
 ```protobuf
 service Verifier {
 
+  Attestor acquires the Platform Certificate (if available)
+    and sends that to the verifier
+  rpc OfferPlatformCert (OfferPlatformCertRequest) returns (OfferPlatformCertResponse) { }  
+
   Attestor creates AK, EK and sends that to the Verifier
   Verifier check EK Certificate issuer, generates secret nonce using EK,AK
      and return that to Attestor  

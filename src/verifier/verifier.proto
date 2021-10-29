@@ -5,12 +5,24 @@ package verifier;
 option go_package = "github.com/salrashid123/go_tpm_registrar/verifier";
 
 service Verifier {
+  rpc OfferPlatformCert (OfferPlatformCertRequest) returns (OfferPlatformCertResponse) { }  
   rpc MakeCredential (MakeCredentialRequest) returns (MakeCredentialResponse) { }
   rpc ActivateCredential (ActivateCredentialRequest) returns (ActivateCredentialResponse) { }
   rpc GetSecret (GetSecretRequest) returns (GetSecretResponse) { }  
   rpc OfferQuote (OfferQuoteRequest) returns (OfferQuoteResponse) { }
   rpc ProvideQuote (ProvideQuoteRequest) returns (ProvideQuoteResponse) { }
   rpc OfferCSR (OfferCSRRequest) returns (OfferCSRResponse) { }  
+}
+
+
+message OfferPlatformCertRequest {
+  string uid = 1;
+  bytes platformCert = 2;  
+}
+
+message OfferPlatformCertResponse {
+  string uid = 1;
+  bool ok = 2;
 }
 
 message MakeCredentialRequest {

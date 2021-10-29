@@ -18,6 +18,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type VerifierClient interface {
+	OfferPlatformCert(ctx context.Context, in *OfferPlatformCertRequest, opts ...grpc.CallOption) (*OfferPlatformCertResponse, error)
 	MakeCredential(ctx context.Context, in *MakeCredentialRequest, opts ...grpc.CallOption) (*MakeCredentialResponse, error)
 	ActivateCredential(ctx context.Context, in *ActivateCredentialRequest, opts ...grpc.CallOption) (*ActivateCredentialResponse, error)
 	GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error)
@@ -32,6 +33,15 @@ type verifierClient struct {
 
 func NewVerifierClient(cc grpc.ClientConnInterface) VerifierClient {
 	return &verifierClient{cc}
+}
+
+func (c *verifierClient) OfferPlatformCert(ctx context.Context, in *OfferPlatformCertRequest, opts ...grpc.CallOption) (*OfferPlatformCertResponse, error) {
+	out := new(OfferPlatformCertResponse)
+	err := c.cc.Invoke(ctx, "/verifier.Verifier/OfferPlatformCert", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *verifierClient) MakeCredential(ctx context.Context, in *MakeCredentialRequest, opts ...grpc.CallOption) (*MakeCredentialResponse, error) {
@@ -92,6 +102,7 @@ func (c *verifierClient) OfferCSR(ctx context.Context, in *OfferCSRRequest, opts
 // All implementations should embed UnimplementedVerifierServer
 // for forward compatibility
 type VerifierServer interface {
+	OfferPlatformCert(context.Context, *OfferPlatformCertRequest) (*OfferPlatformCertResponse, error)
 	MakeCredential(context.Context, *MakeCredentialRequest) (*MakeCredentialResponse, error)
 	ActivateCredential(context.Context, *ActivateCredentialRequest) (*ActivateCredentialResponse, error)
 	GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error)
@@ -104,6 +115,9 @@ type VerifierServer interface {
 type UnimplementedVerifierServer struct {
 }
 
+func (UnimplementedVerifierServer) OfferPlatformCert(context.Context, *OfferPlatformCertRequest) (*OfferPlatformCertResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method OfferPlatformCert not implemented")
+}
 func (UnimplementedVerifierServer) MakeCredential(context.Context, *MakeCredentialRequest) (*MakeCredentialResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method MakeCredential not implemented")
 }
@@ -132,6 +146,24 @@ type UnsafeVerifierServer interface {
 
 func RegisterVerifierServer(s grpc.ServiceRegistrar, srv VerifierServer) {
 	s.RegisterService(&Verifier_ServiceDesc, srv)
+}
+
+func _Verifier_OfferPlatformCert_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OfferPlatformCertRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VerifierServer).OfferPlatformCert(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/verifier.Verifier/OfferPlatformCert",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VerifierServer).OfferPlatformCert(ctx, req.(*OfferPlatformCertRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _Verifier_MakeCredential_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -249,6 +281,10 @@ var Verifier_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "verifier.Verifier",
 	HandlerType: (*VerifierServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "OfferPlatformCert",
+			Handler:    _Verifier_OfferPlatformCert_Handler,
+		},
 		{
 			MethodName: "MakeCredential",
 			Handler:    _Verifier_MakeCredential_Handler,

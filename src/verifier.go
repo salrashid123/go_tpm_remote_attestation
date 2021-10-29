@@ -67,6 +67,7 @@ var (
 	serverCert       = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
 	serverKey        = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
 	usemTLS          = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
+	platformCA       = flag.String("platformCA", "certs/platform_ca.pem", "Platform CA")
 	readEventLog     = flag.Bool("readEventLog", false, "Reading Event Log")
 	registry         = make(map[string]verifier.MakeCredentialRequest)
 	nonces           = make(map[string]string)
@@ -250,6 +251,62 @@ func main() {
 	glog.V(2).Infof("Starting gRPC server on port %v", *grpcport)
 
 	s.Serve(lis)
+}
+
+func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatformCertRequest) (*verifier.OfferPlatformCertResponse, error) {
+	glog.V(2).Infof("======= OfferPlatformCert ========")
+	glog.V(5).Infof("     client provided uid: %s", in.Uid)
+
+	certPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "ATTRIBUTE CERTIFICATE",
+			Bytes: in.PlatformCert,
+		},
+	)
+
+	glog.V(50).Infof("     client provided Platform Cert: \n%s", string(certPEM))
+
+	// now do cert verification and compare the attribute values (eg, the serial number in the ekcert later)
+	// i don't have the ca used for this platform cert since its from an example only
+	// so we're skipping the verification step here...
+
+	// rootPEM, err := ioutil.ReadFile(*platformCA)
+	// if err != nil {
+	// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:  Reading Root platform cert: %v", err))
+	// }
+
+	// roots := x509.NewCertPool()
+	// ok := roots.AppendCertsFromPEM([]byte(rootPEM))
+	// if !ok {
+	// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse platform root certificate"))
+	// }
+
+	// block, _ := pem.Decode([]byte(certPEM))
+	// if block == nil {
+	// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate PEM"))
+	// }
+	// cert, err := x509.ParseCertificate(block.Bytes)
+	// if err != nil {
+	// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate: "+err.Error()))
+	// }
+
+	// opts := x509.VerifyOptions{
+	// 	Roots:         roots,
+	// 	Intermediates: x509.NewCertPool(),
+	// }
+
+	// if _, err := cert.Verify(opts); err != nil {
+	// 	if err.Error() != "x509: unhandled critical extension" {
+	// 		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to verify platform certificate: "+err.Error()))
+	// 	}
+	// }
+
+	glog.V(5).Infof("     Platform Certificate Verification succeeded")
+
+	return &verifier.OfferPlatformCertResponse{
+		Uid: in.Uid,
+		Ok:  true,
+	}, nil
 }
 
 func (s *server) MakeCredential(ctx context.Context, in *verifier.MakeCredentialRequest) (*verifier.MakeCredentialResponse, error) {
