@@ -56,15 +56,15 @@ import (
 )
 
 var (
-	grpcport     = flag.String("grpcport", "", "grpcport")
-	caCertTLS    = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to trust")
-	pcr          = flag.Int("pcr", 0, "PCR bank imported Secrets are bound to during AES import or RSA signing")
-	serverCert   = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
-	serverKey    = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
-	nonces       = make(map[string]string)
-	readEventLog = flag.Bool("readEventLog", false, "Reading Event Log")
-	platformCert = flag.String("platformCert", "certs/tpm_ek_intermediate_2.crt", "Platform x509 cert (DER)")
-	rwc          io.ReadWriteCloser
+	grpcport         = flag.String("grpcport", "", "grpcport")
+	caCertTLS        = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to trust")
+	pcr              = flag.Int("pcr", 0, "PCR bank imported Secrets are bound to during AES import or RSA signing")
+	serverCert       = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
+	serverKey        = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
+	nonces           = make(map[string]string)
+	readEventLog     = flag.Bool("readEventLog", false, "Reading Event Log")
+	platformCertFile = flag.String("platformCertFile", "certs/platform_cert.pem", "Platform Certificate File")
+	rwc              io.ReadWriteCloser
 
 	handleNames = map[string][]tpm2.HandleType{
 		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
@@ -102,6 +102,8 @@ const (
 	ukPubFile       = "ukPub.bin"
 	ukPrivFile      = "ukPriv.bin"
 	ekFile          = "ek.bin"
+
+	platformCertNVIndex = 0x01c00006 // i don't know where the platform cert is saved if in NV, this is just a guess
 )
 
 type server struct {
@@ -162,35 +164,36 @@ func (s *hserver) Watch(in *healthpb.HealthCheckRequest, srv healthpb.Health_Wat
 func (s *server) GetPlatformCert(ctx context.Context, in *verifier.GetPlatformCertRequest) (*verifier.GetPlatformCertResponse, error) {
 	glog.V(2).Infof("======= GetPlatformCert ========")
 	glog.V(5).Infof("     client provided uid: %s", in.Uid)
-	// mdKey := ctx.Value(contextKey("someKey")).(string)
-	// glog.V(5).Infof("     MD Key: %s", mdKey)
-	// Print the manufacturer
-	//  from https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Version-1.01-Revision-1.00.pdf)
-	// on GCE instances, Manufacturer: GOOG
-	man, err := tpm2.GetManufacturer(rwc)
-	if err != nil {
-		return &verifier.GetPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable read manufacturer from TPM %v", err))
-	}
-	glog.V(5).Infof("     TPM Manufacturer: %s", string(man))
 
-	// For now, just read the Platfrom cert from file. The x509 we are reading from disk is Google Cloud's default signer
-	//   for Shielded VMs
-	r, err := ioutil.ReadFile(*platformCert)
+	var platformCert []byte
+	platformCert, err := tpm2.NVRead(rwc, platformCertNVIndex)
 	if err != nil {
-		return &verifier.GetPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to load platform certificate from file %v", err))
-	}
-	block, _ := pem.Decode(r)
-	fmt.Println(block.Type)
+		//  guess at the platform cert failed...pretend the cert was on disk
 
-	cert, err := x509.ParseCertificate(block.Bytes)
+		// I got the platform_cert.pem  file from examplehere
+		//  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
+		// the platform cert could be in NV
+
+		platformCert, err = ioutil.ReadFile(*platformCertFile)
+		if err != nil {
+			return &verifier.GetPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to load root Platform certificates  error=%v", err))
+		}
+	}
+	pcertPEM := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "ATTRIBUTE CERTIFICATE",
+			Bytes: platformCert,
+		},
+	)
+	glog.V(50).Infof("     Platform Cert: %s", string(pcertPEM))
+
 	if err != nil {
 		return &verifier.GetPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to load parse platform certificate %v", err))
 	}
-	glog.V(2).Infof("     Found Platform Cert Issuer %s ========", cert.Issuer.String())
 	glog.V(2).Infof("     Returning GetPlatformCert ========")
 	return &verifier.GetPlatformCertResponse{
 		Uid:          in.Uid,
-		PlatformCert: cert.Raw,
+		PlatformCert: pcertPEM,
 	}, nil
 }
 

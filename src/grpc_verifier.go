@@ -169,24 +169,51 @@ func main() {
 	}
 	if len(platformCertResponse.PlatformCert) > 0 {
 		glog.V(5).Infof("=============== GetPlatformCert Returned from remote ===============")
-		ct, err := x509.ParseCertificate(platformCertResponse.PlatformCert)
-		if err != nil {
-			glog.Fatalf("ERROR:   ParseCertificate: %v", err)
-		}
-		// spubKey := ct.PublicKey.(*rsa.PublicKey)
+		glog.V(5).Infof("     client provided uid: %s", platformCertResponse.Uid)
 
-		// skBytes, err := x509.MarshalPKIXPublicKey(spubKey)
+		certPEM := pem.EncodeToMemory(
+			&pem.Block{
+				Type:  "ATTRIBUTE CERTIFICATE",
+				Bytes: platformCertResponse.PlatformCert,
+			},
+		)
+
+		glog.V(50).Infof("     client provided Platform Cert: \n%s", string(certPEM))
+
+		// now do cert verification and compare the attribute values (eg, the serial number in the ekcert later)
+		// i don't have the ca used for this platform cert since its from an example only
+		// so we're skipping the verification step here...
+
+		// rootPEM, err := ioutil.ReadFile(*platformCA)
 		// if err != nil {
-		// 	glog.Fatalf("ERROR:  could  MarshalPKIXPublicKey: %v", err)
-
+		// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:  Reading Root platform cert: %v", err))
 		// }
-		// skPubPEM := pem.EncodeToMemory(
-		// 	&pem.Block{
-		// 		Type:  "PUBLIC KEY",
-		// 		Bytes: skBytes,
-		// 	},
-		// )
-		glog.V(10).Infof("    Platform Cert Issuer %s\n", ct.Issuer.CommonName)
+
+		// roots := x509.NewCertPool()
+		// ok := roots.AppendCertsFromPEM([]byte(rootPEM))
+		// if !ok {
+		// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse platform root certificate"))
+		// }
+
+		// block, _ := pem.Decode([]byte(certPEM))
+		// if block == nil {
+		// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate PEM"))
+		// }
+		// cert, err := x509.ParseCertificate(block.Bytes)
+		// if err != nil {
+		// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate: "+err.Error()))
+		// }
+
+		// opts := x509.VerifyOptions{
+		// 	Roots:         roots,
+		// 	Intermediates: x509.NewCertPool(),
+		// }
+
+		// if _, err := cert.Verify(opts); err != nil {
+		// 	if err.Error() != "x509: unhandled critical extension" {
+		// 		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to verify platform certificate: "+err.Error()))
+		// 	}
+		// }
 	}
 
 	var ekcert *x509.Certificate
