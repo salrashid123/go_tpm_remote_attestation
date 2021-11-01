@@ -246,9 +246,19 @@ func main() {
 
 	glog.V(5).Infof("=============== Sending Platform Certificate ===============")
 
-	// I got the platform_cert.pem  file from examplehere
-	//  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
-	// the platform cert could be in NV
+	// I just statically generated the platform cert.
+	// I do not think go support parsing of attribute certificates yet
+
+	// openssl will support it
+	// i don't have the ca used for this platform cert since its from an example only
+	// so we're skipping the verification step here...
+
+	// https://github.com/salrashid123/attribute_certificate
+	// https://en.wikipedia.org/wiki/Authorization_certificate
+	// https://github.com/openssl/openssl/issues/14648
+	// 2.1.5 Assertions Made by a Platform Certificate >  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
+
+	// for now just accept it w/o verifying its claims and move on
 
 	var platformCert []byte
 	platformCert, err = tpm2.NVRead(rwc, platformCertNVIndex)
@@ -1282,4 +1292,3 @@ func encodeAuthArea(sections ...tpm2.AuthCommand) ([]byte, error) {
 func concat(chunks ...[]byte) ([]byte, error) {
 	return bytes.Join(chunks, nil), nil
 }
-
