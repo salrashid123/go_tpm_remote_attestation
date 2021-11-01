@@ -1075,6 +1075,33 @@ pcrs:
 ---
 
 
+### Platform Certificate
+
+The platform certificate used in this protocol does *NOT* get validated by the verifier.
+
+I simply transmit a sample one i generated in the git repo below.  There are several reasons for this:
+
+1. I don't know all the attributes to set
+
+2. I don't think golang can verify the cert even if correctly set all the options.
+
+For now, i just transmit a sample one.
+
+For more info see:
+
+[`2.1.5 Assertions Made by a Platform Certificate`](https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf)
+
+
+```
+3.2 Platform Certificate
+This section contains the format for a Platform Certificate conforming to version 1.0 of this specification.
+The Platform Certificate makes the assertions listed in section 2.1.6. This certificate format
+adheres to RFC 5755 [11] and all requirements and limitations from that specification apply unless otherwise noted.
+```
+
+
+Here is an example repo in java on how to generate a platform certificate [Attribute Certificate](https://github.com/salrashid123/attribute_certificate).  Unfortunately, i don't think golang can parse a Platform Certificate at the moment
+
 ### Applications
 
 This is just an academic exercise (so do not use the code as is).   However, some applications of this

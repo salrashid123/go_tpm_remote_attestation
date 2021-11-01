@@ -180,9 +180,19 @@ func main() {
 
 		glog.V(50).Infof("     client provided Platform Cert: \n%s", string(certPEM))
 
-		// now do cert verification and compare the attribute values (eg, the serial number in the ekcert later)
+		// now do cert verification
+		// I do not think go support parsing of attribute certificates
+
+		// openssl will support it
 		// i don't have the ca used for this platform cert since its from an example only
 		// so we're skipping the verification step here...
+
+		// https://github.com/salrashid123/attribute_certificate
+		// https://en.wikipedia.org/wiki/Authorization_certificate
+		// https://github.com/openssl/openssl/issues/14648
+		// 2.1.5 Assertions Made by a Platform Certificate >  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
+
+		// for now just accept it and move on
 
 		// rootPEM, err := ioutil.ReadFile(*platformCA)
 		// if err != nil {
