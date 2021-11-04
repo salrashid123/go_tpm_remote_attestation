@@ -44,6 +44,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
+	//"github.com/google/go-attestation/attest"
+
 	tpmpb "github.com/google/go-tpm-tools/proto/tpm"
 	"google.golang.org/grpc/credentials"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -182,6 +184,10 @@ func main() {
 
 		// now do cert verification
 		// I do not think go support parsing of attribute certificates
+
+		// Update `11/4/21`:  TODO, use
+		// [go-attestation/attributecert](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecert) allows for parsing the certificate
+		// https://github.com/golang/go/issues/49270
 
 		// openssl will support it
 		// i don't have the ca used for this platform cert since its from an example only
@@ -459,6 +465,46 @@ func main() {
 			glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
 		}
 		glog.V(2).Infof("     EventLog Verified ")
+
+		// TODO: verify Secureboot
+		// the following errors out here
+		// https://github.com/google/go-attestation/blob/be496f11497f3382fed7e66c6170b1bba46f369a/attest/secureboot.go#L205
+		// research if this needs additional PCRs in the eventlog...
+		/*
+
+		   PCR7 on debian 10+secure boot:
+
+		   tpm2_eventlog /sys/kernel/security/tpm0/binary_bios_measurements
+		   pcrs:
+		     sha1:
+		       0  : 0x0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea
+		       1  : 0xb1676439cac1531683990fefe2218a43239d6fe8
+		       2  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
+		       3  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
+		       4  : 0xb158404e279ecc61206b8625297c88c5ed9012b9
+		       5  : 0x15d9fbbc4be52d0f9653ea7e7105352aee7d02f1
+		       6  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
+		       7  : 0xacfd7eaccc8f855aa27b2c05b8b1c7c982bfbbfa
+		       14 : 0x7c067190e738329a729aebd84709a7063de9219c
+
+		   # tpm2_pcrread sha1:7+sha256:7
+		     sha1:
+		       7 : 0xACFD7EACCC8F855AA27B2C05B8B1C7C982BFBBFA
+		     sha256:
+		       7 : 0x3D91599581F7A3A3A1BB7C7A55A7B8A50967BE6506A5F47A9E89FEF756FAB07A
+
+		   	-pcr7
+		   	-expectedPCRValue 3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a
+		   	-expectedPCRSHA1 acfd7eaccc8f855aa27b2c05b8b1c7c982bfbbfa
+		*/
+		// sbState, err := attest.ParseSecurebootState(events)
+		// if err != nil {
+		// 	glog.Fatalf("ParseSecurebootState() failed: %v", err)
+		// }
+		// if sbState.Enabled {
+		// 	glog.V(2).Infof("     SecureBoot State: %s\n", sbState.Enabled)
+		// }
+
 	}
 	// Now issue a x509 cert thats associated with the AK.
 	//  this next step is just for demonstration and uses a CA authority the Verifier has access to.

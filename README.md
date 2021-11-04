@@ -1085,6 +1085,10 @@ I simply transmit a sample one i generated in the git repo below.  There are sev
 
 2. I don't think golang can verify the cert even if correctly set all the options.
 
+Update `11/4/21`:  TODO, use
+            [go-attestation/attributecert](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecert) allows for parsing the certificate
+            https://github.com/golang/go/issues/49270
+
 For now, i just transmit a sample one.
 
 For more info see:
@@ -1099,6 +1103,7 @@ The Platform Certificate makes the assertions listed in section 2.1.6. This cert
 adheres to RFC 5755 [11] and all requirements and limitations from that specification apply unless otherwise noted.
 ```
 
+- [Host Integrity at Runtime and Start-up (HIRS)](https://github.com/nsacyber/HIRS/tree/master)
 
 Here is an example repo in java on how to generate a platform certificate [Attribute Certificate](https://github.com/salrashid123/attribute_certificate).  Unfortunately, i don't think golang can parse a Platform Certificate at the moment
 
