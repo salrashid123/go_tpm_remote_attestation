@@ -24,6 +24,8 @@ type VerifierClient interface {
 	GetSecret(ctx context.Context, in *GetSecretRequest, opts ...grpc.CallOption) (*GetSecretResponse, error)
 	OfferQuote(ctx context.Context, in *OfferQuoteRequest, opts ...grpc.CallOption) (*OfferQuoteResponse, error)
 	ProvideQuote(ctx context.Context, in *ProvideQuoteRequest, opts ...grpc.CallOption) (*ProvideQuoteResponse, error)
+	OfferAttestation(ctx context.Context, in *OfferAttestationRequest, opts ...grpc.CallOption) (*OfferAttestationResponse, error)
+	ProvideAttestation(ctx context.Context, in *ProvideAttestationRequest, opts ...grpc.CallOption) (*ProvideAttestationResponse, error)
 	OfferCSR(ctx context.Context, in *OfferCSRRequest, opts ...grpc.CallOption) (*OfferCSRResponse, error)
 }
 
@@ -89,6 +91,24 @@ func (c *verifierClient) ProvideQuote(ctx context.Context, in *ProvideQuoteReque
 	return out, nil
 }
 
+func (c *verifierClient) OfferAttestation(ctx context.Context, in *OfferAttestationRequest, opts ...grpc.CallOption) (*OfferAttestationResponse, error) {
+	out := new(OfferAttestationResponse)
+	err := c.cc.Invoke(ctx, "/verifier.Verifier/OfferAttestation", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *verifierClient) ProvideAttestation(ctx context.Context, in *ProvideAttestationRequest, opts ...grpc.CallOption) (*ProvideAttestationResponse, error) {
+	out := new(ProvideAttestationResponse)
+	err := c.cc.Invoke(ctx, "/verifier.Verifier/ProvideAttestation", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *verifierClient) OfferCSR(ctx context.Context, in *OfferCSRRequest, opts ...grpc.CallOption) (*OfferCSRResponse, error) {
 	out := new(OfferCSRResponse)
 	err := c.cc.Invoke(ctx, "/verifier.Verifier/OfferCSR", in, out, opts...)
@@ -108,6 +128,8 @@ type VerifierServer interface {
 	GetSecret(context.Context, *GetSecretRequest) (*GetSecretResponse, error)
 	OfferQuote(context.Context, *OfferQuoteRequest) (*OfferQuoteResponse, error)
 	ProvideQuote(context.Context, *ProvideQuoteRequest) (*ProvideQuoteResponse, error)
+	OfferAttestation(context.Context, *OfferAttestationRequest) (*OfferAttestationResponse, error)
+	ProvideAttestation(context.Context, *ProvideAttestationRequest) (*ProvideAttestationResponse, error)
 	OfferCSR(context.Context, *OfferCSRRequest) (*OfferCSRResponse, error)
 }
 
@@ -132,6 +154,12 @@ func (UnimplementedVerifierServer) OfferQuote(context.Context, *OfferQuoteReques
 }
 func (UnimplementedVerifierServer) ProvideQuote(context.Context, *ProvideQuoteRequest) (*ProvideQuoteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProvideQuote not implemented")
+}
+func (UnimplementedVerifierServer) OfferAttestation(context.Context, *OfferAttestationRequest) (*OfferAttestationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method OfferAttestation not implemented")
+}
+func (UnimplementedVerifierServer) ProvideAttestation(context.Context, *ProvideAttestationRequest) (*ProvideAttestationResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProvideAttestation not implemented")
 }
 func (UnimplementedVerifierServer) OfferCSR(context.Context, *OfferCSRRequest) (*OfferCSRResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method OfferCSR not implemented")
@@ -256,6 +284,42 @@ func _Verifier_ProvideQuote_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Verifier_OfferAttestation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OfferAttestationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VerifierServer).OfferAttestation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/verifier.Verifier/OfferAttestation",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VerifierServer).OfferAttestation(ctx, req.(*OfferAttestationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Verifier_ProvideAttestation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProvideAttestationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VerifierServer).ProvideAttestation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/verifier.Verifier/ProvideAttestation",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VerifierServer).ProvideAttestation(ctx, req.(*ProvideAttestationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _Verifier_OfferCSR_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(OfferCSRRequest)
 	if err := dec(in); err != nil {
@@ -304,6 +368,14 @@ var Verifier_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProvideQuote",
 			Handler:    _Verifier_ProvideQuote_Handler,
+		},
+		{
+			MethodName: "OfferAttestation",
+			Handler:    _Verifier_OfferAttestation_Handler,
+		},
+		{
+			MethodName: "ProvideAttestation",
+			Handler:    _Verifier_ProvideAttestation_Handler,
 		},
 		{
 			MethodName: "OfferCSR",

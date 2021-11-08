@@ -5,19 +5,26 @@ package verifier;
 option go_package = "github.com/salrashid123/go_tpm_registrar/verifier";
 
 service Verifier {
-  rpc OfferPlatformCert (OfferPlatformCertRequest) returns (OfferPlatformCertResponse) { }  
+  rpc OfferPlatformCert (OfferPlatformCertRequest) returns (OfferPlatformCertResponse) { }
   rpc MakeCredential (MakeCredentialRequest) returns (MakeCredentialResponse) { }
   rpc ActivateCredential (ActivateCredentialRequest) returns (ActivateCredentialResponse) { }
-  rpc GetSecret (GetSecretRequest) returns (GetSecretResponse) { }  
+  rpc GetSecret (GetSecretRequest) returns (GetSecretResponse) { }
   rpc OfferQuote (OfferQuoteRequest) returns (OfferQuoteResponse) { }
   rpc ProvideQuote (ProvideQuoteRequest) returns (ProvideQuoteResponse) { }
-  rpc OfferCSR (OfferCSRRequest) returns (OfferCSRResponse) { }  
+  rpc OfferAttestation (OfferAttestationRequest) returns (OfferAttestationResponse) { }
+  rpc ProvideAttestation (ProvideAttestationRequest) returns (ProvideAttestationResponse) { }
+  rpc OfferCSR (OfferCSRRequest) returns (OfferCSRResponse) { }
 }
 
+enum SecretType {
+  RAW = 0;
+  RSA = 1;
+  AES = 2;
+}
 
 message OfferPlatformCertRequest {
   string uid = 1;
-  bytes platformCert = 2;  
+  bytes platformCert = 2;
 }
 
 message OfferPlatformCertResponse {
@@ -28,7 +35,7 @@ message OfferPlatformCertResponse {
 message MakeCredentialRequest {
   string uid = 1;
   string akName = 2;
-  bytes ekCert = 3;  
+  bytes ekCert = 3;
   bytes ekPub = 4;
   bytes akPub = 5;
   bytes akPubCert = 6;
@@ -57,6 +64,7 @@ message GetSecretRequest {
 message GetSecretResponse {
   string uid = 1;
   bytes importBlob = 2;
+  optional SecretType secret_type = 3;
 }
 
 message OfferQuoteRequest {
@@ -65,7 +73,7 @@ message OfferQuoteRequest {
 
 message OfferQuoteResponse {
   string uid = 1;
-  int32 pcr = 2;
+  repeated int32 pcrs = 2;
   string nonce = 3;
 }
 
@@ -73,10 +81,30 @@ message ProvideQuoteRequest {
   string uid = 1;
   bytes attestation = 2;
   bytes signature = 3;
-  bytes eventlog = 4;      
+  bytes eventlog = 4;
 }
 
 message ProvideQuoteResponse {
+  string uid = 1;
+  bool verified = 2;
+}
+
+message OfferAttestationRequest {
+  string uid = 1;
+}
+
+message OfferAttestationResponse {
+  string uid = 1;
+  repeated int32 pcrs = 2;
+  string nonce = 3;
+}
+
+message ProvideAttestationRequest {
+  string uid = 1;
+  bytes attestation = 2;
+}
+
+message ProvideAttestationResponse {
   string uid = 1;
   bool verified = 2;
 }
@@ -86,7 +114,7 @@ message OfferCSRRequest {
   bytes public_key = 2;
   bytes csr = 3;
   bytes attestation_signature = 4;
-  bytes attestation = 5;  
+  bytes attestation = 5;
 }
 
 message OfferCSRResponse {

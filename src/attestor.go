@@ -31,8 +31,11 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/salrashid123/go_tpm_registrar/verifier"
 	pb "github.com/salrashid123/go_tpm_registrar/verifier"
 
 	"github.com/golang/glog"
@@ -70,24 +73,24 @@ const (
 )
 
 var (
-	rwc        io.ReadWriteCloser
-	importMode = flag.String("importMode", "AES", "RSA|AES")
-	pcr        = flag.Int("unsealPcr", 0, "pcr value to unseal against")
-	caCert     = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to trust")
+	rwc    io.ReadWriteCloser
+	pcr    = flag.String("unsealPcrs", "0,7", "pcrs used to unseal against")
+	caCert = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to trust")
 
-	clientCert       = flag.String("clientcert", "certs/client_crt.pem", "Client SSL Certificate")
-	clientKey        = flag.String("clientkey", "certs/client_key.pem", "Client SSL PrivateKey")
-	platformCertFile = flag.String("platformCertFile", "certs/platform_cert.pem", "Platform Certificate File")
-	usemTLS          = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
-	readCertsFromNV  = flag.Bool("readCertsFromNV", true, "Try to read read certificates from NV")
-	readEventLog     = flag.Bool("readEventLog", false, "Reading Event Log")
-	handleNames      = map[string][]tpm2.HandleType{
+	clientCert         = flag.String("clientcert", "certs/client_crt.pem", "Client SSL Certificate")
+	clientKey          = flag.String("clientkey", "certs/client_key.pem", "Client SSL PrivateKey")
+	platformCertFile   = flag.String("platformCertFile", "certs/platform_cert.der", "Platform Certificate File")
+	usemTLS            = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
+	useFullAttestation = flag.Bool("useFullAttestation", false, "Use Attestation")
+	readCertsFromNV    = flag.Bool("readCertsFromNV", true, "Try to read read certificates from NV")
+	readEventLog       = flag.Bool("readEventLog", false, "Reading Event Log")
+	handleNames        = map[string][]tpm2.HandleType{
 		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
 		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
 		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
 		"transient": []tpm2.HandleType{tpm2.HandleTypeTransient},
 	}
-
+	pcrList           = []int{}
 	defaultEKTemplate = tpm2.Public{
 		Type:    tpm2.AlgRSA,
 		NameAlg: tpm2.AlgSHA256,
@@ -246,37 +249,21 @@ func main() {
 
 	glog.V(5).Infof("=============== Sending Platform Certificate ===============")
 
-	// I just statically generated the platform cert.
-	// I do not think go support parsing of attribute certificates yet
-
-	// openssl will support it
-	// i don't have the ca used for this platform cert since its from an example only
-	// so we're skipping the verification step here...
-
+	// I just statically generated the platform cert on another sheildedVM with a different EKCert/TPM
+	//  i did that since i don't know how to generate and issue a platformcert in golang
+	//  but i do know how to issue one win JAVA
+	//  so, what i did created a new attribute cert on a different vm but used the same trusted CA to sign it.
+	//  the verifer will check the signature but will pretend the EKCert the attestor has has the same static serial number
 	// https://github.com/salrashid123/attribute_certificate
 	// https://en.wikipedia.org/wiki/Authorization_certificate
 	// https://github.com/openssl/openssl/issues/14648
 	// 2.1.5 Assertions Made by a Platform Certificate >  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
 
 	// for now just accept it w/o verifying its claims and move on
-
-	var platformCert []byte
-	platformCert, err = tpm2.NVRead(rwc, platformCertNVIndex)
+	platformCert, err := ioutil.ReadFile(*platformCertFile)
 	if err != nil {
-		// our best guess at the platform cert failed...pretend the cert was
-		platformCert, err = ioutil.ReadFile(*platformCertFile)
-		if err != nil {
-			glog.Fatalf("failed to load root Platform certificates  error=%v", err)
-		}
+		glog.Fatalf("failed to parse %s: %v", *platformCertFile, err)
 	}
-
-	pcertPEM := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "ATTRIBUTE CERTIFICATE",
-			Bytes: platformCert,
-		},
-	)
-	glog.V(50).Infof("     Platform Cert: %s", string(pcertPEM))
 
 	pcreq := &pb.OfferPlatformCertRequest{
 		Uid:          *u,
@@ -344,6 +331,82 @@ func main() {
 	}
 	glog.V(5).Infof("    Activate Credential Status %t", ar.Verified)
 
+	if *useFullAttestation {
+		glog.V(5).Infof("=============== OfferAttestation ===============")
+
+		aqr := &pb.OfferAttestationRequest{
+			Uid: *u,
+		}
+		qr, err := c.OfferAttestation(ctx, aqr)
+		if err != nil {
+			glog.Fatalf("could not call OfferAttestation: %v", err)
+		}
+		glog.V(5).Infof("     OfferAttestationResponse has nonce %s, pcrs: %v", qr.Nonce, qr.Pcrs)
+
+		pcrsSelected := []int{}
+		for k := range qr.Pcrs {
+			pcrsSelected = append(pcrsSelected, int(qr.Pcrs[k]))
+		}
+		buf, err := evalAttest(pcrsSelected, qr.Nonce)
+		if err != nil {
+			glog.Fatalf("could not create Quote: %v", err)
+		}
+
+		pqr := &pb.ProvideAttestationRequest{
+			Uid:         *u,
+			Attestation: buf,
+		}
+		paqr, err := c.ProvideAttestation(ctx, pqr)
+		if err != nil {
+			glog.Fatalf("could not call OfferAttestation: %v", err)
+		}
+		glog.V(5).Infof("     ProvideAttestation Requested with nonce Response %v", paqr.Verified)
+
+	} else {
+		glog.V(5).Infof("=============== OfferQuote ===============")
+
+		aqr := &pb.OfferQuoteRequest{
+			Uid: *u,
+		}
+		qr, err := c.OfferQuote(ctx, aqr)
+		if err != nil {
+			glog.Fatalf("could not call OfferQuote: %v", err)
+		}
+		glog.V(5).Infof("     Quote Requested with nonce %s, pcr: %d", qr.Nonce, qr.Pcrs)
+
+		glog.V(5).Infof("=============== Generating Quote ===============")
+
+		pcrsSelected := []int{}
+		for k := range qr.Pcrs {
+			pcrsSelected = append(pcrsSelected, int(qr.Pcrs[k]))
+		}
+		att, sig, evtLog, err := quote(pcrsSelected, qr.Nonce)
+		if err != nil {
+			glog.Fatalf("could not create Quote: %v", err)
+		}
+		glog.V(5).Infof("=============== Providing Quote ===============")
+		pqr := &pb.ProvideQuoteRequest{
+			Uid:         *u,
+			Attestation: att,
+			Signature:   sig,
+			Eventlog:    evtLog,
+		}
+		pqesp, err := c.ProvideQuote(ctx, pqr)
+		if err != nil {
+			glog.Errorf("could not provideQuote: %v", err)
+			return
+		}
+		glog.V(5).Infof("     Provided Quote verified: %t", pqesp.Verified)
+	}
+
+	for _, v := range strings.Split(*pcr, ",") {
+		i, err := strconv.Atoi(v)
+		if err != nil {
+			glog.Errorf("Unable to  convert pcr to int : %v", err)
+		}
+		pcrList = append(pcrList, int(i))
+	}
+
 	glog.V(5).Infof("=============== GetSecret  ===============")
 	sreq := &pb.GetSecretRequest{
 		Uid: *u,
@@ -354,13 +417,13 @@ func main() {
 		glog.Fatalf("could not call GetSecret: %v", err)
 	}
 
-	if *importMode == "RSA" {
+	if *asr.SecretType == verifier.SecretType_RSA {
 		glog.V(5).Infof("===============  Importing sealed RSA Key ===============")
 		err = importRSAKey(*asr)
 		if err != nil {
 			glog.Fatalf("Unable to Import RSA Key: %v", err)
 		}
-	} else if *importMode == "AES" {
+	} else if *asr.SecretType == verifier.SecretType_AES {
 		glog.V(5).Infof("===============  Importing sealed AES Key ===============")
 		secret, err := importKey(*asr)
 		if err != nil {
@@ -370,35 +433,6 @@ func main() {
 	} else {
 		glog.Fatalln("importMode must be either RSA or AES")
 	}
-
-	glog.V(5).Infof("=============== OfferQuote ===============")
-
-	aqr := &pb.OfferQuoteRequest{
-		Uid: *u,
-	}
-	qr, err := c.OfferQuote(ctx, aqr)
-	if err != nil {
-		glog.Fatalf("could not call OfferQuote: %v", err)
-	}
-	glog.V(5).Infof("     Quote Requested with nonce %s, pcr: %d", qr.Nonce, qr.Pcr)
-
-	glog.V(5).Infof("=============== Generating Quote ===============")
-	att, sig, evtLog, err := quote(int(qr.Pcr), qr.Nonce)
-	if err != nil {
-		glog.Fatalf("could not create Quote: %v", err)
-	}
-	glog.V(5).Infof("=============== Providing Quote ===============")
-	pqr := &pb.ProvideQuoteRequest{
-		Uid:         *u,
-		Attestation: att,
-		Signature:   sig,
-		Eventlog:    evtLog,
-	}
-	pqesp, err := c.ProvideQuote(ctx, pqr)
-	if err != nil {
-		glog.Fatalf("could not provideQuote: %v", err)
-	}
-	glog.V(5).Infof("     Provided Quote verified: %t", pqesp.Verified)
 
 	glog.V(5).Infof("=============== Offer CSR ===============")
 
@@ -494,7 +528,7 @@ func generateCSR(cn, san string) (publicKey []byte, csr []byte, attestationSigna
 	if err != nil {
 		return []byte(""), []byte(""), []byte(""), []byte(""), fmt.Errorf("Unable to create StartAuthSession : %v", err)
 	}
-
+	defer tpm2.FlushContext(rwc, sessCreateHandle)
 	// if err = tpm2.PolicyPCR(rwc, sessCreateHandle, nil, pcrSelection23); err != nil {
 	// 	log.Fatalf("PolicyPCR failed: %v", err)
 	// }
@@ -504,12 +538,13 @@ func generateCSR(cn, san string) (publicKey []byte, csr []byte, attestationSigna
 	}
 	authCommandCreateAuth := tpm2.AuthCommand{Session: sessCreateHandle, Attributes: tpm2.AttrContinueSession}
 
-	pcrList := []int{*pcr}
-	pcrval, err := tpm2.ReadPCR(rwc, int(*pcr), tpm2.AlgSHA256)
-	if err != nil {
-		return []byte(""), []byte(""), []byte(""), []byte(""), fmt.Errorf("Unable to  ReadPCR : %v", err)
+	for _, i := range pcrList {
+		pcrval, err := tpm2.ReadPCR(rwc, int(i), tpm2.AlgSHA256)
+		if err != nil {
+			return []byte(""), []byte(""), []byte(""), []byte(""), fmt.Errorf("Unable to  ReadPCR : %v", err)
+		}
+		glog.V(5).Infof("     PCR [%d] Value %v ", i, hex.EncodeToString(pcrval))
 	}
-	glog.V(5).Infof("     PCR %d Value %v ", *pcr, hex.EncodeToString(pcrval))
 
 	pcrSelection23 := tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrList}
 
@@ -758,7 +793,7 @@ func importRSAKey(ar pb.GetSecretResponse) (err error) {
 	dataToSign := []byte("secret")
 	digest := sha256.Sum256(dataToSign)
 
-	if err = tpm2.PolicyPCR(rwc, session, nil, tpm2.PCRSelection{tpm2.AlgSHA256, []int{*pcr}}); err != nil {
+	if err = tpm2.PolicyPCR(rwc, session, nil, tpm2.PCRSelection{tpm2.AlgSHA256, pcrList}); err != nil {
 		glog.Fatalf("PolicyPCR failed: %v", err)
 	}
 	sig, err := tpm2.SignWithSession(rwc, session, pH, emptyPassword, digest[:], nil, &tpm2.SigScheme{
@@ -774,16 +809,87 @@ func importRSAKey(ar pb.GetSecretResponse) (err error) {
 	return nil
 }
 
-func quote(reqPCR int, secret string) (attestation []byte, signature []byte, eventLog []byte, retErr error) {
+func evalAttest(pcrList []int, secret string) (attestation []byte, retErr error) {
+	glog.V(5).Infof("     --> Start Attest")
+
+	glog.V(10).Infof("     ContextLoad (ek) ========")
+	ekhBytes, err := ioutil.ReadFile(ekFile)
+	if err != nil {
+		return []byte(""), fmt.Errorf("ContextLoad failed for ekh: %v", err)
+	}
+	ekh, err := tpm2.ContextLoad(rwc, ekhBytes)
+	if err != nil {
+		return []byte(""), fmt.Errorf("ContextLoad failed for ekh: %v", err)
+	}
+	defer tpm2.FlushContext(rwc, ekh)
+	glog.V(10).Infof("     LoadUsingAuth ========")
+
+	loadCreateHandle, _, err := tpm2.StartAuthSession(
+		rwc,
+		tpm2.HandleNull,
+		tpm2.HandleNull,
+		make([]byte, 16),
+		nil,
+		tpm2.SessionPolicy,
+		tpm2.AlgNull,
+		tpm2.AlgSHA256)
+	if err != nil {
+		return []byte(""), fmt.Errorf("Unable to create StartAuthSession : %v", err)
+	}
+	defer tpm2.FlushContext(rwc, loadCreateHandle)
+
+	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
+		return []byte(""), fmt.Errorf("Unable to create PolicySecret: %v", err)
+	}
+
+	authCommandLoad := tpm2.AuthCommand{Session: loadCreateHandle, Attributes: tpm2.AttrContinueSession}
+
+	glog.V(10).Infof("     Read (akPub) ========")
+	akPub, err := ioutil.ReadFile(akPubFile)
+	if err != nil {
+		return []byte(""), fmt.Errorf("Read failed for akPub: %v", err)
+	}
+	glog.V(10).Infof("     Read (akPriv) ========")
+	akPriv, err := ioutil.ReadFile(akPrivFile)
+	if err != nil {
+		return []byte(""), fmt.Errorf("Read failed for akPriv: %v", err)
+	}
+
+	keyHandle, keyName, err := tpm2.LoadUsingAuth(rwc, ekh, authCommandLoad, akPub, akPriv)
+	if err != nil {
+		return []byte(""), fmt.Errorf("Load failed: %s", err)
+	}
+	defer tpm2.FlushContext(rwc, keyHandle)
+	kn := hex.EncodeToString(keyName)
+	glog.V(10).Infof("     AK keyName %s", kn)
+
+	kk, err := client.NewCachedKey(rwc, tpm2.HandleEndorsement, client.AKTemplateRSA(), keyHandle)
+	if err != nil {
+		return []byte(""), fmt.Errorf("Load failed for AK: %s", err)
+	}
+	glog.V(10).Infof("     AK CachedKey Name %s", hex.EncodeToString(kk.Name().Digest.Value))
+	attestationBlob, err := kk.Attest(client.AttestOpts{Nonce: []byte(secret)})
+	if err != nil {
+		return []byte(""), fmt.Errorf("failed to attest: %v", err)
+	}
+	buf, err := proto.Marshal(attestationBlob)
+	if err != nil {
+		return []byte(""), fmt.Errorf("failed to attest:  Error marshalling attestation %v", err)
+	}
+	return buf, nil
+}
+
+func quote(pcrList []int, secret string) (attestation []byte, signature []byte, eventLog []byte, retErr error) {
 
 	glog.V(5).Infof("     --> Start Quote")
 
-	pcrList := []int{reqPCR}
-	pcrval, err := tpm2.ReadPCR(rwc, *pcr, tpm2.AlgSHA256)
-	if err != nil {
-		glog.Fatalf("Unable to  ReadPCR : %v", err)
+	for k := range pcrList {
+		pcrval, err := tpm2.ReadPCR(rwc, pcrList[k], tpm2.AlgSHA256)
+		if err != nil {
+			glog.Fatalf("Unable to  ReadPCR : %v", err)
+		}
+		glog.V(5).Infof("     PCR %d Value %v ", pcrList[k], hex.EncodeToString(pcrval))
 	}
-	glog.V(5).Infof("     PCR %d Value %v ", *pcr, hex.EncodeToString(pcrval))
 
 	pcrSelection23 := tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrList}
 
@@ -861,23 +967,33 @@ func createKeys() (keyName string, ekPub []byte, akPub []byte, retErr error) {
 
 	glog.V(5).Infof("     --> CreateKeys()")
 
-	pcrList := []int{*pcr}
-	pcrval, err := tpm2.ReadPCR(rwc, *pcr, tpm2.AlgSHA256)
-	if err != nil {
-		return "", []byte(""), []byte(""), fmt.Errorf("Unable to  ReadPCR : %v", err)
+	for _, i := range pcrList {
+		pcrval, err := tpm2.ReadPCR(rwc, int(i), tpm2.AlgSHA256)
+		if err != nil {
+			return "", []byte(""), []byte(""), fmt.Errorf("Unable to  ReadPCR : %v", err)
+		}
+		glog.V(5).Infof("     PCR [%d] Value %v ", i, hex.EncodeToString(pcrval))
 	}
-	glog.V(10).Infof("    Current PCR %v Value %s ", *pcr, hex.EncodeToString(pcrval))
 
 	pcrSelection23 := tpm2.PCRSelection{Hash: tpm2.AlgSHA256, PCRs: pcrList}
 	emptyPassword := ""
 
 	glog.V(10).Infof("     createPrimary")
 
-	ekh, _, err := tpm2.CreatePrimary(rwc, tpm2.HandleEndorsement, pcrSelection23, emptyPassword, emptyPassword, defaultEKTemplate)
+	ekh, _, err := tpm2.CreatePrimary(rwc, tpm2.HandleEndorsement, pcrSelection23, emptyPassword, emptyPassword, client.DefaultEKTemplateRSA())
 	if err != nil {
 		return "", []byte(""), []byte(""), fmt.Errorf("Error creating EK: %v", err)
 	}
 	defer tpm2.FlushContext(rwc, ekh)
+
+	// TODO: use client.EndorsementKeyRSA instead of the long way above...
+	// k, err := client.EndorsementKeyRSA(rwc)
+	// if err != nil {
+	// 	return "", []byte(""), []byte(""), fmt.Errorf("Error creating EK: %v", err)
+	// }
+
+	// ekh := k.Handle()
+	// defer k.Close()
 
 	// reread the pub eventhough tpm2.CreatePrimary* gives pub
 	tpmEkPub, name, _, err := tpm2.ReadPublic(rwc, ekh)

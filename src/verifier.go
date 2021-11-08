@@ -18,11 +18,16 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"hash"
+	"log"
 	mrand "math/rand"
+	"strconv"
+	"strings"
 
 	"encoding/base64"
 	"encoding/hex"
@@ -38,6 +43,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/google/go-attestation/attributecert"
 	"github.com/salrashid123/go_tpm_registrar/verifier"
 
 	"golang.org/x/net/context"
@@ -48,33 +54,35 @@ import (
 	"github.com/golang/protobuf/proto"
 	//"github.com/google/go-attestation/attest"
 	"github.com/google/go-tpm-tools/client"
+	"github.com/google/go-tpm-tools/proto/attest"
+	"github.com/google/go-tpm-tools/proto/tpm"
+	tpmpb "github.com/google/go-tpm-tools/proto/tpm"
 	gotpmserver "github.com/google/go-tpm-tools/server"
 	"github.com/google/go-tpm/tpm2"
+	"golang.org/x/exp/utf8string"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-
-	tpmpb "github.com/google/go-tpm-tools/proto/tpm"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 var (
-	grpcport         = flag.String("grpcport", "", "grpcport")
-	expectedPCRValue = flag.String("expectedPCRValue", "24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f", "expectedPCRValue")
-	expectedPCRSHA1  = flag.String("expectedPCRSHA1", "0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "PCR0 value for the eventlog on GCE VMs, debian10 with secure boot")
-	pcr              = flag.Int("pcr", 0, "PCR Value to use")
-	caCert           = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to issue certs")
-	caKey            = flag.String("cackey", "certs/CA_key.pem", "CA PrivateKey to issue certs")
-	serverCert       = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
-	serverKey        = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
-	usemTLS          = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
-	platformCA       = flag.String("platformCA", "certs/platform_ca.pem", "Platform CA")
-	readEventLog     = flag.Bool("readEventLog", false, "Reading Event Log")
-	registry         = make(map[string]verifier.MakeCredentialRequest)
-	nonces           = make(map[string]string)
-	rwc              io.ReadWriteCloser
-	importMode       = flag.String("importMode", "AES", "RSA|AES")
-	aes256Key        = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES Symmetric key for client")
-	handleNames      = map[string][]tpm2.HandleType{
+	grpcport             = flag.String("grpcport", "", "grpcport")
+	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:dd0276b3bf0e30531a575a1cb5a02171ea0ad0f164d51e81f4cd0ab0bd5baadd", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
+	expectedPCRMapSHA1   = flag.String("expectedPCRMapSHA1", "0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "EventLog values PCR value map as sha1.  Used only if readEventLog is set to true")
+	caCert               = flag.String("cacert", "certs/CA_crt.pem", "CA Certificate to issue certs")
+	caKey                = flag.String("cackey", "certs/CA_key.pem", "CA PrivateKey to issue certs")
+	serverCert           = flag.String("servercert", "certs/server_crt.pem", "Server SSL Certificate")
+	serverKey            = flag.String("serverkey", "certs/server_key.pem", "Server SSL PrivateKey")
+	usemTLS              = flag.Bool("usemTLS", true, "Validate original client request with mTLS")
+	platformCA           = flag.String("platformCA", "certs/platform_ca.pem", "Platform CA")
+	readEventLog         = flag.Bool("readEventLog", false, "Reading Event Log")
+	registry             = make(map[string]verifier.MakeCredentialRequest)
+	nonces               = make(map[string]string)
+	rwc                  io.ReadWriteCloser
+	importMode           = flag.String("importMode", "AES", "RSA|AES")
+	aes256Key            = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES Symmetric key for client")
+	letterRunes          = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	handleNames          = map[string][]tpm2.HandleType{
 		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
 		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
 		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
@@ -253,65 +261,169 @@ func main() {
 	s.Serve(lis)
 }
 
+func (s *server) OfferAttestation(ctx context.Context, in *verifier.OfferAttestationRequest) (*verifier.OfferAttestationResponse, error) {
+	glog.V(2).Infof("======= OfferAttestation ========")
+	glog.V(5).Infof("     client provided uid: %s", in.Uid)
+
+	nonce := make([]rune, 16)
+	for i := range nonce {
+		nonce[i] = letterRunes[mrand.Intn(len(letterRunes))]
+	}
+
+	glog.V(2).Infof("     Sending Nonce %s,", string(nonce))
+	id := in.Uid
+
+	glog.V(2).Infof("     Returning ProvideAttestationResponse ========")
+	nonces[id] = string(nonce)
+
+	pcrSelected, _, err := getPCRMap(tpm.HashAlgo_SHA256)
+	if err != nil {
+		return &verifier.OfferAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to find pcrs for  Quote %v", err))
+	}
+	var pcrs []int32
+	for k := range pcrSelected {
+		pcrs = append(pcrs, int32(k))
+	}
+	return &verifier.OfferAttestationResponse{
+		Uid:   in.Uid,
+		Nonce: string(nonce),
+		Pcrs:  pcrs,
+	}, nil
+}
+
+func (s *server) ProvideAttestation(ctx context.Context, in *verifier.ProvideAttestationRequest) (*verifier.ProvideAttestationResponse, error) {
+	glog.V(2).Infof("======= ProvideAttestation ========")
+	glog.V(5).Infof("     client provided uid: %s", in.Uid)
+	ver := false
+	id := in.Uid
+	nn, ok := registry[id]
+	if !ok {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to find prior make/activate request for uid", in.Uid))
+		return &verifier.ProvideAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to find prior make/activate request for uid"))
+	}
+	akPub := nn.AkPub
+
+	val, ok := nonces[id]
+	if !ok {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to find nonce request for uid", in.Uid))
+	} else {
+		delete(nonces, id)
+
+		attestationMsg := &attest.Attestation{}
+		err := proto.Unmarshal(in.Attestation, attestationMsg)
+		if err != nil {
+			glog.Errorf("     [%s] ProvideAttestation failed:  Could no unmarshall attestation, %v", in.Uid, err)
+			return &verifier.ProvideAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Could no unmarshall attestation %v", err))
+		}
+
+		glog.V(2).Infof("     Decoding PublicKey for AK ========")
+		p, err := tpm2.DecodePublic(akPub)
+		if err != nil {
+			glog.Errorf("     [%s] ProvideAttestation failed:  DecodePublic failed, %v", in.Uid, err)
+			return &verifier.ProvideAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("DecodePublic failed: %v", err))
+		}
+		rsaPub := rsa.PublicKey{E: int(p.RSAParameters.Exponent()), N: p.RSAParameters.Modulus()}
+
+		ap, err := p.Key()
+		if err != nil {
+			glog.Errorf("     [%s] ProvideAttestation failed:  aKPub.Key() failed: %s", in.Uid, err)
+			return &verifier.ProvideAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("aKPub.Key() failed: %s", err))
+		}
+		akBytes, err := x509.MarshalPKIXPublicKey(ap)
+		if err != nil {
+			glog.Errorf("     [%s] ProvideAttestation failed:  Unable to convert akPub: %v", in.Uid, err)
+			return &verifier.ProvideAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to convert akPub: %v", err))
+		}
+
+		akPubPEM := pem.EncodeToMemory(
+			&pem.Block{
+				Type:  "PUBLIC KEY",
+				Bytes: akBytes,
+			},
+		)
+		glog.V(10).Infof("     Decoded EKPub: \n%v", string(akPubPEM))
+
+		glog.V(2).Infof("     Verifying Attestation with AK Public Key: %v", rsaPub)
+		ims, err := gotpmserver.VerifyAttestation(attestationMsg, gotpmserver.VerifyOpts{
+			Nonce:      []byte(val),
+			TrustedAKs: []crypto.PublicKey{ap},
+		})
+		if err != nil {
+			glog.Errorf("     [%s] ProvideAttestation failed:  failed to verify %v", in.Uid, err)
+			return &verifier.ProvideAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to verify: %v", err))
+		}
+		glog.V(2).Infoln("     Attestation verified")
+		for _, q := range attestationMsg.Quotes {
+			log.Printf("Quotes Hash %s\n", q.Pcrs.Hash.String())
+		}
+		for _, evt := range ims.RawEvents {
+			if utf8string.NewString(string(evt.Data)).IsASCII() {
+				glog.V(2).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), string(evt.Data))
+			} else {
+				glog.V(2).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), hex.EncodeToString(evt.Data))
+			}
+		}
+
+		if err == nil {
+			ver = true
+		} else {
+			glog.Errorf(fmt.Sprintf("[%s] Unable to Verify Quote %v", in.Uid, err))
+			return &verifier.ProvideAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to Verify Quote %v", err))
+		}
+	}
+
+	return &verifier.ProvideAttestationResponse{
+		Uid:      id,
+		Verified: ver,
+	}, nil
+}
+
 func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatformCertRequest) (*verifier.OfferPlatformCertResponse, error) {
 	glog.V(2).Infof("======= OfferPlatformCert ========")
 	glog.V(5).Infof("     client provided uid: %s", in.Uid)
 
-	certPEM := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "ATTRIBUTE CERTIFICATE",
-			Bytes: in.PlatformCert,
-		},
-	)
+	rootPEM, err := ioutil.ReadFile(*platformCA)
+	if err != nil {
+		glog.Errorf(fmt.Sprintf("Error [%s] Reading Root platform cert %v", in.Uid, err))
+		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:  Reading Root platform cert: %v", err))
+	}
 
-	glog.V(50).Infof("     client provided Platform Cert: \n%s", string(certPEM))
+	roots := x509.NewCertPool()
+	ok := roots.AppendCertsFromPEM([]byte(rootPEM))
+	if !ok {
+		glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate %v", in.Uid, err))
+		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse platform root certificate"))
+	}
 
-	// now do cert verification
-	// I do not think go support parsing of attribute certificates
-	// Update `11/4/21`:  TODO, use
-	//            [go-attestation/attributecert](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecert) allows for parsing the certificate
-	//            https://github.com/golang/go/issues/49270
+	block, _ := pem.Decode([]byte(rootPEM))
+	if block == nil {
+		glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate PEM %v", in.Uid, err))
+		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate PEM"))
+	}
+	platformRoot, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate %v", in.Uid, err))
+		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate: "+err.Error()))
+	}
 
-	// openssl will support it
-	// i don't have the ca used for this platform cert since its from an example only
-	// so we're skipping the verification step here...
+	attributecert, err := attributecert.ParseAttributeCertificate(in.PlatformCert)
+	if err != nil {
+		glog.Errorf(fmt.Sprintf("Error [%s] failed to parse  attribute certificate  %v", in.Uid, err))
+		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse Platform Certificate%s: %v", err))
+	}
 
-	// https://en.wikipedia.org/wiki/Authorization_certificate
-	// https://github.com/openssl/openssl/issues/14648
-	// 2.1.5 Assertions Made by a Platform Certificate >  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
+	err = attributecert.CheckSignatureFrom(platformRoot)
+	if err != nil {
+		glog.Errorf(fmt.Sprintf("Error [%s] failed to verify  attribute certificate  %v", in.Uid, err))
+		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to verify Platform Certificate%s: %v", err))
 
-	// for now just accept it and move on
+	}
+	glog.V(5).Infof(" Verified Platform cert signed by privacyCA")
 
-	// rootPEM, err := ioutil.ReadFile(*platformCA)
-	// if err != nil {
-	// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:  Reading Root platform cert: %v", err))
-	// }
-
-	// roots := x509.NewCertPool()
-	// ok := roots.AppendCertsFromPEM([]byte(rootPEM))
-	// if !ok {
-	// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse platform root certificate"))
-	// }
-
-	// block, _ := pem.Decode([]byte(certPEM))
-	// if block == nil {
-	// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate PEM"))
-	// }
-	// cert, err := x509.ParseCertificate(block.Bytes)
-	// if err != nil {
-	// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate: "+err.Error()))
-	// }
-
-	// opts := x509.VerifyOptions{
-	// 	Roots:         roots,
-	// 	Intermediates: x509.NewCertPool(),
-	// }
-
-	// if _, err := cert.Verify(opts); err != nil {
-	// 	if err.Error() != "x509: unhandled critical extension" {
-	// 		return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to verify platform certificate: "+err.Error()))
-	// 	}
-	// }
+	// todo, save the serial number here...we need to compare the serail number seen here againt the EKCert (which we don't have at the point; i know
+	// i can just change the protomessage to send it unilaterally...btw, the EKCert is sent in the makeCredential call just...so maybe save the serialnumber from
+	// here
+	glog.V(5).Infof(" Platform Cert's Holder SerialNumber %s\n", fmt.Sprintf("%x", attributecert.Holder.Serial))
 
 	glog.V(5).Infof("     Platform Certificate Verification succeeded")
 
@@ -332,10 +444,11 @@ func (s *server) MakeCredential(ctx context.Context, in *verifier.MakeCredential
 		glog.V(10).Infof("     Decoding ekCert from client")
 		encCert, err := x509.ParseCertificate(in.EkCert)
 		if err != nil {
+			glog.Errorf(fmt.Sprintf("Error [%s] Loading EKCert %v", in.Uid, err))
 			return &verifier.MakeCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error EKCert %v", err))
 		}
 		// https://pkg.go.dev/github.com/google/certificate-transparency-go/x509
-		// you should verify the EKCert here and the serialNumber
+		// you should verify the EKCert here and the serialNumber (which we just got in the OfferPlatformCert() call)
 		glog.V(10).Infof("     EKCert Encryption Issuer x509 \n%v", encCert.Issuer)
 		glog.V(10).Infof("     EKCert Encryption SerialNumber \n%s", fmt.Sprint(encCert.SerialNumber))
 
@@ -349,6 +462,7 @@ func (s *server) MakeCredential(ctx context.Context, in *verifier.MakeCredential
 
 		ekBytes, err := x509.MarshalPKIXPublicKey(encCert.PublicKey)
 		if err != nil {
+			glog.Errorf(fmt.Sprintf("ERROR:  [%s], could not get MarshalPKIXPublicKey: %v", in.Uid, err))
 			return &verifier.MakeCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:  could not get MarshalPKIXPublicKey: %v", err))
 		}
 		ekPubPEM := pem.EncodeToMemory(
@@ -363,15 +477,18 @@ func (s *server) MakeCredential(ctx context.Context, in *verifier.MakeCredential
 	glog.V(10).Infof("     Decoding ekPub from client")
 	ekPub, err := tpm2.DecodePublic(in.EkPub)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] Error DecodePublic EK %v", in.Uid, err))
 		return &verifier.MakeCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error DecodePublic EK %v", err))
 	}
 
 	ekPubKey, err := ekPub.Key()
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] Error extracting ekPubKey: %s", in.Uid, err))
 		return &verifier.MakeCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error extracting ekPubKey: %s", err))
 	}
 	ekBytes, err := x509.MarshalPKIXPublicKey(ekPubKey)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to convert ekPub: %v", in.Uid, err))
 		return &verifier.MakeCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to convert ekPub: %v", err))
 	}
 
@@ -387,8 +504,7 @@ func (s *server) MakeCredential(ctx context.Context, in *verifier.MakeCredential
 
 	registry[in.Uid] = *in
 
-	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	nonce := make([]rune, 10)
+	nonce := make([]rune, 16)
 	for i := range nonce {
 		nonce[i] = letterRunes[mrand.Intn(len(letterRunes))]
 	}
@@ -398,6 +514,7 @@ func (s *server) MakeCredential(ctx context.Context, in *verifier.MakeCredential
 
 	credBlob, encryptedSecret, err := makeCredential(string(nonce), in.EkCert, in.EkPub, in.AkPub)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to makeCredential", in.Uid))
 		return &verifier.MakeCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to makeCredential"))
 	}
 	glog.V(2).Infof("     Returning MakeCredentialResponse ========")
@@ -415,7 +532,7 @@ func (s *server) ActivateCredential(ctx context.Context, in *verifier.ActivateCr
 	glog.V(10).Infof("     Secret %s", in.Secret)
 
 	if nonces[in.Uid] != in.Secret {
-		glog.Errorf("     ActivateCredential failed:  provided Secret does not match expected Nonce")
+		glog.Errorf("     [%s] ActivateCredential failed:  provided Secret does not match expected Nonce", in.Uid)
 		return &verifier.ActivateCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ActivateCredential failed:  provided Secret does not match expected Nonce"))
 	}
 
@@ -436,16 +553,20 @@ func (s *server) GetSecret(ctx context.Context, in *verifier.GetSecretRequest) (
 
 	var key []byte
 	var err error
+
+	secretType := verifier.SecretType_AES
 	if *importMode == "RSA" {
 		_, key, err = generateCertificate(id)
 		if err != nil {
+			glog.Errorf(fmt.Sprintf("[%s]   Unable to gernate certificate %v", in.Uid, err))
 			return &verifier.GetSecretResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to gernate certificate %v", err))
 		}
-
+		secretType = verifier.SecretType_RSA
 	}
 
 	importBLob, err := createImportBlob(id, key)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s]  Unable to gernate certificate %v", in.Uid, err))
 		return &verifier.GetSecretResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create Import Blob %v", err))
 	}
 
@@ -454,6 +575,7 @@ func (s *server) GetSecret(ctx context.Context, in *verifier.GetSecretRequest) (
 	return &verifier.GetSecretResponse{
 		Uid:        in.Uid,
 		ImportBlob: importBLob,
+		SecretType: &secretType,
 	}, nil
 }
 
@@ -461,8 +583,7 @@ func (s *server) OfferQuote(ctx context.Context, in *verifier.OfferQuoteRequest)
 	glog.V(2).Infof("======= OfferQuote ========")
 	glog.V(5).Infof("     client provided uid: %s", in.Uid)
 
-	var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	nonce := make([]rune, 10)
+	nonce := make([]rune, 16)
 	for i := range nonce {
 		nonce[i] = letterRunes[mrand.Intn(len(letterRunes))]
 	}
@@ -472,9 +593,19 @@ func (s *server) OfferQuote(ctx context.Context, in *verifier.OfferQuoteRequest)
 
 	glog.V(2).Infof("     Returning OfferQuoteResponse ========")
 	nonces[id] = string(nonce)
+
+	pcrSelected, _, err := getPCRMap(tpm.HashAlgo_SHA256)
+	if err != nil {
+		return &verifier.OfferQuoteResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to find pcrs for  Quote %v", err))
+	}
+	var pcrs []int32
+	for k := range pcrSelected {
+		pcrs = append(pcrs, int32(k))
+	}
+
 	return &verifier.OfferQuoteResponse{
 		Uid:   in.Uid,
-		Pcr:   int32(*pcr),
+		Pcrs:  pcrs,
 		Nonce: string(nonce),
 	}, nil
 }
@@ -488,13 +619,14 @@ func (s *server) ProvideQuote(ctx context.Context, in *verifier.ProvideQuoteRequ
 
 	val, ok := nonces[id]
 	if !ok {
-		glog.V(2).Infof("Unable to find nonce request for uid")
+		glog.Errorf(fmt.Sprintf("[%s] Unable to find nonce request for uid", in.Uid))
 	} else {
 		delete(nonces, id)
 		err := verifyQuote(id, val, in.Attestation, in.Signature, in.Eventlog)
 		if err == nil {
 			ver = true
 		} else {
+			glog.Errorf(fmt.Sprintf("[%s] Unable to Verify Quote %v", in.Uid, err))
 			return &verifier.ProvideQuoteResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to Verify Quote %v", err))
 		}
 	}
@@ -509,7 +641,10 @@ func (s *server) ProvideQuote(ctx context.Context, in *verifier.ProvideQuoteRequ
 func verifyQuote(uid string, nonce string, attestation []byte, sigBytes []byte, eventLog []byte) (retErr error) {
 	glog.V(2).Infof("     --> Starting verifyQuote()")
 
-	nn := registry[uid]
+	nn, ok := registry[uid]
+	if !ok {
+		return fmt.Errorf("Unable to find prior make/activate request for uid")
+	}
 	akPub := nn.AkPub
 
 	glog.V(10).Infof("     Read and Decode (attestion)")
@@ -523,7 +658,6 @@ func verifyQuote(uid string, nonce string, attestation []byte, sigBytes []byte, 
 	glog.V(5).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
 
 	if nonce != string(att.ExtraData) {
-		glog.Errorf("     Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), nonce)
 		return fmt.Errorf("Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), nonce)
 	}
 
@@ -531,13 +665,11 @@ func verifyQuote(uid string, nonce string, attestation []byte, sigBytes []byte, 
 		HashAlg:   tpm2.AlgSHA256,
 		Signature: sigBytes,
 	}
-	decoded, err := hex.DecodeString(*expectedPCRValue)
-	if err != nil {
-		return fmt.Errorf("DecodeAttestationData(%v) failed: %v", attestation, err)
-	}
-	hash := sha256.Sum256(decoded)
 
-	glog.V(5).Infof("     Expected PCR Value:           --> %s", *expectedPCRValue)
+	_, hash, err := getPCRMap(tpm.HashAlgo_SHA256)
+	if err != nil {
+		return fmt.Errorf("Error getting PCRMap: %v", err)
+	}
 	glog.V(5).Infof("     sha256 of Expected PCR Value: --> %x", hash)
 
 	glog.V(2).Infof("     Decoding PublicKey for AK ========")
@@ -563,65 +695,31 @@ func verifyQuote(uid string, nonce string, attestation []byte, sigBytes []byte, 
 
 	if *readEventLog {
 		glog.V(2).Infof("     Reading EventLog")
-		bt, err := hex.DecodeString(*expectedPCRSHA1)
+
+		evtLogPcrMap, _, err := getPCRMap(tpm.HashAlgo_SHA1)
 		if err != nil {
-			glog.Fatalf("Error decoding pcr %v", err)
+			return fmt.Errorf(fmt.Sprintf("[%s] Error getting PCRMap %v", uid, err))
 		}
-		evtLogPcrMap := map[uint32][]byte{uint32(*pcr): bt}
+		pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: evtLogPcrMap}
 
-		pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA1, Pcrs: evtLogPcrMap}
-
-		events, err := gotpmserver.ParseAndVerifyEventLog(eventLog, pcrs)
+		ms, err := gotpmserver.ParseMachineState(eventLog, pcrs)
 		if err != nil {
-			return fmt.Errorf("Failed to parse EventLog: %v", err)
+			return fmt.Errorf("[%s] Failed to parse EventLog: %v", uid, err)
 		}
 
-		for _, event := range events {
-			glog.V(2).Infof("     Event Type %v\n", event.Type)
-			glog.V(2).Infof("     PCR Index %d\n", event.Index)
-			glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
-			glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
+		for _, event := range ms.RawEvents {
+			glog.V(2).Infof("     Event Type %v\n", event.UntrustedType)
+			glog.V(2).Infof("     PCR Index %d\n", event.PcrIndex)
+
+			if utf8string.NewString(string(event.Data)).IsASCII() {
+				glog.V(2).Infof("     Event Data %s\n", string(event.Data))
+			} else {
+				glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
+			}
 		}
 		glog.V(2).Infof("     EventLog Verified ")
 
 		// TODO: verify Secureboot
-		// the following errors out here
-		// https://github.com/google/go-attestation/blob/be496f11497f3382fed7e66c6170b1bba46f369a/attest/secureboot.go#L205
-		// research if this needs additional PCRs in the eventlog...
-		/*
-
-		   PCR7 on debian 10+secure boot:
-
-		   tpm2_eventlog /sys/kernel/security/tpm0/binary_bios_measurements
-		   pcrs:
-		     sha1:
-		       0  : 0x0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea
-		       1  : 0xb1676439cac1531683990fefe2218a43239d6fe8
-		       2  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
-		       3  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
-		       4  : 0xb158404e279ecc61206b8625297c88c5ed9012b9
-		       5  : 0x15d9fbbc4be52d0f9653ea7e7105352aee7d02f1
-		       6  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
-		       7  : 0xacfd7eaccc8f855aa27b2c05b8b1c7c982bfbbfa
-		       14 : 0x7c067190e738329a729aebd84709a7063de9219c
-
-		   # tpm2_pcrread sha1:7+sha256:7
-		     sha1:
-		       7 : 0xACFD7EACCC8F855AA27B2C05B8B1C7C982BFBBFA
-		     sha256:
-		       7 : 0x3D91599581F7A3A3A1BB7C7A55A7B8A50967BE6506A5F47A9E89FEF756FAB07A
-
-		   	-pcr7
-		   	-expectedPCRValue 3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a
-		   	-expectedPCRSHA1 acfd7eaccc8f855aa27b2c05b8b1c7c982bfbbfa
-		*/
-		// sbState, err := attest.ParseSecurebootState(events)
-		// if err != nil {
-		// 	return fmt.Errorf("ParseSecurebootState() failed: %v", err)
-		// }
-		// if sbState.Enabled {
-		// 	glog.V(2).Infof("     SecureBoot State: %s\n", sbState.Enabled)
-		// }
 
 	}
 	glog.V(2).Infof("     <-- End verifyQuote()")
@@ -644,7 +742,13 @@ func makeCredential(sec string, ekCertBytes []byte, ekPubBytes []byte, akPubByte
 	}
 	defer tpm2.FlushContext(rwc, ekh)
 
-	glog.V(10).Infof("     Read (akPub) from request")
+	glog.V(10).Infof("     Read (eK) from request")
+
+	if ekPub.MatchesTemplate(client.DefaultEKTemplateRSA()) {
+		glog.V(10).Infof("     EK Default parameter match template")
+	} else {
+		return []byte(""), []byte(""), fmt.Errorf("EK does not have correct defaultParameters")
+	}
 
 	tPub, err := tpm2.DecodePublic(akPubBytes)
 	if err != nil {
@@ -653,7 +757,7 @@ func makeCredential(sec string, ekCertBytes []byte, ekPubBytes []byte, akPubByte
 
 	ap, err := tPub.Key()
 	if err != nil {
-		return []byte(""), []byte(""), fmt.Errorf("akPub.Key() failed: %s", err)
+		return []byte(""), []byte(""), fmt.Errorf("aKPub.Key() failed: %s", err)
 	}
 	akBytes, err := x509.MarshalPKIXPublicKey(ap)
 	if err != nil {
@@ -666,9 +770,9 @@ func makeCredential(sec string, ekCertBytes []byte, ekPubBytes []byte, akPubByte
 			Bytes: akBytes,
 		},
 	)
-	glog.V(10).Infof("     Decoded AkPub: \n%v", string(akPubPEM))
+	glog.V(10).Infof("     Decoded AKPub: \n%v", string(akPubPEM))
 
-	if tPub.MatchesTemplate(defaultKeyParams) {
+	if tPub.MatchesTemplate(client.AKTemplateRSA()) {
 		glog.V(10).Infof("     AK Default parameter match template")
 	} else {
 		return []byte(""), []byte(""), fmt.Errorf("AK does not have correct defaultParameters")
@@ -678,7 +782,7 @@ func makeCredential(sec string, ekCertBytes []byte, ekPubBytes []byte, akPubByte
 		return []byte(""), []byte(""), fmt.Errorf("Error loadingExternal AK %v", err)
 	}
 	defer tpm2.FlushContext(rwc, h)
-	glog.V(10).Infof("     Loaded AK KeyName %s", hex.EncodeToString(keyName))
+	glog.V(10).Infof("     Loaded EK KeyName %s", hex.EncodeToString(keyName))
 
 	glog.V(5).Infof("     MakeCredential Start")
 	credential := []byte(sec)
@@ -796,15 +900,21 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	glog.V(20).Infof("     Read and Decode (attestion)")
 	att, err := tpm2.DecodeAttestationData(in.Attestation)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] Error DecodePublic AK %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("DecodeAttestationData failed: %v", err)
 	}
 	glog.V(20).Infof("     Attestation AttestedCertifyInfo.Name.Digest.Value: %s", hex.EncodeToString(att.AttestedCertifyInfo.Name.Digest.Value))
 
 	// Verify signature of Attestation by using the PEM Public key for AK
-	nn := registry[in.Uid]
+	nn, ok := registry[in.Uid]
+	if !ok {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to find prior make/activate request for uid: %v", in.Uid, err))
+		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to find prior make/activate request for uid: %v", err)
+	}
 	akPub := nn.AkPub
 	p, err := tpm2.DecodePublic(akPub)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] DecodePublic failed %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("DecodePublic failed: %v", err)
 	}
 	rsaPub := rsa.PublicKey{E: int(p.RSAParameters.Exponent()), N: p.RSAParameters.Modulus()}
@@ -812,6 +922,7 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	ahsh.Write(in.Attestation)
 
 	if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, ahsh.Sum(nil), in.AttestationSignature); err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] VerifyPKCS1v15 failed: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("VerifyPKCS1v15 failed: %v", err)
 	}
 	glog.V(10).Infof("     Attestation of Unrestricted Signing Key Verified")
@@ -819,15 +930,18 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	// now verify that the public key provided is the same as in the CSR and that the "Template" is what we expect
 	tPub, err := tpm2.DecodePublic(in.PublicKey)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] Error Decode Unrestricted key Public: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Error Decode Unrestricted key Public %v", tPub)
 	}
 
 	up, err := tPub.Key()
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] ukPub.Key() failed: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("ukPub.Key() failed: %s", err)
 	}
 	ukBytes, err := x509.MarshalPKIXPublicKey(up)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to convert ukPub: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to convert ukPub: %v", err)
 	}
 
@@ -842,6 +956,7 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	if tPub.MatchesTemplate(unrestrictedKeyParams) {
 		glog.V(10).Infof("     Unrestricted key parameter matchs template")
 	} else {
+		glog.Errorf(fmt.Sprintf("[%s] uK does not have correct template parameters: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("uK does not have correct template parameters")
 	}
 
@@ -850,21 +965,25 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	var csrobj *x509.CertificateRequest
 	csrobj, err = x509.ParseCertificateRequest(b.Bytes)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to parse CSR: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to parse CSR %v", err)
 	}
 
 	rkey, ok := csrobj.PublicKey.(*rsa.PublicKey)
 	if !ok {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to extract public key from CSR: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to extract public key from CSR %v", err)
 	}
 
 	glog.V(10).Infof("     Verifying if Public key from CSR matches attested Public key")
 	fkey, ok := up.(*rsa.PublicKey)
 	if !ok {
+		glog.Errorf(fmt.Sprintf("[%s] Unable to extract public key from CSR: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Unable to extract public key from CSR %v", err)
 	}
 
 	if !rkey.Equal(fkey) {
+		glog.Errorf(fmt.Sprintf("[%s] Public Key provided does not match key in CSR: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, fmt.Errorf("Public Key provided does not match key in CSR")
 	}
 	// this is the critical step, confirm the that the attestationblob that we just verified contains the public key in the template
@@ -888,12 +1007,14 @@ func (s *server) OfferCSR(ctx context.Context, in *verifier.OfferCSRRequest) (*v
 	}
 	ok, err = att.AttestedCertifyInfo.Name.MatchesPublic(params)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s]   AttestedCertifyInfo.MatchesPublic(%v) failed: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("     AttestedCertifyInfo.MatchesPublic(%v) failed: %v", att, err))
 	}
 	glog.V(10).Infof("     Unrestricted RSA Public key parameters matches AttestedCertifyInfo  %v", ok)
 
 	crt, err := signCSR(in.Csr)
 	if err != nil {
+		glog.Errorf(fmt.Sprintf("[%s]   Unable to Generate CSR: %v", in.Uid, err))
 		return &verifier.OfferCSRResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to Generate CSR %v", err))
 	}
 	glog.V(2).Infof("     Returning OfferCSRResponse ========")
@@ -991,8 +1112,10 @@ func signCSR(csrBytes []byte) (certBytes []byte, err error) {
 func createImportBlob(uid string, saKey []byte) (blob []byte, retErr error) {
 	glog.V(2).Infof("     --> Start createImportBlob()")
 	glog.V(10).Infof("     Load and decode ekPub from registry")
-	nn := registry[uid]
-
+	nn, ok := registry[uid]
+	if !ok {
+		return []byte(""), fmt.Errorf("Unable to find prior make/activate request for uid")
+	}
 	tPub, err := tpm2.DecodePublic(nn.EkPub)
 	if err != nil {
 		return []byte(""), fmt.Errorf("Error DecodePublic K %v", tPub)
@@ -1004,12 +1127,11 @@ func createImportBlob(uid string, saKey []byte) (blob []byte, retErr error) {
 	}
 
 	glog.V(5).Infof("     Decoding sealing PCR value in hex")
-	hv, err := hex.DecodeString(*expectedPCRValue)
-	if err != nil {
-		return []byte(""), fmt.Errorf("Error parsing uint64->32: %v\n", err)
-	}
 
-	pcrMap := map[uint32][]byte{uint32(*pcr): hv}
+	pcrMap, _, err := getPCRMap(tpm.HashAlgo_SHA256)
+	if err != nil {
+		return []byte(""), fmt.Errorf("  Could not get PCRMap: %s", err)
+	}
 	var pcrs *tpmpb.PCRs
 
 	pcrs = &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: pcrMap}
@@ -1056,4 +1178,42 @@ func createImportBlob(uid string, saKey []byte) (blob []byte, retErr error) {
 	glog.V(2).Infof("     <-- End createImportBlob()")
 
 	return sealedOutput, nil
+}
+
+func getPCRMap(algo tpm.HashAlgo) (map[uint32][]byte, []byte, error) {
+
+	pcrMap := make(map[uint32][]byte)
+	var hsh hash.Hash
+	// https://github.com/tpm2-software/tpm2-tools/blob/83f6f8ac5de5a989d447d8791525eb6b6472e6ac/lib/tpm2_openssl.c#L206
+	if algo == tpm.HashAlgo_SHA1 {
+		hsh = sha1.New()
+	}
+	if algo == tpm.HashAlgo_SHA256 {
+		hsh = sha256.New()
+	}
+	if algo == tpm.HashAlgo_SHA1 || algo == tpm.HashAlgo_SHA256 {
+		for _, v := range strings.Split(*expectedPCRMapSHA256, ",") {
+			entry := strings.Split(v, ":")
+			if len(entry) == 2 {
+				uv, err := strconv.ParseUint(entry[0], 10, 32)
+				if err != nil {
+					return nil, nil, fmt.Errorf(" PCR key:value is invalid in parsing %s", v)
+				}
+				hexEncodedPCR, err := hex.DecodeString(entry[1])
+				if err != nil {
+					return nil, nil, fmt.Errorf(" PCR key:value is invalid in encoding %s", v)
+				}
+				pcrMap[uint32(uv)] = hexEncodedPCR
+				hsh.Write(hexEncodedPCR)
+			} else {
+				return nil, nil, fmt.Errorf(" PCR key:value is invalid %s", v)
+			}
+		}
+	} else {
+		return nil, nil, fmt.Errorf("Unknown Hash Algorithm for TPM PCRs %v", algo)
+	}
+	if len(pcrMap) == 0 {
+		return nil, nil, fmt.Errorf(" PCRMap is null")
+	}
+	return pcrMap, hsh.Sum(nil), nil
 }
