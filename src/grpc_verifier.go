@@ -19,6 +19,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -28,24 +29,32 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"hash"
 	"io"
 	"io/ioutil"
 	"log"
 	"math/big"
 	mrnd "math/rand"
+	"strconv"
+	"strings"
 	"time"
-	"verifier"
+
+	"github.com/salrashid123/go_tpm_registrar/verifier"
 
 	"github.com/golang/glog"
+	"github.com/google/go-attestation/attributecert"
 	"github.com/google/go-tpm-tools/client"
-	"github.com/google/go-tpm-tools/server"
+	gotpmserver "github.com/google/go-tpm-tools/server"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/uuid"
+	"golang.org/x/exp/utf8string"
 	"google.golang.org/grpc"
 	"google.golang.org/protobuf/proto"
 
 	//"github.com/google/go-attestation/attest"
 
+	"github.com/google/go-tpm-tools/proto/attest"
+	"github.com/google/go-tpm-tools/proto/tpm"
 	tpmpb "github.com/google/go-tpm-tools/proto/tpm"
 	"google.golang.org/grpc/credentials"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
@@ -56,23 +65,23 @@ const (
 )
 
 var (
-	expectedPCRValue = flag.String("expectedPCRValue", "24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f", "expectedPCRValue to use")
-	expectedPCRSHA1  = flag.String("expectedPCRSHA1", "0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "PCR0 value for the eventlog on GCE VMs, debian10 with secure boot")
-	pcr              = flag.Int("pcr", 0, "PCR Value to use")
-	u                = flag.String("uid", uuid.New().String(), "uid of client")
-
-	caCertTLS       = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to Trust for TLS")
-	caCertIssuer    = flag.String("caCertIssuer", "certs/CA_crt.pem", "CA Certificate to issue X509 Certificates")
-	caKeyIssuer     = flag.String("caKeyIssuer", "certs/CA_key.pem", "CA Key to sign x509")
-	rwc             io.ReadWriteCloser
-	importMode      = flag.String("importMode", "AES", "RSA|AES")
-	aes256Key       = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES key to export")
-	readEventLog    = flag.Bool("readEventLog", false, "Reading Event Log")
-	exportedRSACert = flag.String("rsaCert", "certs/tpm_client.crt", "RSA Public certificate for the key to export")
-	exportedRSAKey  = flag.String("rsaKey", "certs/tpm_client.key", "RSA key to export")
-	letterRunes     = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	address         = flag.String("host", "verify.esodemoapp2.com:50051", "host:port of Attestor")
-	handleNames     = map[string][]tpm2.HandleType{
+	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:dd0276b3bf0e30531a575a1cb5a02171ea0ad0f164d51e81f4cd0ab0bd5baadd", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
+	expectedPCRMapSHA1   = flag.String("expectedPCRMapSHA1", "0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "EventLog values PCR value map as sha1.  Used only if readEventLog is set to true")
+	u                    = flag.String("uid", uuid.New().String(), "uid of client")
+	platformCA           = flag.String("platformCA", "certs/platform_ca.pem", "Platform CA")
+	caCertTLS            = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to Trust for TLS")
+	caCertIssuer         = flag.String("caCertIssuer", "certs/CA_crt.pem", "CA Certificate to issue X509 Certificates")
+	caKeyIssuer          = flag.String("caKeyIssuer", "certs/CA_key.pem", "CA Key to sign x509")
+	rwc                  io.ReadWriteCloser
+	importMode           = flag.String("importMode", "AES", "RSA|AES")
+	aes256Key            = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES key to export")
+	readEventLog         = flag.Bool("readEventLog", false, "Reading Event Log")
+	useFullAttestation   = flag.Bool("useFullAttestation", false, "Use Attestation")
+	exportedRSACert      = flag.String("rsaCert", "certs/tpm_client.crt", "RSA Public certificate for the key to export")
+	exportedRSAKey       = flag.String("rsaKey", "certs/tpm_client.key", "RSA key to export")
+	letterRunes          = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	address              = flag.String("host", "verify.esodemoapp2.com:50051", "host:port of Attestor")
+	handleNames          = map[string][]tpm2.HandleType{
 		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
 		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
 		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
@@ -173,57 +182,41 @@ func main() {
 		glog.V(5).Infof("=============== GetPlatformCert Returned from remote ===============")
 		glog.V(5).Infof("     client provided uid: %s", platformCertResponse.Uid)
 
-		certPEM := pem.EncodeToMemory(
-			&pem.Block{
-				Type:  "ATTRIBUTE CERTIFICATE",
-				Bytes: platformCertResponse.PlatformCert,
-			},
-		)
+		rootPEM, err := ioutil.ReadFile(*platformCA)
+		if err != nil {
+			glog.Fatalf(fmt.Sprintf("Error [%s] Reading Root platform cert %v", platformCertResponse.Uid, err))
+		}
 
-		glog.V(50).Infof("     client provided Platform Cert: \n%s", string(certPEM))
+		roots := x509.NewCertPool()
+		ok := roots.AppendCertsFromPEM([]byte(rootPEM))
+		if !ok {
+			glog.Fatalf(fmt.Sprintf("Error [%s] failed to parse certificate %v", platformCertResponse.Uid, err))
+		}
 
-		// now do cert verification
-		// I do not think go support parsing of attribute certificates
+		block, _ := pem.Decode([]byte(rootPEM))
+		if block == nil {
+			glog.Fatalf(fmt.Sprintf("Error [%s] failed to parse certificate PEM %v", platformCertResponse.Uid, err))
+		}
+		platformRoot, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			glog.Fatalf(fmt.Sprintf("Error [%s] failed to parse certificate %v", platformCertResponse.Uid, err))
+		}
 
-		// Update `11/4/21`:  TODO, use
-		// [go-attestation/attributecert](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecert) allows for parsing the certificate
-		// https://github.com/golang/go/issues/49270
+		attributecert, err := attributecert.ParseAttributeCertificate(platformCertResponse.PlatformCert)
+		if err != nil {
+			glog.Fatalf(fmt.Sprintf("Error [%s] failed to parse  attribute certificate  %v", platformCertResponse.Uid, err))
+		}
 
-		// openssl will support it
-		// i don't have the ca used for this platform cert since its from an example only
-		// so we're skipping the verification step here...
+		err = attributecert.CheckSignatureFrom(platformRoot)
+		if err != nil {
+			glog.Fatalf(fmt.Sprintf("Error [%s] failed to verify  attribute certificate  %v", platformCertResponse.Uid, err))
+		}
+		glog.V(5).Infof(" Verified Platform cert signed by privacyCA")
 
-		// https://github.com/salrashid123/attribute_certificate
-		// https://en.wikipedia.org/wiki/Authorization_certificate
-		// https://github.com/openssl/openssl/issues/14648
-		// 2.1.5 Assertions Made by a Platform Certificate >  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
-
-		// for now just accept it and move on
-
-		// rootPEM, err := ioutil.ReadFile(*platformCA)
-		// if err != nil {
-		// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:  Reading Root platform cert: %v", err))
-		// }
-
-		// roots := x509.NewCertPool()
-		// ok := roots.AppendCertsFromPEM([]byte(rootPEM))
-		// if !ok {
-		// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse platform root certificate"))
-		// }
-
-		// block, _ := pem.Decode([]byte(certPEM))
-		// if block == nil {
-		// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate PEM"))
-		// }
-		// cert, err := x509.ParseCertificate(block.Bytes)
-		// if err != nil {
-		// 	return &verifier.OfferPlatformCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to parse certificate: "+err.Error()))
-		// }
-
-		// opts := x509.VerifyOptions{
-		// 	Roots:         roots,
-		// 	Intermediates: x509.NewCertPool(),
-		// }
+		// todo, save the serial number here...we need to compare the serail number seen here againt the EKCert (which we don't have at the point; i know
+		// i can just change the protomessage to send it unilaterally...btw, the EKCert is sent in the makeCredential call just...so maybe save the serialnumber from
+		// here
+		glog.V(5).Infof(" Platform Cert's Holder SerialNumber %s\n", fmt.Sprintf("%x", attributecert.Holder.Serial))
 
 		// if _, err := cert.Verify(opts); err != nil {
 		// 	if err.Error() != "x509: unhandled critical extension" {
@@ -259,8 +252,32 @@ func main() {
 				Bytes: skBytes,
 			},
 		)
-		glog.V(10).Infof("    EkCert Cert Issuer %s\n", ekcert.Issuer.CommonName)
+		// https://pkg.go.dev/github.com/google/certificate-transparency-go/x509
+		// you should verify the EKCert here and the serialNumber (which we just got in the OfferPlatformCert() call)
+		glog.V(10).Infof("     EKCert Encryption Issuer x509 \n%v", ekcert.Issuer)
+		glog.V(10).Infof("     EKCert Encryption SerialNumber \n%s", fmt.Sprint(ekcert.SerialNumber))
+
 		glog.V(10).Infof("    EkCert Public Key \n%s\n", ekPubPEM)
+
+		ekPub, err := tpm2.DecodePublic(ekCertResponse.EkPub)
+		if err != nil {
+			glog.Fatalf("ERROR:  Error DecodePublic AK %v", err)
+		}
+
+		ekh, keyName, err := tpm2.LoadExternal(rwc, ekPub, tpm2.Private{}, tpm2.HandleNull)
+		if err != nil {
+			glog.Fatalf("ERROR:  Error loadingExternal EK %v", err)
+		}
+		defer tpm2.FlushContext(rwc, ekh)
+
+		glog.V(10).Infof("     Read (eK) from request with name: %s", hex.EncodeToString(keyName))
+
+		if ekPub.MatchesTemplate(client.DefaultEKTemplateRSA()) {
+			glog.V(10).Infof("     EK Default parameter match template")
+		} else {
+			glog.Fatalf("ERROR:  EK does not have correct defaultParameters")
+		}
+
 	}
 
 	glog.V(5).Infof("=============== GetAKCert ===============")
@@ -350,8 +367,6 @@ func main() {
 	if err != nil {
 		glog.Fatalf("MakeCredential failed: %v", err)
 	}
-	glog.V(20).Infof("     credBlob %s", hex.EncodeToString(credBlob))
-	glog.V(20).Infof("     encryptedSecret0 %s", hex.EncodeToString(encryptedSecret0))
 	glog.V(2).Infof("     <-- End makeCredential()")
 
 	glog.V(20).Infof("     EncryptedSecret: %s,", hex.EncodeToString(encryptedSecret0))
@@ -373,139 +388,162 @@ func main() {
 	if string(acResponse.Secret) != nonce {
 		glog.Fatalf(fmt.Sprintf("Error Expected Nonce [%s]does not match provided secret: [%s]", nonce, string(acResponse.Secret)), err)
 	}
-	glog.V(5).Infof("     Attestation Complete")
 
-	glog.V(5).Infof("=============== Quote/Verify ===============")
+	glog.V(5).Infof("     AK Verification Complete")
+
 	cc := make([]rune, 32)
 	for i := range b {
 		cc[i] = letterRunes[mrnd.Intn(len(letterRunes))]
 	}
 	glog.V(10).Infof("     Sending Quote with Nonce: %s", string(cc))
-	qReq := &verifier.QuoteRequest{
-		Uid:    *u,
-		Pcr:    int32(*pcr),
-		Secret: string(cc),
-	}
-	qResponse, err := c.Quote(ctx, qReq)
+
+	pcrSelected, _, err := getPCRMap(tpmpb.HashAlgo_SHA256)
 	if err != nil {
-		glog.Fatalf("Error Quote: %v", err)
+		glog.Fatalf("Unable to find pcrs for  Quote %v", err)
+	}
+	var pcrs []int32
+	for k := range pcrSelected {
+		pcrs = append(pcrs, int32(k))
 	}
 
-	glog.V(20).Infof("     Attestation: %s", hex.EncodeToString(qResponse.Attestation))
-	glog.V(20).Infof("     Signature: %s", hex.EncodeToString(qResponse.Signature))
+	if *useFullAttestation {
+		glog.V(5).Infof("=============== Attestation ===============")
 
-	attestation := qResponse.Attestation
-	signature := qResponse.Signature
-
-	att, err := tpm2.DecodeAttestationData(attestation)
-	if err != nil {
-		glog.Fatalf("DecodeAttestationData(%v) failed: %v", attestation, err)
-	}
-
-	glog.V(10).Infof("     Attestation ExtraData (nonce): %s ", string(att.ExtraData))
-	glog.V(10).Infof("     Attestation PCR#: %v ", att.AttestedQuoteInfo.PCRSelection.PCRs)
-	glog.V(10).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
-
-	if string(cc) != string(att.ExtraData) {
-		glog.Fatalf("Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), string(cc))
-	}
-
-	sigL := tpm2.SignatureRSA{
-		HashAlg:   tpm2.AlgSHA256,
-		Signature: signature,
-	}
-	hexPCRValue, err := hex.DecodeString(*expectedPCRValue)
-	if err != nil {
-		glog.Fatalf("Decode failed for provided PCRValue (%v) failed: %v", attestation, err)
-	}
-	pcrHash := sha256.Sum256(hexPCRValue)
-
-	glog.V(5).Infof("     Expected PCR Value:           --> %s", *expectedPCRValue)
-	glog.V(5).Infof("     sha256 of Expected PCR Value: --> %x", pcrHash)
-
-	if fmt.Sprintf("%x", pcrHash) != hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest) {
-		glog.Fatalf("Unexpected PCR hash Value expected: %s  Got %s", fmt.Sprintf("%x", pcrHash), hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
-	}
-
-	glog.V(2).Infof("     Decoding PublicKey for AK ========")
-
-	// use the AK from the original attestation to verify the signature of the Attestation
-	// rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
-	hsh := crypto.SHA256.New()
-	hsh.Write(attestation)
-	if err := rsa.VerifyPKCS1v15(ap.(*rsa.PublicKey), crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
-		glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
-	}
-
-	// Now compare the nonce that is embedded within the attestation.  This should match the one we sent in earlier.
-	if string(cc) != string(att.ExtraData) {
-		glog.Fatalf("Unexpected secret Value expected: %v  Got %v", string(cc), string(att.ExtraData))
-	}
-	glog.V(2).Infof("     Attestation Signature Verified ")
-
-	if *readEventLog {
-		glog.V(2).Infof("     Reading EventLog")
-		bt, err := hex.DecodeString(*expectedPCRSHA1)
+		aReq := &verifier.AttestRequest{
+			Uid:    *u,
+			Secret: string(cc),
+		}
+		aResponse, err := c.Attest(ctx, aReq)
 		if err != nil {
-			glog.Fatalf("Error decoding pcr %v", err)
+			glog.Fatalf("Error Quote: %v", err)
 		}
-		evtLogPcrMap := map[uint32][]byte{uint32(*pcr): bt}
 
-		pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA1, Pcrs: evtLogPcrMap}
-
-		events, err := server.ParseAndVerifyEventLog(qResponse.Eventlog, pcrs)
+		attestationMsg := &attest.Attestation{}
+		err = proto.Unmarshal(aResponse.Attestation, attestationMsg)
 		if err != nil {
-			glog.Fatalf("Failed to parse EventLog: %v", err)
+			glog.Fatalf("     Attestation failed:  Could no unmarshall attestation, %v", err)
 		}
 
-		for _, event := range events {
-			glog.V(2).Infof("     Event Type %v\n", event.Type)
-			glog.V(2).Infof("     PCR Index %d\n", event.Index)
-			glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
-			glog.V(2).Infof("     Event Digest %s\n", hex.EncodeToString(event.Digest))
+		glog.V(2).Infof("     Verifying Attestation with AK Public Key:\n %v", string(akPubPEM))
+
+		ims, err := gotpmserver.VerifyAttestation(attestationMsg, gotpmserver.VerifyOpts{
+			Nonce:      []byte(string(cc)),
+			TrustedAKs: []crypto.PublicKey{ap},
+		})
+		if err != nil {
+			glog.Fatalf("     Attestation failed:  failed to verify %v", err)
 		}
-		glog.V(2).Infof("     EventLog Verified ")
+		for _, q := range attestationMsg.Quotes {
+			glog.V(5).Infof("Quotes Hash %s\n", q.Pcrs.Hash.String())
+		}
+		for _, evt := range ims.RawEvents {
+			if utf8string.NewString(string(evt.Data)).IsASCII() {
+				glog.V(2).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), string(evt.Data))
+			} else {
+				glog.V(2).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), hex.EncodeToString(evt.Data))
+			}
+		}
+		glog.V(2).Infoln("     Attestation verified")
 
-		// TODO: verify Secureboot
-		// the following errors out here
-		// https://github.com/google/go-attestation/blob/be496f11497f3382fed7e66c6170b1bba46f369a/attest/secureboot.go#L205
-		// research if this needs additional PCRs in the eventlog...
-		/*
+	} else {
 
-		   PCR7 on debian 10+secure boot:
+		glog.V(5).Infof("=============== Quote/Verify ===============")
+		qReq := &verifier.QuoteRequest{
+			Uid:    *u,
+			Pcrs:   pcrs,
+			Secret: string(cc),
+		}
+		qResponse, err := c.Quote(ctx, qReq)
+		if err != nil {
+			glog.Fatalf("Error Quote: %v", err)
+		}
 
-		   tpm2_eventlog /sys/kernel/security/tpm0/binary_bios_measurements
-		   pcrs:
-		     sha1:
-		       0  : 0x0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea
-		       1  : 0xb1676439cac1531683990fefe2218a43239d6fe8
-		       2  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
-		       3  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
-		       4  : 0xb158404e279ecc61206b8625297c88c5ed9012b9
-		       5  : 0x15d9fbbc4be52d0f9653ea7e7105352aee7d02f1
-		       6  : 0xb2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
-		       7  : 0xacfd7eaccc8f855aa27b2c05b8b1c7c982bfbbfa
-		       14 : 0x7c067190e738329a729aebd84709a7063de9219c
+		glog.V(20).Infof("     Attestation: %s", hex.EncodeToString(qResponse.Attestation))
+		glog.V(20).Infof("     Signature: %s", hex.EncodeToString(qResponse.Signature))
 
-		   # tpm2_pcrread sha1:7+sha256:7
-		     sha1:
-		       7 : 0xACFD7EACCC8F855AA27B2C05B8B1C7C982BFBBFA
-		     sha256:
-		       7 : 0x3D91599581F7A3A3A1BB7C7A55A7B8A50967BE6506A5F47A9E89FEF756FAB07A
+		attestation := qResponse.Attestation
+		signature := qResponse.Signature
 
-		   	-pcr7
-		   	-expectedPCRValue 3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a
-		   	-expectedPCRSHA1 acfd7eaccc8f855aa27b2c05b8b1c7c982bfbbfa
-		*/
-		// sbState, err := attest.ParseSecurebootState(events)
-		// if err != nil {
-		// 	glog.Fatalf("ParseSecurebootState() failed: %v", err)
-		// }
-		// if sbState.Enabled {
-		// 	glog.V(2).Infof("     SecureBoot State: %s\n", sbState.Enabled)
-		// }
+		att, err := tpm2.DecodeAttestationData(attestation)
+		if err != nil {
+			glog.Fatalf("DecodeAttestationData(%v) failed: %v", attestation, err)
+		}
+
+		glog.V(10).Infof("     Attestation ExtraData (nonce): %s ", string(att.ExtraData))
+		glog.V(10).Infof("     Attestation PCR#: %v ", att.AttestedQuoteInfo.PCRSelection.PCRs)
+		glog.V(10).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
+
+		if string(cc) != string(att.ExtraData) {
+			glog.Fatalf("Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), string(cc))
+		}
+
+		sigL := tpm2.SignatureRSA{
+			HashAlg:   tpm2.AlgSHA256,
+			Signature: signature,
+		}
+
+		_, pcrHash, err := getPCRMap(tpm.HashAlgo_SHA256)
+		if err != nil {
+			glog.Fatalf("Error getting PCRMap: %v", err)
+		}
+		glog.V(5).Infof("     sha256 of Expected PCR Value: --> %x", pcrHash)
+
+		if fmt.Sprintf("%x", pcrHash) != hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest) {
+			glog.Fatalf("Unexpected PCR hash Value expected: %s  Got %s", fmt.Sprintf("%x", pcrHash), hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
+		}
+
+		glog.V(2).Infof("     Decoding PublicKey for AK ========")
+
+		// use the AK from the original attestation to verify the signature of the Attestation
+		// rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
+		hsh := crypto.SHA256.New()
+		hsh.Write(attestation)
+		if err := rsa.VerifyPKCS1v15(ap.(*rsa.PublicKey), crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
+			glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
+		}
+
+		// Now compare the nonce that is embedded within the attestation.  This should match the one we sent in earlier.
+		if string(cc) != string(att.ExtraData) {
+			glog.Fatalf("Unexpected secret Value expected: %v  Got %v", string(cc), string(att.ExtraData))
+		}
+		glog.V(2).Infof("     Quote/Verify nonce Verified ")
+
+		if *readEventLog {
+			glog.V(2).Infof("     Reading EventLog")
+
+			evtLogPcrMap, _, err := getPCRMap(tpm.HashAlgo_SHA1)
+			if err != nil {
+				glog.Fatalf("   Error getting PCRMap")
+			}
+			pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: evtLogPcrMap}
+
+			ms, err := gotpmserver.ParseMachineState(qResponse.Eventlog, pcrs)
+			if err != nil {
+				glog.Fatalf("  Failed to parse EventLog: %v", err)
+			}
+
+			for _, event := range ms.RawEvents {
+				glog.V(2).Infof("     Event Type %v\n", event.UntrustedType)
+				glog.V(2).Infof("     PCR Index %d\n", event.PcrIndex)
+
+				if utf8string.NewString(string(event.Data)).IsASCII() {
+					glog.V(2).Infof("     Event Data %s\n", string(event.Data))
+				} else {
+					glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
+				}
+			}
+			glog.V(2).Infof("     EventLog Verified ")
+
+			// TODO: verify Secureboot
+
+		}
 
 	}
+
+	glog.V(2).Infof("     <-- End verifyQuote()")
+
+	glog.V(5).Infof("=============== PushSecret ===============")
+
 	// Now issue a x509 cert thats associated with the AK.
 	//  this next step is just for demonstration and uses a CA authority the Verifier has access to.
 	//  Normally, this x509 is sent back to the attestor so that it'd have an x509 for the attested
@@ -582,10 +620,6 @@ func main() {
 
 	glog.V(10).Infof("     X509 issued by Verifier for Ak: \n%v", string(akCertPEM))
 
-	glog.V(2).Infof("     <-- End verifyQuote()")
-
-	glog.V(5).Infof("=============== PushSecret ===============")
-
 	glog.V(5).Infof("     Pushing %s", *importMode)
 
 	// Note: we are binding the import to the the PCR's value.
@@ -593,18 +627,15 @@ func main() {
 	//   A non-nil pcrs parameter adds a requirement that the TPM must have specific PCR values for Import() to succeed.
 	// for RSA:
 	//   A non-nil pcrs parameter adds a requirement that the TPM must have specific PCR values to use the signing key.
-	hv, err := hex.DecodeString(*expectedPCRValue)
+	pcrMap, _, err := getPCRMap(tpm.HashAlgo_SHA256)
 	if err != nil {
-		glog.Fatalf("Error parsing uint64->32: %v\n", err)
+		glog.Fatalf("  Could not get PCRMap: %s", err)
 	}
-
-	pcrMap := map[uint32][]byte{uint32(*pcr): hv}
-
 	vpcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: pcrMap}
 
 	var preq *verifier.PushSecretRequest
 	if *importMode == "AES" {
-		importBlob, err := server.CreateImportBlob(ep, []byte(*aes256Key), vpcrs)
+		importBlob, err := gotpmserver.CreateImportBlob(ep, []byte(*aes256Key), vpcrs)
 		if err != nil {
 			glog.Fatalf("Unable to CreateImportBlob : %v", err)
 		}
@@ -666,7 +697,7 @@ func main() {
 		glog.V(10).Infof("     Test signature data:  %s", base64.RawStdEncoding.EncodeToString(signature))
 		glog.V(2).Infof("     <-- End generateCertificate()")
 
-		importBlob, err := server.CreateSigningKeyImportBlob(ep, priv, vpcrs)
+		importBlob, err := gotpmserver.CreateSigningKeyImportBlob(ep, priv, vpcrs)
 		if err != nil {
 			glog.Fatalf("Unable to CreateImportBlob : %v", err)
 		}
@@ -694,8 +725,8 @@ func main() {
 	glog.V(5).Infof("=============== PullRSAKey ===============")
 
 	psReq := &verifier.PullRSAKeyRequest{
-		Uid: *u,
-		Pcr: int32(*pcr),
+		Uid:  *u,
+		Pcrs: pcrs,
 	}
 	psResponse, err := c.PullRSAKey(ctx, psReq)
 	if err != nil {
@@ -706,7 +737,7 @@ func main() {
 	glog.V(20).Infof("     SigningKey Attestation Signature %s\n", base64.StdEncoding.EncodeToString(psResponse.AttestationSignature))
 
 	glog.V(20).Infof("     Read and Decode (attestion)")
-	att, err = tpm2.DecodeAttestationData(psResponse.Attestation)
+	att, err := tpm2.DecodeAttestationData(psResponse.Attestation)
 	if err != nil {
 		glog.Fatalf("DecodeAttestationData failed: %v", err)
 	}
@@ -843,4 +874,42 @@ func main() {
 	glog.V(10).Infof("     X509 issued by Verifier for unrestricted Key: \n%v", string(ukCertPEM))
 
 	glog.V(5).Infof("     Pulled Signing Key  complete %v", psResponse.Uid)
+}
+
+func getPCRMap(algo tpm.HashAlgo) (map[uint32][]byte, []byte, error) {
+
+	pcrMap := make(map[uint32][]byte)
+	var hsh hash.Hash
+	// https://github.com/tpm2-software/tpm2-tools/blob/83f6f8ac5de5a989d447d8791525eb6b6472e6ac/lib/tpm2_openssl.c#L206
+	if algo == tpm.HashAlgo_SHA1 {
+		hsh = sha1.New()
+	}
+	if algo == tpm.HashAlgo_SHA256 {
+		hsh = sha256.New()
+	}
+	if algo == tpm.HashAlgo_SHA1 || algo == tpm.HashAlgo_SHA256 {
+		for _, v := range strings.Split(*expectedPCRMapSHA256, ",") {
+			entry := strings.Split(v, ":")
+			if len(entry) == 2 {
+				uv, err := strconv.ParseUint(entry[0], 10, 32)
+				if err != nil {
+					return nil, nil, fmt.Errorf(" PCR key:value is invalid in parsing %s", v)
+				}
+				hexEncodedPCR, err := hex.DecodeString(entry[1])
+				if err != nil {
+					return nil, nil, fmt.Errorf(" PCR key:value is invalid in encoding %s", v)
+				}
+				pcrMap[uint32(uv)] = hexEncodedPCR
+				hsh.Write(hexEncodedPCR)
+			} else {
+				return nil, nil, fmt.Errorf(" PCR key:value is invalid %s", v)
+			}
+		}
+	} else {
+		return nil, nil, fmt.Errorf("Unknown Hash Algorithm for TPM PCRs %v", algo)
+	}
+	if len(pcrMap) == 0 {
+		return nil, nil, fmt.Errorf(" PCRMap is null")
+	}
+	return pcrMap, hsh.Sum(nil), nil
 }

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package verifier;
 
-option go_package = "github.com/salrashid123/rungo_tpm_remote_attestation/verifier";
+option go_package = "github.com/salrashid123/go_tpm_remote_attestation/verifier";
 
 service Verifier {
   rpc GetPlatformCert (GetPlatformCertRequest) returns (GetPlatformCertResponse) { }
@@ -10,6 +10,7 @@ service Verifier {
   rpc GetAK (GetAKRequest) returns (GetAKResponse) { }
   rpc ActivateCredential (ActivateCredentialRequest) returns (ActivateCredentialResponse) { }
   rpc Quote (QuoteRequest) returns (QuoteResponse) { }
+  rpc Attest (AttestRequest) returns (AttestResponse) { }
   rpc PushSecret (PushSecretRequest) returns (PushSecretResponse) { }
   rpc PullRSAKey (PullRSAKeyRequest) returns (PullRSAKeyResponse) { }      
 }
@@ -36,6 +37,7 @@ message GetEKCertRequest {
 message GetEKCertResponse {
   string uid = 1;
   bytes ekCert = 2;
+  bytes ekPub = 3;
 }
 
 message GetAKRequest {
@@ -62,7 +64,7 @@ message ActivateCredentialResponse {
 
 message QuoteRequest {
   string uid = 1;
-  int32 pcr = 2;
+  repeated int32 pcrs = 2;
   string secret =3;
 }
 
@@ -71,6 +73,16 @@ message QuoteResponse {
   bytes attestation = 2;
   bytes signature = 3;
   bytes eventlog = 4;  
+}
+
+message AttestRequest {
+  string uid = 1;
+  string secret =3;
+}
+
+message AttestResponse {
+  string uid = 1;
+  bytes attestation = 2; 
 }
 
 message PushSecretRequest {
@@ -86,7 +98,7 @@ message PushSecretResponse {
 
 message PullRSAKeyRequest {
   string uid = 1;
-  int32 pcr = 2;
+  repeated int32 pcrs = 2;
 }
 
 message PullRSAKeyResponse {

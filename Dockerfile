@@ -1,24 +1,23 @@
-FROM golang:1.16 as build
+FROM golang:1.17 as build
 
 RUN apt-get update -y && apt-get install -y build-essential wget unzip curl git libtspi-dev
 
 
-RUN curl -OL https://github.com/google/protobuf/releases/download/v3.13.0/protoc-3.13.0-linux-x86_64.zip && \
-    unzip protoc-3.13.0-linux-x86_64.zip -d protoc3 && \
+RUN curl -OL https://github.com/google/protobuf/releases/download/v3.19.0/protoc-3.19.0-linux-x86_64.zip && \
+    unzip protoc-3.19.0-linux-x86_64.zip -d protoc3 && \
     mv protoc3/bin/* /usr/local/bin/ && \
     mv protoc3/include/* /usr/local/include/
-
-
-ENV GO111MODULE=on
-RUN go get -u github.com/golang/protobuf/protoc-gen-go   
 
 WORKDIR /app
 
 ADD . /app
 
 RUN go mod download
+RUN GO111MODULE=on 
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+RUN go install github.com/golang/protobuf/protoc-gen-go@latest
 
-RUN protoc -I src/ --include_imports --include_source_info --go_opt=paths=source_relative  --descriptor_set_out=src/verifier/verifier.proto.pb  --go_out=plugins=grpc:src/ src/verifier/verifier.proto
+RUN protoc --go_out=. --go_opt=paths=source_relative --go-grpc_opt=require_unimplemented_servers=false --go-grpc_out=. --go-grpc_opt=paths=source_relative src/verifier/verifier.proto
 
 RUN export GOBIN=/app/bin && go install src/grpc_attestor.go
 RUN export GOBIN=/app/bin && go install src/grpc_verifier.go
