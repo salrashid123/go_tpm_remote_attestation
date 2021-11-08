@@ -159,8 +159,12 @@ End Unrestricted SigningKey Transfer
 ```log
 go run src/grpc_attestor.go --grpcport :50051 \
  --unsealPcrs=0,7 \
- --caCertTLS certs/CA_crt.pem --servercert certs/server_crt.pem  -useFullAttestation --readEventLog \
- --serverkey certs/server_key.pem --platformCertFile certs/platform_cert.der --v=10 -alsologtostderr
+ --caCertTLS certs/CA_crt.pem \
+ --servercert certs/server_crt.pem \
+ --serverkey certs/server_key.pem \
+  -useFullAttestation --readEventLog \
+  --platformCertFile certs/platform_cert.der \
+  --v=10 -alsologtostderr
 ```
 
 #### Verifier AES
