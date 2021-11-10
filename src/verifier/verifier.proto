@@ -95,8 +95,7 @@ message OfferAttestationRequest {
 
 message OfferAttestationResponse {
   string uid = 1;
-  repeated int32 pcrs = 2;
-  string nonce = 3;
+  string nonce = 2;
 }
 
 message ProvideAttestationRequest {

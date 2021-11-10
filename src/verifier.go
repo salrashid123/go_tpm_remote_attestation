@@ -270,24 +270,13 @@ func (s *server) OfferAttestation(ctx context.Context, in *verifier.OfferAttesta
 		nonce[i] = letterRunes[mrand.Intn(len(letterRunes))]
 	}
 
-	glog.V(2).Infof("     Sending Nonce %s,", string(nonce))
-	id := in.Uid
+	glog.V(2).Infof("     Sending Nonce %s", string(nonce))
 
 	glog.V(2).Infof("     Returning ProvideAttestationResponse ========")
-	nonces[id] = string(nonce)
-
-	pcrSelected, _, err := getPCRMap(tpm.HashAlgo_SHA256)
-	if err != nil {
-		return &verifier.OfferAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to find pcrs for  Quote %v", err))
-	}
-	var pcrs []int32
-	for k := range pcrSelected {
-		pcrs = append(pcrs, int32(k))
-	}
+	nonces[in.Uid] = string(nonce)
 	return &verifier.OfferAttestationResponse{
 		Uid:   in.Uid,
 		Nonce: string(nonce),
-		Pcrs:  pcrs,
 	}, nil
 }
 
@@ -322,7 +311,7 @@ func (s *server) ProvideAttestation(ctx context.Context, in *verifier.ProvideAtt
 			glog.Errorf("     [%s] ProvideAttestation failed:  DecodePublic failed, %v", in.Uid, err)
 			return &verifier.ProvideAttestationResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("DecodePublic failed: %v", err))
 		}
-		rsaPub := rsa.PublicKey{E: int(p.RSAParameters.Exponent()), N: p.RSAParameters.Modulus()}
+		//rsaPub := rsa.PublicKey{E: int(p.RSAParameters.Exponent()), N: p.RSAParameters.Modulus()}
 
 		ap, err := p.Key()
 		if err != nil {
@@ -341,9 +330,8 @@ func (s *server) ProvideAttestation(ctx context.Context, in *verifier.ProvideAtt
 				Bytes: akBytes,
 			},
 		)
-		glog.V(10).Infof("     Decoded EKPub: \n%v", string(akPubPEM))
 
-		glog.V(2).Infof("     Verifying Attestation with AK Public Key: %v", rsaPub)
+		glog.V(10).Infof("     Verifying Attestation with AK Public Key: \n%s", string(akPubPEM))
 		ims, err := gotpmserver.VerifyAttestation(attestationMsg, gotpmserver.VerifyOpts{
 			Nonce:      []byte(val),
 			TrustedAKs: []crypto.PublicKey{ap},
@@ -358,9 +346,9 @@ func (s *server) ProvideAttestation(ctx context.Context, in *verifier.ProvideAtt
 		}
 		for _, evt := range ims.RawEvents {
 			if utf8string.NewString(string(evt.Data)).IsASCII() {
-				glog.V(2).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), string(evt.Data))
+				glog.V(50).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), string(evt.Data))
 			} else {
-				glog.V(2).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), hex.EncodeToString(evt.Data))
+				glog.V(50).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), hex.EncodeToString(evt.Data))
 			}
 		}
 
@@ -790,8 +778,8 @@ func makeCredential(sec string, ekCertBytes []byte, ekPubBytes []byte, akPubByte
 	if err != nil {
 		return []byte(""), []byte(""), fmt.Errorf("MakeCredential failed: %v", err)
 	}
-	glog.V(10).Infof("     credBlob %s", hex.EncodeToString(credBlob))
-	glog.V(10).Infof("     encryptedSecret0 %s", hex.EncodeToString(encryptedSecret0))
+	glog.V(50).Infof("     credBlob %s", hex.EncodeToString(credBlob))
+	glog.V(50).Infof("     encryptedSecret0 %s", hex.EncodeToString(encryptedSecret0))
 	glog.V(2).Infof("     <-- End makeCredential()")
 	return credBlob, encryptedSecret0, nil
 }

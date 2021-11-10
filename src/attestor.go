@@ -341,13 +341,9 @@ func main() {
 		if err != nil {
 			glog.Fatalf("could not call OfferAttestation: %v", err)
 		}
-		glog.V(5).Infof("     OfferAttestationResponse has nonce %s, pcrs: %v", qr.Nonce, qr.Pcrs)
+		glog.V(5).Infof("     OfferAttestationResponse has nonce %s", qr.Nonce)
 
-		pcrsSelected := []int{}
-		for k := range qr.Pcrs {
-			pcrsSelected = append(pcrsSelected, int(qr.Pcrs[k]))
-		}
-		buf, err := evalAttest(pcrsSelected, qr.Nonce)
+		buf, err := evalAttest(qr.Nonce)
 		if err != nil {
 			glog.Fatalf("could not create Quote: %v", err)
 		}
@@ -809,7 +805,7 @@ func importRSAKey(ar pb.GetSecretResponse) (err error) {
 	return nil
 }
 
-func evalAttest(pcrList []int, secret string) (attestation []byte, retErr error) {
+func evalAttest(secret string) (attestation []byte, retErr error) {
 	glog.V(5).Infof("     --> Start Attest")
 
 	glog.V(10).Infof("     ContextLoad (ek) ========")
@@ -1005,7 +1001,7 @@ func createKeys() (keyName string, ekPub []byte, akPub []byte, retErr error) {
 	if err != nil {
 		return "", []byte(""), []byte(""), fmt.Errorf("Error tpmEkPub.Key() failed: %s", err)
 	}
-	glog.V(10).Infof("     tpmEkPub: \n%v", p)
+	glog.V(50).Infof("     tpmEkPub: \n%v", p)
 
 	b, err := x509.MarshalPKIXPublicKey(p)
 	if err != nil {
@@ -1052,17 +1048,17 @@ func createKeys() (keyName string, ekPub []byte, akPub []byte, retErr error) {
 	if err != nil {
 		return "", []byte(""), []byte(""), fmt.Errorf("CreateKey failed: %s", err)
 	}
-	glog.V(10).Infof("     akPub: %v,", hex.EncodeToString(akPub))
-	glog.V(10).Infof("     akPriv: %v,", hex.EncodeToString(akPriv))
+	glog.V(50).Infof("     akPub: %v,", hex.EncodeToString(akPub))
+	glog.V(50).Infof("     akPriv: %v,", hex.EncodeToString(akPriv))
 
 	cr, err := tpm2.DecodeCreationData(creationData)
 	if err != nil {
 		return "", []byte(""), []byte(""), fmt.Errorf("Unable to  DecodeCreationData : %v", err)
 	}
 
-	glog.V(10).Infof("     CredentialData.ParentName.Digest.Value %v", hex.EncodeToString(cr.ParentName.Digest.Value))
-	glog.V(10).Infof("     CredentialTicket %v", hex.EncodeToString(creationTicket.Digest))
-	glog.V(10).Infof("     CredentialHash %v", hex.EncodeToString(creationHash))
+	glog.V(50).Infof("     CredentialData.ParentName.Digest.Value %v", hex.EncodeToString(cr.ParentName.Digest.Value))
+	glog.V(50).Infof("     CredentialTicket %v", hex.EncodeToString(creationTicket.Digest))
+	glog.V(50).Infof("     CredentialHash %v", hex.EncodeToString(creationHash))
 
 	glog.V(10).Infof("     ContextSave (ek)")
 	ekhBytes, err := tpm2.ContextSave(rwc, ekh)
