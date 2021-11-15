@@ -276,7 +276,7 @@ $ openssl asn1parse -inform DER -in certs/platform_cert.der
 
 This links the platform cert with that specific EKCert
 
-You can verify the Platform cert was signed by a given CA by using [go-attestation.attributecert.AttributeCertificate.CheckSignatureFrom()](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecer
+You can verify the Platform cert was signed by a given CA by using [go-attestation.attributecert.AttributeCertificate.CheckSignatureFrom](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecer
 t#AttributeCertificate.CheckSignatureFrom)
 
 
