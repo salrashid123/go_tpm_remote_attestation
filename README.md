@@ -238,7 +238,9 @@ What this means is we just make believe/pretend that the platform cert is valid 
 
 [Attribute Certificate](https://github.com/salrashid123/attribute_certificate).
 
-```
+Note a sample serial number that is in the EKCert
+
+```bash
 tpm2_nvread -o ekcert.der 0x01c00002
 openssl x509 -in ekcert.der -inform DER -outform PEM -out ekcert.pem
 
@@ -251,11 +253,32 @@ Certificate:
             01:43:f2:f9:3e:d0:12:42:d6:86:88:fb:48:ba:7c:b9:9e:dd:50
         Signature Algorithm: sha256WithRSAEncryption
         Issuer: C = US, ST = California, L = Mountain View, O = Google LLC, OU = Cloud, CN = "tpm_ek_v1_cloud_host-signer-0-2021-10-12T04:22:11-07:00 K:1, 3:nbvaGZFLcuc:0:18"
-        Validity
-            Not Before: Nov  7 22:15:15 2021 GMT
-            Not After : Oct 31 22:20:15 2051 GMT
-
 ```
+
+and the encoded reference of the same in the `platform_cert.der`
+
+
+```bash
+$ openssl asn1parse -inform DER -in certs/platform_cert.der
+    0:d=0  hl=4 l=1268 cons: SEQUENCE          
+    4:d=1  hl=4 l= 988 cons: SEQUENCE          
+    8:d=2  hl=2 l=   1 prim: INTEGER           :01
+   11:d=2  hl=3 l= 218 cons: SEQUENCE          
+...
+.
+  121:d=7  hl=2 l=  88 cons: SET               
+  123:d=8  hl=2 l=  86 cons: SEQUENCE          
+  125:d=9  hl=2 l=   3 prim: OBJECT            :commonName
+  130:d=9  hl=2 l=  79 prim: UTF8STRING        :tpm_ek_v1_cloud_host-signer-0-2021-10-12T04:22:11-07:00 K:1, 3:nbvaGZFLcuc:0:18
+  211:d=4  hl=2 l=  19 prim: INTEGER           :0143F2F93ED01242D68688FB48BA7CB99EDD50
+  232:d=2  hl=2 l=  93 cons: cont [ 0 ]        
+```
+
+This links the platform cert with that specific EKCert
+
+You can verify the Platform cert was signed by a given CA by using [go-attestation.attributecert.AttributeCertificate.CheckSignatureFrom()](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecer
+t#AttributeCertificate.CheckSignatureFrom)
+
 
 - [`2.1.5 Assertions Made by a Platform Certificate`](https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf)
 
