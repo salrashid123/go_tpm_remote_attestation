@@ -224,7 +224,7 @@ Please see the following for background on the eventlog and how to use it
     0 : 0x24AF52A4F429B71A3184A6D64CDDAD17E54EA030E2AA6576BF3A5A3D8BD3328F
 ```
 
-
+You can find a full end-to-end trace for the AES example under the `example/` folder
 
 ---
 
