@@ -2,11 +2,12 @@ $ go run src/attestor.go     --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67  \
    --unsealPcrs=0,7     --host verify.esodemoapp2.com:50051    --cacert certs/CA_crt.pem \
       --clientcert certs/client_crt.pem    --clientkey certs/client_key.pem   \
        --platformCertFile certs/platform_cert.der    --usemTLS   \
-         --readEventLog    --useFullAttestation    --v=10 -alsologtostderr
+         --readEventLog    --useFullAttestation    --v=50 -alsologtostderr
 
-I0315 01:50:57.355506    4590 attestor.go:193] Using mTLS
-I0315 01:50:57.367829    4590 attestor.go:221] RPC HealthChekStatus:SERVING
-I0315 01:50:57.367867    4590 attestor.go:227] =============== Load EncryptionKey and Certifcate from NV ===============     --unsealPcrs=0,7     --host verify.esodemoapp2.com:50051    --cacert certs/CA_crt.pem I0315 01:50:57.373090    4590 attestor.go:245]      Encryption PEM 
+I0315 02:47:08.663429    5398 attestor.go:193] Using mTLS
+I0315 02:47:08.675996    5398 attestor.go:221] RPC HealthChekStatus:SERVING
+I0315 02:47:08.676037    5398 attestor.go:227] =============== Load EncryptionKey and Certifcate from NV ===============
+I0315 02:47:08.681515    5398 attestor.go:245]      Encryption PEM 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm1U9FMORRTcqMjqcwbhs
 LMHhMn+Oiq80Okbk5KkRQt6prdO1TWN8IEI5mi7wDwFd2EIXu0OUxshfQl2Sl+Ff
@@ -16,15 +17,17 @@ JNJUV8CPloNg2bctQej3F72c+vz3fdJRlF7UZt58MZJty1voo8lV9b2/rLW7SggB
 nP26JOWOh/9BNzV/ZjRNNWjUu3vp2cWS9BvdIc/aYd5waWTEFHuhj1Q65d1Zeqqm
 PQIDAQAB
 -----END PUBLIC KEY-----
-I0315 01:50:57.375951    4590 attestor.go:250] =============== Sending Platform Certificate ===============
-I0315 01:50:57.377659    4590 attestor.go:276]     OfferPlatformCert Status true
-I0315 01:50:57.377870    4590 attestor.go:278] =============== MakeCredential ===============
-I0315 01:50:57.388465    4590 attestor.go:296]      EKCert Encryption Issuer x509 
+I0315 02:47:08.684339    5398 attestor.go:250] =============== Sending Platform Certificate ===============
+I0315 02:47:08.686154    5398 attestor.go:276]     OfferPlatformCert Status true
+I0315 02:47:08.686184    5398 attestor.go:278] =============== MakeCredential ===============
+I0315 02:47:08.698721    5398 attestor.go:296]      EKCert Encryption Issuer x509 
 CN=tpm_ek_v1_cloud_host-signer-0-2021-10-12T04:22:11-07:00 K:1\, 3:nbvaGZFLcuc:0:18,OU=Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
-I0315 01:50:57.388676    4590 attestor.go:964]      --> CreateKeys()
-I0315 01:50:57.388689    4590 attestor.go:977]      createPrimary
-I0315 01:50:57.669602    4590 attestor.go:1017]      ekPub Name: 000bc535a57d2769218c1193abaaff8c733270675bc8d915ef057f0a61df77e8fbef
-I0315 01:50:57.669635    4590 attestor.go:1018]      ekPubPEM: 
+I0315 02:47:08.698783    5398 attestor.go:964]      --> CreateKeys()
+I0315 02:47:08.698792    5398 attestor.go:977]      createPrimary
+I0315 02:47:08.948525    5398 attestor.go:1004]      tpmEkPub: 
+&{19608969989034474125480380438998943714102445024798855461226889366914952426545846754543235224976192382826805917628968668338800126641685004405976503502080297704152052007634484889060914566438359383856607909665552498098599466605370944219316683589588165958513345466610545111455197986209837464812683606947700288430194398639711928170026046883024560870138040906452866494996916169330750840273770929982223820893158083520163127824207363652834013607012113981664913148226561634665593379970286278697372189384456627561859477496961476714846539074693460413832266505899927369466992978447375185939719551711256002443686476777059621971517 65537}
+I0315 02:47:08.948659    5398 attestor.go:1017]      ekPub Name: 000bc535a57d2769218c1193abaaff8c733270675bc8d915ef057f0a61df77e8fbef
+I0315 02:47:08.948675    5398 attestor.go:1018]      ekPubPEM: 
 -----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm1U9FMORRTcqMjqcwbhs
 LMHhMn+Oiq80Okbk5KkRQt6prdO1TWN8IEI5mi7wDwFd2EIXu0OUxshfQl2Sl+Ff
@@ -34,114 +37,124 @@ JNJUV8CPloNg2bctQej3F72c+vz3fdJRlF7UZt58MZJty1voo8lV9b2/rLW7SggB
 nP26JOWOh/9BNzV/ZjRNNWjUu3vp2cWS9BvdIc/aYd5waWTEFHuhj1Q65d1Zeqqm
 PQIDAQAB
 -----END PUBLIC KEY-----
-I0315 01:50:57.669666    4590 attestor.go:1025]      CreateKeyUsingAuth
-I0315 01:50:57.848308    4590 attestor.go:1063]      ContextSave (ek)
-I0315 01:50:57.858774    4590 attestor.go:1074]      ContextLoad (ek)
-I0315 01:50:57.866712    4590 attestor.go:1084]      LoadUsingAuth
-I0315 01:50:57.874856    4590 attestor.go:1112]      AK keyName 0022000b73dab0bb73234008ca69018e0b46d6924d84c56fa3e4ad2e47a8cf38ff3ee9b5
-I0315 01:50:57.879080    4590 attestor.go:1134]      akPubPEM: 
+I0315 02:47:08.948702    5398 attestor.go:1025]      CreateKeyUsingAuth
+I0315 02:47:09.093386    5398 attestor.go:1051]      akPub: 0001000b00050072000000100014000b0800000000000100d59a7f11708d21cf2e7acdaa2e9e7cdf133cfd21a54b9515a39ff85d653ab6b4810d97cea3b5e253a1669749b1e3156bb1b463a11fd47575903fdad8e7a52b9bd2323ab3459691d0b6c67f880de2026fc541f766d917978d48e0b9f493b6f59cded6b6fb4fa905df59bdefeb8d00f151cd1762b16ab4cc8de11b64acc5c187c1f79674f71c64f0e0fc4bde4abfc8d572f6638f5e8ef72a0e5994f0dd7a0750470478357b07abf96622c4fcad987f2f405cdc7852a7ef1df99820ae11bbdbd1f72534bd4e8c6da3036d9b7591c3c3b42d852f7ff5c4ec3f6d434ead77f295223ba071503033674dbcc43d337b011fd66c5447f0d009697dde2c00b711e1dfed73,
+I0315 02:47:09.093437    5398 attestor.go:1052]      akPriv: 0020d6d7742bc027208c0fec45259ee4035a30f2d6931339c63c1740f64b05e485b40010b28a719733962b44f103347c93c98b397c3792df8c4ca6a47cc1bfdf142af630beb0b37319cd2108feba550bdf7003b1eba7e42bb1ab2f3dc8ec47e21583b2d8d28060460d4f044e0ebaafb87f095e6acf041888b3d65602d40d5444e733b59e3b866ef9ef4504392c6c4cfeb1b83e7931fb7314ee5c07d0536e7250c35162ac3a2672ba786ecb1cc5a2c5e7ab720ca6b91b179234f8ecb33ff9146103af9a51d245924b9751599cf496d66348df55f46a64d6240188834c895b,
+I0315 02:47:09.093464    5398 attestor.go:1059]      CredentialData.ParentName.Digest.Value c535a57d2769218c1193abaaff8c733270675bc8d915ef057f0a61df77e8fbef
+I0315 02:47:09.093481    5398 attestor.go:1060]      CredentialTicket df28b8bf013afa4e232710e383cb2e1f2800b4ef662d65229a7a7cb814529afc
+I0315 02:47:09.093493    5398 attestor.go:1061]      CredentialHash 0129c67ab6cfd7cccccc18b20e8543e71e6fdf0c32949c9308078e20fa56e34a
+I0315 02:47:09.093503    5398 attestor.go:1063]      ContextSave (ek)
+I0315 02:47:09.104515    5398 attestor.go:1074]      ContextLoad (ek)
+I0315 02:47:09.114041    5398 attestor.go:1084]      LoadUsingAuth
+I0315 02:47:09.122566    5398 attestor.go:1112]      AK keyName 0022000bb60b2090025db8d65c7fab5ee5b446a5e8c3da92fad61f6a063c63e24d17012c
+I0315 02:47:09.125936    5398 attestor.go:1134]      akPubPEM: 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4Z1BOFX7hb1TMSQ1t4Hw
-9ixV41F/Leo2NkjzgHOLbBK7RVloYbaaMDqbGuar6LyB1HP/MmEwvwVecLFA/WRY
-Y7EeFVhAVZFihe36FGfnJDBZ4drKWDEMd6xV9j5m6AHtL7qXPE9a5LiJJHtsOfyD
-BBaICDU+CizcuRVX3FpnQKhGkx6uWQoFy/qNvP+BA88bcpkv29WPBE/tWo2Yhm5M
-sEf6VTbYvxax9VigXBI4Rium5BhCzS+5nwwpJzR9fjxvh5ZcKnSAVhXEHl3QVqsF
-015XfG2X3yCUonhDQQ+E+9pzrHnp9SVDCZ7dBumvhsY35nV6DPB1j4YcvYA5qA5B
-8wIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1Zp/EXCNIc8ues2qLp58
+3xM8/SGlS5UVo5/4XWU6trSBDZfOo7XiU6Fml0mx4xVrsbRjoR/UdXWQP9rY56Ur
+m9IyOrNFlpHQtsZ/iA3iAm/FQfdm2ReXjUjgufSTtvWc3ta2+0+pBd9Zve/rjQDx
+Uc0XYrFqtMyN4RtkrMXBh8H3lnT3HGTw4PxL3kq/yNVy9mOPXo73Kg5ZlPDdegdQ
+RwR4NXsHq/lmIsT8rZh/L0Bc3HhSp+8d+ZggrhG729H3JTS9ToxtowNtm3WRw8O0
+LYUvf/XE7D9tQ06td/KVIjugcVAwM2dNvMQ9M3sBH9ZsVEfw0Alpfd4sALcR4d/t
+cwIDAQAB
 -----END PUBLIC KEY-----
-I0315 01:50:57.879159    4590 attestor.go:1136]      Write (akPub) ========
-I0315 01:50:57.879475    4590 attestor.go:1141]      Write (akPriv) ========
-I0315 01:50:57.879642    4590 attestor.go:1147]      <-- CreateKeys()
-I0315 01:50:58.919780    4590 attestor.go:315]      MakeCredential RPC Response with provided uid [369c327d-ad1f-401c-aa91-d9b0e69bft67]
-I0315 01:50:58.919835    4590 attestor.go:317] =============== ActivateCredential  ===============
-I0315 01:50:58.919845    4590 attestor.go:1153]      --> activateCredential()
-I0315 01:50:58.919851    4590 attestor.go:1155]      ContextLoad (ek)
-I0315 01:50:58.946087    4590 attestor.go:1166]      Read (akPub)
-I0315 01:50:58.946180    4590 attestor.go:1171]      Read (akPriv)
-I0315 01:50:58.946205    4590 attestor.go:1177]      LoadUsingAuth
-I0315 01:50:58.953172    4590 attestor.go:1204]      keyName 0022000b73dab0bb73234008ca69018e0b46d6924d84c56fa3e4ad2e47a8cf38ff3ee9b5
-I0315 01:50:58.953202    4590 attestor.go:1206]      ActivateCredentialUsingAuth
-I0315 01:50:58.964874    4590 attestor.go:1254]      <--  activateCredential()
-I0315 01:50:58.970309    4590 attestor.go:327]     Activate Credential Secret XVlBzgbaiCMRAjWw
-I0315 01:50:58.971420    4590 attestor.go:332]     Activate Credential Status true
-I0315 01:50:58.971440    4590 attestor.go:335] =============== OfferAttestation ===============
-I0315 01:50:58.971895    4590 attestor.go:344]      OfferAttestationResponse has nonce hTHctcuAxhxKQFDa
-I0315 01:50:58.971906    4590 attestor.go:809]      --> Start Attest
-I0315 01:50:58.971910    4590 attestor.go:811]      ContextLoad (ek) ========
-I0315 01:50:58.980905    4590 attestor.go:821]      LoadUsingAuth ========
-I0315 01:50:58.984197    4590 attestor.go:843]      Read (akPub) ========
-I0315 01:50:58.984342    4590 attestor.go:848]      Read (akPriv) ========
-I0315 01:50:58.988800    4590 attestor.go:860]      AK keyName 0022000b73dab0bb73234008ca69018e0b46d6924d84c56fa3e4ad2e47a8cf38ff3ee9b5
-I0315 01:50:58.992150    4590 attestor.go:866]      AK CachedKey Name 73dab0bb73234008ca69018e0b46d6924d84c56fa3e4ad2e47a8cf38ff3ee9b5
-I0315 01:50:59.047056    4590 attestor.go:359]      ProvideAttestation Requested with nonce Response true
-I0315 01:50:59.047233    4590 attestor.go:406] =============== GetSecret  ===============
-I0315 01:50:59.048912    4590 attestor.go:423] ===============  Importing sealed AES Key ===============
-I0315 01:50:59.048953    4590 attestor.go:686]      --> Starting importKey()
-I0315 01:50:59.048960    4590 attestor.go:688]      Loading EndorsementKeyRSA
-I0315 01:50:59.071076    4590 attestor.go:704]      <-- End importKey()
-I0315 01:50:59.071818    4590 attestor.go:428]      Unsealed Secret G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW
-I0315 01:50:59.071850    4590 attestor.go:433] =============== Offer CSR ===============
-I0315 01:50:59.071861    4590 attestor.go:460]      ======= CreateKeyUsingAuthUnrestricted ========
-I0315 01:50:59.071869    4590 attestor.go:462]      ContextLoad (ek)
-I0315 01:50:59.079995    4590 attestor.go:472]      Loading AttestationKey
-I0315 01:50:59.087732    4590 attestor.go:508]      AK keyName: ACIAC3PasLtzI0AIymkBjgtG1pJNhMVvo+StLkeozzj/Pum1,
-I0315 01:50:59.093836    4590 attestor.go:542]      PCR [0] Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
-I0315 01:50:59.095528    4590 attestor.go:542]      PCR [7] Value 3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a 
-I0315 01:50:59.265499    4590 attestor.go:559]      Write (ukPub) ========
-I0315 01:50:59.265966    4590 attestor.go:564]      Write (ukPriv) ========
-I0315 01:50:59.276229    4590 attestor.go:627]      uakPub PEM 
+I0315 02:47:09.125978    5398 attestor.go:1136]      Write (akPub) ========
+I0315 02:47:09.126172    5398 attestor.go:1141]      Write (akPriv) ========
+I0315 02:47:09.126280    5398 attestor.go:1147]      <-- CreateKeys()
+I0315 02:47:10.155345    5398 attestor.go:315]      MakeCredential RPC Response with provided uid [369c327d-ad1f-401c-aa91-d9b0e69bft67]
+I0315 02:47:10.155416    5398 attestor.go:317] =============== ActivateCredential  ===============
+I0315 02:47:10.155438    5398 attestor.go:1153]      --> activateCredential()
+I0315 02:47:10.155453    5398 attestor.go:1155]      ContextLoad (ek)
+I0315 02:47:10.208185    5398 attestor.go:1166]      Read (akPub)
+I0315 02:47:10.208294    5398 attestor.go:1171]      Read (akPriv)
+I0315 02:47:10.208329    5398 attestor.go:1177]      LoadUsingAuth
+I0315 02:47:10.216691    5398 attestor.go:1204]      keyName 0022000bb60b2090025db8d65c7fab5ee5b446a5e8c3da92fad61f6a063c63e24d17012c
+I0315 02:47:10.216736    5398 attestor.go:1206]      ActivateCredentialUsingAuth
+I0315 02:47:10.228262    5398 attestor.go:1254]      <--  activateCredential()
+I0315 02:47:10.234790    5398 attestor.go:327]     Activate Credential Secret XVlBzgbaiCMRAjWw
+I0315 02:47:10.235791    5398 attestor.go:332]     Activate Credential Status true
+I0315 02:47:10.235831    5398 attestor.go:335] =============== OfferAttestation ===============
+I0315 02:47:10.236435    5398 attestor.go:344]      OfferAttestationResponse has nonce hTHctcuAxhxKQFDa
+I0315 02:47:10.236448    5398 attestor.go:809]      --> Start Attest
+I0315 02:47:10.236452    5398 attestor.go:811]      ContextLoad (ek) ========
+I0315 02:47:10.245554    5398 attestor.go:821]      LoadUsingAuth ========
+I0315 02:47:10.248815    5398 attestor.go:843]      Read (akPub) ========
+I0315 02:47:10.248974    5398 attestor.go:848]      Read (akPriv) ========
+I0315 02:47:10.253169    5398 attestor.go:860]      AK keyName 0022000bb60b2090025db8d65c7fab5ee5b446a5e8c3da92fad61f6a063c63e24d17012c
+I0315 02:47:10.256491    5398 attestor.go:866]      AK CachedKey Name b60b2090025db8d65c7fab5ee5b446a5e8c3da92fad61f6a063c63e24d17012c
+I0315 02:47:10.312120    5398 attestor.go:359]      ProvideAttestation Requested with nonce Response true
+I0315 02:47:10.312156    5398 attestor.go:406] =============== GetSecret  ===============
+I0315 02:47:10.313188    5398 attestor.go:423] ===============  Importing sealed AES Key ===============
+I0315 02:47:10.313202    5398 attestor.go:686]      --> Starting importKey()
+I0315 02:47:10.313206    5398 attestor.go:688]      Loading EndorsementKeyRSA
+I0315 02:47:10.339072    5398 attestor.go:704]      <-- End importKey()
+I0315 02:47:10.341982    5398 attestor.go:428]      Unsealed Secret G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW
+I0315 02:47:10.342118    5398 attestor.go:433] =============== Offer CSR ===============
+I0315 02:47:10.342169    5398 attestor.go:460]      ======= CreateKeyUsingAuthUnrestricted ========
+I0315 02:47:10.342213    5398 attestor.go:462]      ContextLoad (ek)
+I0315 02:47:10.350210    5398 attestor.go:472]      Loading AttestationKey
+I0315 02:47:10.358048    5398 attestor.go:508]      AK keyName: ACIAC7YLIJACXbjWXH+rXuW0RqXow9qS+tYfagY8Y+JNFwEs,
+I0315 02:47:10.364323    5398 attestor.go:542]      PCR [0] Value 24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f 
+I0315 02:47:10.365994    5398 attestor.go:542]      PCR [7] Value 3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a 
+I0315 02:47:10.496545    5398 attestor.go:556]      Unrestricted ukPub: 0001000b00040072000000100014000b0800000000000100ee2349f269f6c98596c946e3d58d0da05e38ae9257c49fc597ec14ecd50c8b62dd949349ed457b909be2942dd05deabe3f56842409454c62be6ae396621a3d80ea90e17bffbb5fa38b5fc569c0553a216a45d97f0e59e9bf7962425397183daeed8ea8cecf0ad344160903e5a62108791cd2ee47f5f056d33974b726afe352ae21cefdfa63ea08ba1ab12b864561c723a6446ec0d76c5c26ea847115c5b4acef4a0e33716bfad72f8f1ed931266ed7bebc26e83c6dc909b2a7e78fc802988ba31e65ddd03865a490954a31f071e993d84da92aabfb411b0a7e3457a4c197c466c79fcfa8a14d64e69c9537d0a74c1be356140706700cd42e09ffbb2d44807d47,
+I0315 02:47:10.496582    5398 attestor.go:557]      Unrestricted ukPriv: 00202b916a366bb525f35dc8e86db28205a182496bfa35bc8ca8e13f01fca408bc640010eeeaeab84de25056d46b71d71ed7c0536751714c4719b72edeb9c701938e60e3dad113298959fdb5d0e2eab14efb81d0283d9acf0bdb68b86dff73ee2844ecc35c3ace9696e4510eb88febff06d09817de4708f4dcc60435b199e34aeac1a65c1701a1ec81372cb551bf0b3d7cd33bdd3422b0de0243779c9e15b4ebb951dc369a6a0350d129e39fd236be11730146c0d31f419975a1b84c40820ab9ae914b3c3dc66a74eb4837fca0999244750fde29c883fe6f94eb9a40a622,
+I0315 02:47:10.496595    5398 attestor.go:559]      Write (ukPub) ========
+I0315 02:47:10.496834    5398 attestor.go:564]      Write (ukPriv) ========
+I0315 02:47:10.506349    5398 attestor.go:599]      ukeyName: ACIAC3nPD4TlKqegpTauUZAlQlz2selTWXPRgTdpPLM0bseG,
+I0315 02:47:10.507739    5398 attestor.go:627]      uakPub PEM 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2SfiH5NBARlDjpfKBazz
-kUFIaixfdhxxwqB9Mu/grYcGd3tt7wmKmQssq6gwUlSbmvtEemxtiMCLGluR/OHs
-LB0vzkd26lLUNdW8nGvpUD2noSEE0YD0NGG/4kLZ4clNWD+Z1HjSOorcxFT6Tyfn
-PF9a5Q0v+xJjoRWYDqwbqIvoZkuMi5koMjkFl5+bCcjP/4fiS8/jIaXytwWR2CVr
-FxZYpEiFTqf/V5+4vupQs0fVoT/gAuXBhiWBhWz1USuVdD09T4ow/g/oRO3ehqTp
-54RuDPYioIz4zlSenU6SIGDRCDIjm8FBklgukCU3cFp8E2TYMI5mZPWB79fV9p2D
-XwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7iNJ8mn2yYWWyUbj1Y0N
+oF44rpJXxJ/Fl+wU7NUMi2LdlJNJ7UV7kJvilC3QXeq+P1aEJAlFTGK+auOWYho9
+gOqQ4Xv/u1+ji1/FacBVOiFqRdl/Dlnpv3liQlOXGD2u7Y6ozs8K00QWCQPlpiEI
+eRzS7kf18FbTOXS3Jq/jUq4hzv36Y+oIuhqxK4ZFYccjpkRuwNdsXCbqhHEVxbSs
+70oOM3Fr+tcvjx7ZMSZu1768Jug8bckJsqfnj8gCmIujHmXd0DhlpJCVSjHwcemT
+2E2pKqv7QRsKfjRXpMGXxGbHn8+ooU1k5pyVN9CnTBvjVhQHBnAM1C4J/7stRIB9
+RwIDAQAB
 -----END PUBLIC KEY-----
-I0315 01:50:59.283793    4590 attestor.go:644] Creating CSR
-I0315 01:50:59.293047    4590 attestor.go:676] CSR 
+I0315 02:47:10.513216    5398 attestor.go:636]      Certify Attestation: ff54434780170022000b92456f1c0be23fcf8e0547f547fe7700b6348bd712f15a4ebffb1803cefd4131000000000001175222780000000b000000000120160511001628000022000b79cf0f84e52aa7a0a536ae519025425cf6b1e9535973d18137693cb3346ec7860022000b9f656aa8a3d32508add82fd96d850e892e8aaf0a8907e95701e3b4af828bef78,
+I0315 02:47:10.513250    5398 attestor.go:637]      Certify Signature: c343db54dc4ae9082b52065f8f28bfff11879759ecea277e5a993d1a1a70e51ec13159ea99fdd114512fcafa7d05ea4552a9d40dde114742fb39a9c296e597a0acc7b11141f2abf1fa49d928358239d2a55290dbfbf224f2e601594feed516c79ba9d2a8595e24e91fc9b0418edbe95da434084ccd94e027df0ecd3cd7b17676d4ac2fb7d452b8ce8668cdad2d37002dad2bf785a18a119887479beb17a746768d0d6f46ea8c2f92f8eb9344bfb7b47a8c0779c4467473e7479cb092b8ff99b300648a42f3f98f7c66944137caf374043064f1ae78ae241817ad6b55dbeac6c7aa8638bbe9204db3d9e10b6b68af58de0fcd4ecbfcedcc502a589b0eab06c423,
+I0315 02:47:10.514632    5398 attestor.go:644] Creating CSR
+I0315 02:47:10.523152    5398 attestor.go:676] CSR 
 -----BEGIN CERTIFICATE REQUEST-----
 MIIDJTCCAdkCAQAwfTELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWEx
 FjAUBgNVBAcTDU1vdW50YWluIFZpZXcxEDAOBgNVBAoTB0FjbWUgQ28xEzARBgNV
 BAsTCkVudGVycHJpc2UxGjAYBgNVBAMTEWNsaWVudC5kb21haW4uY29tMIIBIjAN
-BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2SfiH5NBARlDjpfKBazzkUFIaixf
-dhxxwqB9Mu/grYcGd3tt7wmKmQssq6gwUlSbmvtEemxtiMCLGluR/OHsLB0vzkd2
-6lLUNdW8nGvpUD2noSEE0YD0NGG/4kLZ4clNWD+Z1HjSOorcxFT6TyfnPF9a5Q0v
-+xJjoRWYDqwbqIvoZkuMi5koMjkFl5+bCcjP/4fiS8/jIaXytwWR2CVrFxZYpEiF
-Tqf/V5+4vupQs0fVoT/gAuXBhiWBhWz1USuVdD09T4ow/g/oRO3ehqTp54RuDPYi
-oIz4zlSenU6SIGDRCDIjm8FBklgukCU3cFp8E2TYMI5mZPWB79fV9p2DXwIDAQAB
+BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7iNJ8mn2yYWWyUbj1Y0NoF44rpJX
+xJ/Fl+wU7NUMi2LdlJNJ7UV7kJvilC3QXeq+P1aEJAlFTGK+auOWYho9gOqQ4Xv/
+u1+ji1/FacBVOiFqRdl/Dlnpv3liQlOXGD2u7Y6ozs8K00QWCQPlpiEIeRzS7kf1
+8FbTOXS3Jq/jUq4hzv36Y+oIuhqxK4ZFYccjpkRuwNdsXCbqhHEVxbSs70oOM3Fr
++tcvjx7ZMSZu1768Jug8bckJsqfnj8gCmIujHmXd0DhlpJCVSjHwcemT2E2pKqv7
+QRsKfjRXpMGXxGbHn8+ooU1k5pyVN9CnTBvjVhQHBnAM1C4J/7stRIB9RwIDAQAB
 oC8wLQYJKoZIhvcNAQkOMSAwHjAcBgNVHREEFTATghFjbGllbnQuZG9tYWluLmNv
 bTBBBgkqhkiG9w0BAQowNKAPMA0GCWCGSAFlAwQCAQUAoRwwGgYJKoZIhvcNAQEI
-MA0GCWCGSAFlAwQCAQUAogMCASADggEBAKGgAQbyvUgwMh0AMGw821l9lTRtRf6/
-oCpd54G+qFeFUFqSotcHGP+AuvUcvJ4DaGMdizscg27wKQZ9M7ASEgVcjK/CgyAi
-apcWWj0wC9MmAYk9tQg/y8DNZHn+NdGr9E3tuWcIS6hFzwXp13iwmrYdBc/bLBn1
-W0HrSYDUFb5OQohbLp/tQKKqUQltE6UDxS2KF8+HcQj/2Mh/j6cm0lOVtQD3l6wQ
-DcWWJYs2U7sHjAhyvwMXVs+Jg685iUZZopd6kJT43Yad+HA7ucm4ZjZGhNvT38jk
-RQiV4IIZm3vDdSoC0laTCxa2GHPQIWL1s2myswjv3fO4bIUudTMux28=
+MA0GCWCGSAFlAwQCAQUAogMCASADggEBAFiDvxsEKwWFLl+sSuLNbHKrnXldwn6B
++qfKPSVFasP1G+OtcjJdKxe8YxYemDQoJARbgYDY0Et5vWvPjmbYf2qEK01h/T+f
+bwuoIawC8Z0KHubTCuRrdY+EHDufqHSbgVv+niosUWD51BsDI0Q4T/ZfY8tkxWQY
+6NFEjnlo76PccK/DjsrGa6gfa5yaltlEb/SWv3Ud0UhDWYjp/BDgu77J1eFupG1r
+LWAk+MQuXXnrJNGVbt9ED129CCd2R9lctpd0HVT0g/XNv3TTVSsao63R87wZulyt
+RCzCTBEHUCToODJ6mrVYaC1/6dux3PBBn5P5ERDwOrapOfB7UxgTsjA=
 -----END CERTIFICATE REQUEST-----
 
-I0315 01:50:59.307256    4590 attestor.go:454]      X509 issued by Verifier for unrestricted Key: 
+I0315 02:47:10.536652    5398 attestor.go:454]      X509 issued by Verifier for unrestricted Key: 
 -----BEGIN CERTIFICATE-----
-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
+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
 -----END CERTIFICATE-----
