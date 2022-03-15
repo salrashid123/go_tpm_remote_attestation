@@ -226,6 +226,9 @@ go run src/attestor.go  \
    --v=10 -alsologtostderr
 ```
 
+
+You can find a sample event log for the AES example under the `example/` folder
+
 ---
 
 ### Platform Certificate

@@ -1,0 +1,201 @@
+# go run src/verifier.go   --grpcport :50051  -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" \
+  --expectedPCRMapSHA256 0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a  \
+    -expectedPCRMapSHA1 0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea    --importMode=AES    --cacert  certs/CA_crt.pem  \
+      --platformCA certs/platform_ca.pem    --servercert certs/server_crt.pem    --serverkey certs/server_key.pem   \
+       --usemTLS    --readEventLog    --v=10 -alsologtostderr
+
+I0315 01:50:32.573982    4774 verifier.go:222] Using mTLS for initial server connection
+I0315 01:50:32.575014    4774 verifier.go:259] Starting gRPC server on port :50051
+I0315 01:50:57.367318    4774 verifier.go:144] >> authenticating inbound request
+I0315 01:50:57.367339    4774 verifier.go:159] HealthCheck called for Service [verifier.VerifierServer]
+I0315 01:50:57.376819    4774 verifier.go:144] >> authenticating inbound request
+I0315 01:50:57.376840    4774 verifier.go:370] ======= OfferPlatformCert ========
+I0315 01:50:57.376847    4774 verifier.go:371]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0315 01:50:57.377247    4774 verifier.go:409]  Verified Platform cert signed by privacyCA
+I0315 01:50:57.377267    4774 verifier.go:414]  Platform Cert's Holder SerialNumber 143f2f93ed01242d68688fb48ba7cb99edd50
+I0315 01:50:57.377274    4774 verifier.go:416]      Platform Certificate Verification succeeded
+I0315 01:50:57.886692    4774 verifier.go:144] >> authenticating inbound request
+I0315 01:50:57.886909    4774 verifier.go:426] ======= MakeCredential ========
+I0315 01:50:57.886924    4774 verifier.go:427]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0315 01:50:57.886937    4774 verifier.go:428]      Got AKName 0022000b73dab0bb73234008ca69018e0b46d6924d84c56fa3e4ad2e47a8cf38ff3ee9b5
+I0315 01:50:57.886946    4774 verifier.go:429]      Registry size 0
+I0315 01:50:57.886955    4774 verifier.go:432]      Decoding ekCert from client
+I0315 01:50:57.887015    4774 verifier.go:440]      EKCert Encryption Issuer x509 
+CN=tpm_ek_v1_cloud_host-signer-0-2021-10-12T04:22:11-07:00 K:1\, 3:nbvaGZFLcuc:0:18,OU=Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
+I0315 01:50:57.887111    4774 verifier.go:441]      EKCert Encryption SerialNumber 
+32501343270026809681251105599706955507604717
+I0315 01:50:57.887135    4774 verifier.go:449]      Encryption EKCert 
+-----BEGIN CERTIFICATE-----
+MIIFMzCCBBugAwIBAgITAXUY3Q+nwwYzXYDj7mDeVECc7TANBgkqhkiG9w0BAQsF
+ADCBuTELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcT
+DU1vdW50YWluIFZpZXcxEzARBgNVBAoTCkdvb2dsZSBMTEMxDjAMBgNVBAsTBUNs
+b3VkMVgwVgYDVQQDDE90cG1fZWtfdjFfY2xvdWRfaG9zdC1zaWduZXItMC0yMDIx
+LTEwLTEyVDA0OjIyOjExLTA3OjAwIEs6MSwgMzpuYnZhR1pGTGN1YzowOjE4MCAX
+DTIxMTEwNjEyMTg1MloYDzIwNTExMDMwMTIyMzUyWjAAMIIBIjANBgkqhkiG9w0B
+AQEFAAOCAQ8AMIIBCgKCAQEAm1U9FMORRTcqMjqcwbhsLMHhMn+Oiq80Okbk5KkR
+Qt6prdO1TWN8IEI5mi7wDwFd2EIXu0OUxshfQl2Sl+Ff5JMdN8UJC+u2GDg00os6
+VvT3b2kaEj/J+Lod4aPcVvIj7AeuoGKqpC7cIHcXNp3tJNJUV8CPloNg2bctQej3
+F72c+vz3fdJRlF7UZt58MZJty1voo8lV9b2/rLW7SggB4aII6TeJRm3B9VD7sylV
+0zyV/zdFjbB6EvsB7JsJ+69P5z3e0+AYsARLh17u7s60nP26JOWOh/9BNzV/ZjRN
+NWjUu3vp2cWS9BvdIc/aYd5waWTEFHuhj1Q65d1ZeqqmPQIDAQABo4IB6DCCAeQw
+DAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBRnCMR3Ef3Vh4TTLB1rTZeDYIQlgDBW
+BggrBgEFBQcBAQRKMEgwRgYIKwYBBQUHMAKGOmh0dHBzOi8vcGtpLmdvb2cvY2xv
+dWRfaW50ZWdyaXR5L3RwbV9la19pbnRlcm1lZGlhdGVfMy5jcnQwSwYDVR0fBEQw
+QjBAoD6gPIY6aHR0cHM6Ly9wa2kuZ29vZy9jbG91ZF9pbnRlZ3JpdHkvdHBtX2Vr
+X2ludGVybWVkaWF0ZV8zLmNybDAOBgNVHQ8BAf8EBAMCBSAwEAYDVR0lBAkwBwYF
+Z4EFCAEwIgYDVR0JBBswGTAXBgVngQUCEDEOMAwMAzIuMAIBAAICAI4wUQYDVR0R
+AQH/BEcwRaRDMEExFjAUBgVngQUCAQwLaWQ6NDc0RjRGNDcxDzANBgVngQUCAgwE
+dlRQTTEWMBQGBWeBBQIDDAtpZDoyMDE2MDUxMTB1BgorBgEEAdZ5AgEVBGcwZQwN
+dXMtY2VudHJhbDEtYQIGAPltg2V0DBNtaW5lcmFsLW1pbnV0aWEtODIwAggBLYtq
+vyvNPwwLYXR0ZXN0b3ItMTGgIDAeoAMCAQChAwEB/6IDAQEAowMBAQCkAwEBAKUD
+AQEAMA0GCSqGSIb3DQEBCwUAA4IBAQCy2aDHLYUVSlY9esf/RuuWP4lXcMhl7R2M
+r/GmniVb9XJHhbpfXOT6zx+ufdqw1ZHgFloykoYXYFtmOYOOmtK0ewaGlms6KSZs
+cENzx+6g6oDxttQy/E1trmKjZP/asMWSXML7rAG5TvYMJXksj1QFIjGDmiZmSg1l
+wlyj9qRKFKbG30X4UonQgMd++lrhau/pQcfR/XVqZzQFOvVENStzFGD+swAtoSBq
+iQaftfAPHogJHV4Ooy2byy3C3JevzWS0Uqd+hgFPRsmhujeHpR9uFZNYUTBfn0MN
+Fo+Hip5mdBVVQPpHpoGceRI5QruCQINZevGxb0ptuAwB4U2lFbbQ
+-----END CERTIFICATE-----
+I0315 01:50:57.887206    4774 verifier.go:462]      EKPub from EKCert 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm1U9FMORRTcqMjqcwbhs
+LMHhMn+Oiq80Okbk5KkRQt6prdO1TWN8IEI5mi7wDwFd2EIXu0OUxshfQl2Sl+Ff
+5JMdN8UJC+u2GDg00os6VvT3b2kaEj/J+Lod4aPcVvIj7AeuoGKqpC7cIHcXNp3t
+JNJUV8CPloNg2bctQej3F72c+vz3fdJRlF7UZt58MZJty1voo8lV9b2/rLW7SggB
+4aII6TeJRm3B9VD7sylV0zyV/zdFjbB6EvsB7JsJ+69P5z3e0+AYsARLh17u7s60
+nP26JOWOh/9BNzV/ZjRNNWjUu3vp2cWS9BvdIc/aYd5waWTEFHuhj1Q65d1Zeqqm
+PQIDAQAB
+-----END PUBLIC KEY-----
+I0315 01:50:57.887226    4774 verifier.go:465]      Decoding ekPub from client
+I0315 01:50:57.887275    4774 verifier.go:489]      EKPubPEM: 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAm1U9FMORRTcqMjqcwbhs
+LMHhMn+Oiq80Okbk5KkRQt6prdO1TWN8IEI5mi7wDwFd2EIXu0OUxshfQl2Sl+Ff
+5JMdN8UJC+u2GDg00os6VvT3b2kaEj/J+Lod4aPcVvIj7AeuoGKqpC7cIHcXNp3t
+JNJUV8CPloNg2bctQej3F72c+vz3fdJRlF7UZt58MZJty1voo8lV9b2/rLW7SggB
+4aII6TeJRm3B9VD7sylV0zyV/zdFjbB6EvsB7JsJ+69P5z3e0+AYsARLh17u7s60
+nP26JOWOh/9BNzV/ZjRNNWjUu3vp2cWS9BvdIc/aYd5waWTEFHuhj1Q65d1Zeqqm
+PQIDAQAB
+-----END PUBLIC KEY-----
+I0315 01:50:57.887291    4774 verifier.go:491]      Verified EkPub here...somehow
+I0315 01:50:57.887307    4774 verifier.go:500]      Sending Nonce XVlBzgbaiCMRAjWw,
+I0315 01:50:57.887317    4774 verifier.go:719]      --> Starting makeCredential()
+I0315 01:50:57.887324    4774 verifier.go:720]      Read (ekPub) from request
+I0315 01:50:57.908679    4774 verifier.go:733]      Read (eK) from request
+I0315 01:50:57.908751    4774 verifier.go:736]      EK Default parameter match template
+I0315 01:50:57.908857    4774 verifier.go:761]      Decoded AKPub: 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4Z1BOFX7hb1TMSQ1t4Hw
+9ixV41F/Leo2NkjzgHOLbBK7RVloYbaaMDqbGuar6LyB1HP/MmEwvwVecLFA/WRY
+Y7EeFVhAVZFihe36FGfnJDBZ4drKWDEMd6xV9j5m6AHtL7qXPE9a5LiJJHtsOfyD
+BBaICDU+CizcuRVX3FpnQKhGkx6uWQoFy/qNvP+BA88bcpkv29WPBE/tWo2Yhm5M
+sEf6VTbYvxax9VigXBI4Rium5BhCzS+5nwwpJzR9fjxvh5ZcKnSAVhXEHl3QVqsF
+015XfG2X3yCUonhDQQ+E+9pzrHnp9SVDCZ7dBumvhsY35nV6DPB1j4YcvYA5qA5B
+8wIDAQAB
+-----END PUBLIC KEY-----
+I0315 01:50:57.908952    4774 verifier.go:764]      AK Default parameter match template
+I0315 01:50:57.912610    4774 verifier.go:773]      Loaded EK KeyName 000b73dab0bb73234008ca69018e0b46d6924d84c56fa3e4ad2e47a8cf38ff3ee9b5
+I0315 01:50:57.912708    4774 verifier.go:775]      MakeCredential Start
+I0315 01:50:57.916175    4774 verifier.go:783]      <-- End makeCredential()
+I0315 01:50:57.918981    4774 verifier.go:508]      Returning MakeCredentialResponse ========
+I0315 01:50:58.971097    4774 verifier.go:144] >> authenticating inbound request
+I0315 01:50:58.971126    4774 verifier.go:518] ======= ActivateCredential ========
+I0315 01:50:58.971166    4774 verifier.go:519]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0315 01:50:58.971176    4774 verifier.go:520]      Secret XVlBzgbaiCMRAjWw
+I0315 01:50:58.971189    4774 verifier.go:527]      Returning ActivateCredentialResponse ========
+I0315 01:50:58.971693    4774 verifier.go:144] >> authenticating inbound request
+I0315 01:50:58.971708    4774 verifier.go:265] ======= OfferAttestation ========
+I0315 01:50:58.971713    4774 verifier.go:266]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0315 01:50:58.971723    4774 verifier.go:273]      Sending Nonce hTHctcuAxhxKQFDa
+I0315 01:50:58.971729    4774 verifier.go:275]      Returning ProvideAttestationResponse ========
+I0315 01:50:59.044410    4774 verifier.go:144] >> authenticating inbound request
+I0315 01:50:59.044437    4774 verifier.go:284] ======= ProvideAttestation ========
+I0315 01:50:59.044446    4774 verifier.go:285]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0315 01:50:59.044839    4774 verifier.go:308]      Decoding PublicKey for AK ========
+I0315 01:50:59.044910    4774 verifier.go:334]      Verifying Attestation with AK Public Key: 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4Z1BOFX7hb1TMSQ1t4Hw
+9ixV41F/Leo2NkjzgHOLbBK7RVloYbaaMDqbGuar6LyB1HP/MmEwvwVecLFA/WRY
+Y7EeFVhAVZFihe36FGfnJDBZ4drKWDEMd6xV9j5m6AHtL7qXPE9a5LiJJHtsOfyD
+BBaICDU+CizcuRVX3FpnQKhGkx6uWQoFy/qNvP+BA88bcpkv29WPBE/tWo2Yhm5M
+sEf6VTbYvxax9VigXBI4Rium5BhCzS+5nwwpJzR9fjxvh5ZcKnSAVhXEHl3QVqsF
+015XfG2X3yCUonhDQQ+E+9pzrHnp9SVDCZ7dBumvhsY35nV6DPB1j4YcvYA5qA5B
+8wIDAQAB
+-----END PUBLIC KEY-----
+I0315 01:50:59.046274    4774 verifier.go:343]      Attestation verified
+2022/03/15 01:50:59 Quotes Hash SHA1
+2022/03/15 01:50:59 Quotes Hash SHA256
+2022/03/15 01:50:59 Quotes Hash SHA384
+I0315 01:50:59.047586    4774 verifier.go:144] >> authenticating inbound request
+I0315 01:50:59.047692    4774 verifier.go:537] ======= GetSecret ========
+I0315 01:50:59.047773    4774 verifier.go:538]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0315 01:50:59.047836    4774 verifier.go:1101]      --> Start createImportBlob()
+I0315 01:50:59.047892    4774 verifier.go:1102]      Load and decode ekPub from registry
+I0315 01:50:59.047952    4774 verifier.go:1117]      Decoding sealing PCR value in hex
+I0315 01:50:59.048025    4774 verifier.go:1152]      --> createImportBlob()
+I0315 01:50:59.048085    4774 verifier.go:1153]      Generating to AES sealedFile
+I0315 01:50:59.048347    4774 verifier.go:1166]      <-- End createImportBlob()
+I0315 01:50:59.048413    4774 verifier.go:561]      Returning GetSecretResponse ========
+I0315 01:50:59.301539    4774 verifier.go:144] >> authenticating inbound request
+I0315 01:50:59.301690    4774 verifier.go:881] ======= OfferCSR ========
+I0315 01:50:59.301762    4774 verifier.go:882]      client provided uid: 369c327d-ad1f-401c-aa91-d9b0e69bft67
+I0315 01:50:59.301833    4774 verifier.go:883]      client provided csr: 
+-----BEGIN CERTIFICATE REQUEST-----
+MIIDJTCCAdkCAQAwfTELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWEx
+FjAUBgNVBAcTDU1vdW50YWluIFZpZXcxEDAOBgNVBAoTB0FjbWUgQ28xEzARBgNV
+BAsTCkVudGVycHJpc2UxGjAYBgNVBAMTEWNsaWVudC5kb21haW4uY29tMIIBIjAN
+BgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2SfiH5NBARlDjpfKBazzkUFIaixf
+dhxxwqB9Mu/grYcGd3tt7wmKmQssq6gwUlSbmvtEemxtiMCLGluR/OHsLB0vzkd2
+6lLUNdW8nGvpUD2noSEE0YD0NGG/4kLZ4clNWD+Z1HjSOorcxFT6TyfnPF9a5Q0v
++xJjoRWYDqwbqIvoZkuMi5koMjkFl5+bCcjP/4fiS8/jIaXytwWR2CVrFxZYpEiF
+Tqf/V5+4vupQs0fVoT/gAuXBhiWBhWz1USuVdD09T4ow/g/oRO3ehqTp54RuDPYi
+oIz4zlSenU6SIGDRCDIjm8FBklgukCU3cFp8E2TYMI5mZPWB79fV9p2DXwIDAQAB
+oC8wLQYJKoZIhvcNAQkOMSAwHjAcBgNVHREEFTATghFjbGllbnQuZG9tYWluLmNv
+bTBBBgkqhkiG9w0BAQowNKAPMA0GCWCGSAFlAwQCAQUAoRwwGgYJKoZIhvcNAQEI
+MA0GCWCGSAFlAwQCAQUAogMCASADggEBAKGgAQbyvUgwMh0AMGw821l9lTRtRf6/
+oCpd54G+qFeFUFqSotcHGP+AuvUcvJ4DaGMdizscg27wKQZ9M7ASEgVcjK/CgyAi
+apcWWj0wC9MmAYk9tQg/y8DNZHn+NdGr9E3tuWcIS6hFzwXp13iwmrYdBc/bLBn1
+W0HrSYDUFb5OQohbLp/tQKKqUQltE6UDxS2KF8+HcQj/2Mh/j6cm0lOVtQD3l6wQ
+DcWWJYs2U7sHjAhyvwMXVs+Jg685iUZZopd6kJT43Yad+HA7ucm4ZjZGhNvT38jk
+RQiV4IIZm3vDdSoC0laTCxa2GHPQIWL1s2myswjv3fO4bIUudTMux28=
+-----END CERTIFICATE REQUEST-----
+I0315 01:50:59.303412    4774 verifier.go:916]      Attestation of Unrestricted Signing Key Verified
+I0315 01:50:59.303537    4774 verifier.go:942]      Decoded UkPub: 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2SfiH5NBARlDjpfKBazz
+kUFIaixfdhxxwqB9Mu/grYcGd3tt7wmKmQssq6gwUlSbmvtEemxtiMCLGluR/OHs
+LB0vzkd26lLUNdW8nGvpUD2noSEE0YD0NGG/4kLZ4clNWD+Z1HjSOorcxFT6Tyfn
+PF9a5Q0v+xJjoRWYDqwbqIvoZkuMi5koMjkFl5+bCcjP/4fiS8/jIaXytwWR2CVr
+FxZYpEiFTqf/V5+4vupQs0fVoT/gAuXBhiWBhWz1USuVdD09T4ow/g/oRO3ehqTp
+54RuDPYioIz4zlSenU6SIGDRCDIjm8FBklgukCU3cFp8E2TYMI5mZPWB79fV9p2D
+XwIDAQAB
+-----END PUBLIC KEY-----
+I0315 01:50:59.303570    4774 verifier.go:945]      Unrestricted key parameter matchs template
+I0315 01:50:59.303711    4774 verifier.go:966]      Verifying if Public key from CSR matches attested Public key
+I0315 01:50:59.303757    4774 verifier.go:1001]      Unrestricted RSA Public key parameters matches AttestedCertifyInfo  true
+I0315 01:50:59.303783    4774 verifier.go:1016]      --> Start signCSR() 
+I0315 01:50:59.304105    4774 verifier.go:1061]      Generated cert with Serial 133112263140098456205757737454360248650
+I0315 01:50:59.306671    4774 verifier.go:1095]      Returning Certificate:  
+-----BEGIN CERTIFICATE-----
+MIID3DCCAsSgAwIBAgIQZCR9Rljycrhe5lQjEjrBSjANBgkqhkiG9w0BAQsFADBX
+MQswCQYDVQQGEwJVUzEPMA0GA1UECgwGR29vZ2xlMRMwEQYDVQQLDApFbnRlcnBy
+aXNlMSIwIAYDVQQDDBlFbnRlcnByaXNlIFN1Ym9yZGluYXRlIENBMB4XDTIyMDMx
+NTAxNTA1OVoXDTIzMDMxNTAxNTA1OVowfTELMAkGA1UEBhMCVVMxEzARBgNVBAgT
+CkNhbGlmb3JuaWExFjAUBgNVBAcTDU1vdW50YWluIFZpZXcxEDAOBgNVBAoTB0Fj
+bWUgQ28xEzARBgNVBAsTCkVudGVycHJpc2UxGjAYBgNVBAMTEWNsaWVudC5kb21h
+aW4uY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2FXMxoPucnmP
+beaYvtC7mwqMqS/DRGuGmk78f8cLLmtf4qcfQwS5t5UkEAUiHaDGTdkk8AWRVGc4
+Sh/nwxlsEMw7thklW3zge8cU7V+pWjGokaYiLPqayV3CJ7VpYPIbXRGqeXQrSAh3
+h5vPmFn2IN4TZF2E46Fob8xhqjYc9CAGqh8NevCyvyNvnb2ZTzQeC2jouRStltdH
+h97ynK/iatyzyot0+9BrhI/9CBELS1MDGxcT35g48pEJzHr1/k3Wdz2VM0+pKSIB
+hiJM1t4Q1LALhP7LKSr6Ex3H1OzaBEW8gpIoKlkH6I1D9lOs1rSSJU4ZEsVqft+3
+j32SByZNmQIDAQABo34wfDAOBgNVHQ8BAf8EBAMCB4AwHQYDVR0lBBYwFAYIKwYB
+BQUHAwEGCCsGAQUFBwMCMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAUv+Ec8CJI
+j/w7z13Z7a6IcCHf3YYwHAYDVR0RBBUwE4IRY2xpZW50LmRvbWFpbi5jb20wDQYJ
+KoZIhvcNAQELBQADggEBAJE3787r5cucG8HThw2axE/PmGsURDZkLHKN6Ie4pBRp
+3N6KOjvRdIDUT+gyE7Q4C41EJNKFsdoxlzcrS761lO+gsOktC0dvAYLHAezqFGeo
+hm9dIDrfq5Sfg30yfDQu1NTm4G8eW0bzQ0M/urTNnLJTzYbFYFlqYDucFGKMRBI8
+h/zmceOqAlGbRDE0vdeHkS0fcVyeAM8Gahv05g+MMF4rRBk/ccq41iHVtrcP4/FK
+u9vafyweuKx/llt9V8gz9WLZ1vog/HdvLUqE/1CM3HfdiIKNS7nzcaJvvSvEqCpF
+vYrrLfRjXlCFJ164Rgz86ESx12dA24qyQKGIk25J5PQ=
+-----END CERTIFICATE-----
+I0315 01:50:59.306727    4774 verifier.go:1008]      Returning OfferCSRResponse ========
