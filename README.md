@@ -53,7 +53,7 @@ As you can see, the whole protocol is rather complicated but hinges on being abl
 also see
 
  - [go-attestation](https://github.com/google/go-attestation)
-
+ - [CA scratchpad](https://github.com/salrashid123/ca_scratchpad)
 
 ## Setup
 
@@ -246,13 +246,13 @@ openssl x509 -in ekcert.der -inform DER -outform PEM -out ekcert.pem
 
 # openssl x509 -in ekcert.der -inform DER -outform PEM -out ekcert.pem
 openssl x509 -in ekcert.pem -text
-Certificate:
-    Data:
-        Version: 3 (0x2)
-        Serial Number:
-            01:43:f2:f9:3e:d0:12:42:d6:86:88:fb:48:ba:7c:b9:9e:dd:50
-        Signature Algorithm: sha256WithRSAEncryption
-        Issuer: C = US, ST = California, L = Mountain View, O = Google LLC, OU = Cloud, CN = "tpm_ek_v1_cloud_host-signer-0-2021-10-12T04:22:11-07:00 K:1, 3:nbvaGZFLcuc:0:18"
+    Certificate:
+        Data:
+            Version: 3 (0x2)
+            Serial Number:
+                01:b0:01:fe:40:bf:96:77:47:51:a7:2e:9f:5d:e5:33:3d:6b:62
+            Signature Algorithm: sha256WithRSAEncryption
+            Issuer: C = US, ST = California, L = Mountain View, O = Google LLC, OU = Cloud, CN = "tpm_ek_v1_cloud_host-signer-0-2021-10-12T04:22:11-07:00 K:1, 3:nbvaGZFLcuc:0:18"
 ```
 
 and the encoded reference of the same in the `platform_cert.der`
@@ -260,24 +260,26 @@ and the encoded reference of the same in the `platform_cert.der`
 
 ```bash
 $ openssl asn1parse -inform DER -in certs/platform_cert.der
+
     0:d=0  hl=4 l=1268 cons: SEQUENCE          
     4:d=1  hl=4 l= 988 cons: SEQUENCE          
     8:d=2  hl=2 l=   1 prim: INTEGER           :01
    11:d=2  hl=3 l= 218 cons: SEQUENCE          
 ...
-.
-  121:d=7  hl=2 l=  88 cons: SET               
-  123:d=8  hl=2 l=  86 cons: SEQUENCE          
-  125:d=9  hl=2 l=   3 prim: OBJECT            :commonName
-  130:d=9  hl=2 l=  79 prim: UTF8STRING        :tpm_ek_v1_cloud_host-signer-0-2021-10-12T04:22:11-07:00 K:1, 3:nbvaGZFLcuc:0:18
-  211:d=4  hl=2 l=  19 prim: INTEGER           :0143F2F93ED01242D68688FB48BA7CB99EDD50
-  232:d=2  hl=2 l=  93 cons: cont [ 0 ]        
+  713:d=4  hl=2 l=   3 prim: OBJECT            :X509v3 Authority Key Identifier
+  718:d=4  hl=2 l= 113 prim: OCTET STRING      [HEX DUMP]:306F8014B7BAB002A1E7BE34C6C1055C6678E5BB535DA154A154A4523050310B3009060355040613025553310F300D060355040A0C06476F6F676C6531133011060355040B0C0A456E7465727072697365311B301906035504030C12456E746572707269736520526F6F74204341820102
+  833:d=3  hl=2 l=  65 cons: SEQUENCE          
+  835:d=4  hl=2 l=   3 prim: OBJECT            :X509v3 Certificate Policies
+  840:d=4  hl=2 l=  58 prim: OCTET STRING      [HEX DUMP]:3038303606022A033030302E06082B0601050507020230220C20544347205472757374656420506C6174666F726D20456E646F7273656D656E74
+  900:d=3  hl=2 l=  94 cons: SEQUENCE          
+  902:d=4  hl=2 l=   3 prim: OBJECT            :X509v3 Subject Alternative Name
+  907:d=4  hl=2 l=  87 prim: OCTET STRING      [HEX DUMP]:3055A45330513119301706066781050501040C0D4E6F74205370656369666965643119301706066781050501010C0D4E6F74205370656369666965643119301706066781050501050C0D4E6F7420537065636966696564
+   
 ```
 
 This links the platform cert with that specific EKCert
 
-You can verify the Platform cert was signed by a given CA by using [go-attestation.attributecert.AttributeCertificate.CheckSignatureFrom](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecer
-t#AttributeCertificate.CheckSignatureFrom)
+You can verify the Platform cert was signed by a given CA by using [go-attestation.attributecert.AttributeCertificate.CheckSignatureFrom](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecert#AttributeCertificate.CheckSignatureFrom)
 
 
 - [`2.1.5 Assertions Made by a Platform Certificate`](https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf)
