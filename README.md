@@ -77,20 +77,32 @@ On each, install `go 1.16+` and setup `libtspi-dev`, `gcc` (`apt-get update && a
 
 ```bash
 apt-get update
-apt-get install libtspi-dev wget gcc -y
+apt-get install libtspi-dev wget gcc git -y
 
 wget https://golang.org/dl/go1.17.linux-amd64.tar.gz
 rm -rf /usr/local/go && tar -C /usr/local -xzf go1.17.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin/
 
 ```
 
-the client  VM, edit `/etc/hosts`
+on the *verifier* (which in this case is the client)  VM, edit `/etc/hosts`
 
-and set the value of `verify.esodemoapp2.com` to the IP of the server (in my case, its `10.128.0.58`)
+and set the value of `verify.esodemoapp2.com` to the IP of the client (in my case, its `10.128.0.58`).
 
 ```
+$ gcloud compute instances list --filter=name=attestor
+NAME      ZONE           MACHINE_TYPE  PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP      STATUS
+attestor  us-central1-a  e2-medium                  10.128.0.58  104.197.204.181  RUNNING
+```
+
+```
+root@verifier:# hostname
+verifier
+
+root@verifier:# more /etc/hosts
 10.128.0.58 verify.esodemoapp2.com
 ```
+
 
 ofcourse you can use any hostname here but the certificated provided in this repo matches the SAN values for TLS.
 
@@ -156,7 +168,10 @@ End Unrestricted SigningKey Transfer
 
 #### Attestor AES
 
-```log
+```bash
+git clone https://github.com/salrashid123/go_tpm_remote_attestation.git
+cd go_tpm_remote_attestation
+
 go run src/grpc_attestor.go --grpcport :50051 \
  --unsealPcrs=0,7 \
  --caCertTLS certs/CA_crt.pem \
@@ -169,7 +184,12 @@ go run src/grpc_attestor.go --grpcport :50051 \
 
 #### Verifier AES
 
-```log
+```bash
+git clone https://github.com/salrashid123/go_tpm_remote_attestation.git
+cd go_tpm_remote_attestation
+
+# make sure /etc/hosts contains the internal ip for the attestor's vm set as "verify.esodemoapp2.com" in /etc/hosts
+
 go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 --readEventLog \
    -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" \
    --host verify.esodemoapp2.com:50051 \
