@@ -80,7 +80,7 @@ var (
 	exportedRSACert      = flag.String("rsaCert", "certs/tpm_client.crt", "RSA Public certificate for the key to export")
 	exportedRSAKey       = flag.String("rsaKey", "certs/tpm_client.key", "RSA key to export")
 	letterRunes          = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	address              = flag.String("host", "verify.esodemoapp2.com:50051", "host:port of Attestor")
+	address              = flag.String("host", "attestor.esodemoapp2.com:50051", "host:port of Attestor")
 	handleNames          = map[string][]tpm2.HandleType{
 		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
 		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
@@ -142,7 +142,7 @@ func main() {
 		glog.Fatalf("no root CA certs parsed from file ")
 	}
 	tlsCfg.RootCAs = rootCAs
-	tlsCfg.ServerName = "verify.esodemoapp2.com"
+	tlsCfg.ServerName = "attestor.esodemoapp2.com"
 
 	mrnd.Seed(time.Now().UTC().UnixNano())
 

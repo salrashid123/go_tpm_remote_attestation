@@ -24,8 +24,10 @@ RUN export GOBIN=/app/bin && go install src/grpc_verifier.go
 
 
 FROM gcr.io/distroless/base
-COPY --from=build /app/certs/server_crt.pem /certs
-COPY --from=build /app/certs/server_key.pem /certs
+COPY --from=build /app/certs/verify_crt.pem /certs
+COPY --from=build /app/certs/verify_key.pem /certs
+COPY --from=build /app/certs/attestor_crt.pem /certs
+COPY --from=build /app/certs/attestor_key.pem /certs
 COPY --from=build /app/certs/tpm_client.crt /certs
 COPY --from=build /app/certs/tpm_client.key /certs
 COPY --from=build /app/certs/platform_cert.der /certs

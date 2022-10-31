@@ -9,15 +9,6 @@ This repo contains a sample `gRPC` client server application that uses a Trusted
 * Parse TPM EventLog
 
 
-Note: there are two branches to this repository:  `push` and `pull`
-
-The main difference between them is which side initiates communication to attest a TPM.
-
-* In the `push` model, the `verifier` is a remote server which *makes* an outbound API call _to_ the TPM device (`attestor`).  The TPM device now performs remote attestation but is driven by the the API calls from the remote server.
-
-* In the `pull` model, the `verifier` is a remote server which *receives* an outbound API call _from_ the TPM device (`attestor`).  The TPM device is in control of when to initiate and perform remote attestation.
-
-
 Attestation:
 
 ( Images taken from [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html) )
@@ -42,7 +33,7 @@ There are two parts:
 
 * `attestor`:  a `gRPC` server which accepts connections from a verifier, performs remote attestation, quote/verify and then then securely receives a sealed key from a verifier.  The key is distributed such that it can _only_ get loaded or decoded on the attestor that has the TPM
 
-* `verifier`: a `gRPC` client which connects to the corresponding attestor, proves it owns a specific TPM and then sends a sealed Key that can only be decoded by that client.
+* `verifier`: a `gRPC` client which connects to the corresponding attestor, and the attestor proves it owns a specific TPM.  Once complete, the verifier will send a sealed RSA or AES Key that can only be decoded by that client.
 
 ---
 
@@ -92,7 +83,7 @@ and set the value of `verify.esodemoapp2.com` to the IP of the client (in my cas
 ```
 $ gcloud compute instances list --filter=name=attestor
 NAME      ZONE           MACHINE_TYPE  PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP      STATUS
-attestor  us-central1-a  e2-medium                  10.128.0.58  104.197.204.181  RUNNING
+attestor  us-central1-a  e2-medium                  10.128.0.14  104.197.204.181  RUNNING
 ```
 
 ```
@@ -100,7 +91,7 @@ root@verifier:# hostname
 verifier
 
 root@verifier:# more /etc/hosts
-10.128.0.58 verify.esodemoapp2.com
+10.128.0.14 attestor.esodemoapp2.com
 ```
 
 
@@ -175,8 +166,8 @@ cd go_tpm_remote_attestation
 go run src/grpc_attestor.go --grpcport :50051 \
  --unsealPcrs=0,7 \
  --caCertTLS certs/CA_crt.pem \
- --servercert certs/server_crt.pem \
- --serverkey certs/server_key.pem \
+ --servercert certs/attestor_crt.pem \
+ --serverkey certs/attestor_key.pem \
   -useFullAttestation --readEventLog \
   --platformCertFile certs/platform_cert.der \
   --v=10 -alsologtostderr
@@ -188,11 +179,11 @@ go run src/grpc_attestor.go --grpcport :50051 \
 git clone https://github.com/salrashid123/go_tpm_remote_attestation.git
 cd go_tpm_remote_attestation
 
-# make sure /etc/hosts contains the internal ip for the attestor's vm set as "verify.esodemoapp2.com" in /etc/hosts
+# make sure /etc/hosts contains the internal ip for the attestor's vm set as "attestor.esodemoapp2.com" in /etc/hosts
 
 go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 --readEventLog \
    -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" \
-   --host verify.esodemoapp2.com:50051 \
+   --host attestor.esodemoapp2.com:50051 \
    --expectedPCRMapSHA256 0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a \
    --expectedPCRMapSHA1 0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
    --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem --platformCA certs/CA_crt.pem \
@@ -209,8 +200,8 @@ go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0
 go run src/grpc_attestor.go --grpcport :50051 \
   --unsealPcrs=0,7 \
   --caCertTLS certs/CA_crt.pem \
-  --servercert certs/server_crt.pem -useFullAttestation  --readEventLog \
-  --serverkey certs/server_key.pem --platformCertFile certs/platform_cert.der  \
+  --servercert certs/attestor_crt.pem -useFullAttestation  --readEventLog \
+  --serverkey certs/attestor_key.pem --platformCertFile certs/platform_cert.der  \
   --v=10 -alsologtostderr
 ```
 
@@ -223,7 +214,7 @@ go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0
   --rsaCert=certs/tpm_client.crt \
   --readEventLog --useFullAttestation \
   --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem    --platformCA certs/CA_crt.pem \
-  --rsaKey=certs/tpm_client.key  --host verify.esodemoapp2.com:50051   \
+  --rsaKey=certs/tpm_client.key  --host attestor.esodemoapp2.com:50051   \
   --v=10 -alsologtostderr 
 ```
 
