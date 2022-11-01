@@ -78,7 +78,7 @@ export PATH=$PATH:/usr/local/go/bin/
 
 on the *verifier* (which in this case is the client)  VM, edit `/etc/hosts`
 
-and set the value of `verify.esodemoapp2.com` to the IP of the client (in my case, its `10.128.0.58`).
+and set the value of `attestor.esodemoapp2.com` to the IP of the client (in my case, its `10.128.0.14`).
 
 ```
 $ gcloud compute instances list --filter=name=attestor
