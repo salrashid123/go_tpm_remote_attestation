@@ -1,4 +1,4 @@
-FROM golang:1.17 as build
+FROM golang:1.19 as build
 
 RUN apt-get update -y && apt-get install -y build-essential wget unzip curl git libtspi-dev
 
@@ -24,15 +24,15 @@ RUN export GOBIN=/app/bin && go install src/grpc_verifier.go
 
 
 FROM gcr.io/distroless/base
-COPY --from=build /app/certs/verify_crt.pem /certs
-COPY --from=build /app/certs/verify_key.pem /certs
-COPY --from=build /app/certs/attestor_crt.pem /certs
-COPY --from=build /app/certs/attestor_key.pem /certs
-COPY --from=build /app/certs/tpm_client.crt /certs
-COPY --from=build /app/certs/tpm_client.key /certs
-COPY --from=build /app/certs/platform_cert.der /certs
-COPY --from=build /app/certs/CA_crt.pem /certs
-COPY --from=build /app/certs/CA_key.pem /certs
+COPY --from=build /app/certs/verify_crt.pem /certs/verify_crt.pem
+COPY --from=build /app/certs/verify_key.pem /certs/verify_key.pem
+COPY --from=build /app/certs/attestor_crt.pem /certs/attestor_crt.pem
+COPY --from=build /app/certs/attestor_key.pem /certs/attestor_key.pem
+COPY --from=build /app/certs/tpm_client.crt /certs/tpm_client.crt
+COPY --from=build /app/certs/tpm_client.key /certs/tpm_client.key
+COPY --from=build /app/certs/platform_cert.der /certs/platform_cert.der
+COPY --from=build /app/certs/CA_crt.pem /certs/CA_crt.pem
+COPY --from=build /app/certs/CA_key.pem /certs/CA_key.pem
 COPY --from=build /app/bin /
 
 

@@ -168,7 +168,7 @@ go run src/grpc_attestor.go --grpcport :50051 \
  --caCertTLS certs/CA_crt.pem \
  --servercert certs/attestor_crt.pem \
  --serverkey certs/attestor_key.pem \
-  -useFullAttestation --readEventLog \
+  -useFullAttestation=true --readEventLog=true \
   --platformCertFile certs/platform_cert.der \
   --v=10 -alsologtostderr
 ```
@@ -187,8 +187,8 @@ go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0
    --expectedPCRMapSHA256 0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a \
    --expectedPCRMapSHA1 0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
    --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem --platformCA certs/CA_crt.pem \
-   --readEventLog \
-   --useFullAttestation \
+   --readEventLog=true \
+   --useFullAttestation=true \
    --v=10 -alsologtostderr 
 ```
 
@@ -200,7 +200,7 @@ go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0
 go run src/grpc_attestor.go --grpcport :50051 \
   --unsealPcrs=0,7 \
   --caCertTLS certs/CA_crt.pem \
-  --servercert certs/attestor_crt.pem -useFullAttestation  --readEventLog \
+  --servercert certs/attestor_crt.pem -useFullAttestation=true  --readEventLog=true \
   --serverkey certs/attestor_key.pem --platformCertFile certs/platform_cert.der  \
   --v=10 -alsologtostderr
 ```
@@ -212,7 +212,7 @@ go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0
   --expectedPCRMapSHA256 0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a \
   --expectedPCRMapSHA1 0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
   --rsaCert=certs/tpm_client.crt \
-  --readEventLog --useFullAttestation \
+  --readEventLog=true --useFullAttestation=true \
   --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem    --platformCA certs/CA_crt.pem \
   --rsaKey=certs/tpm_client.key  --host attestor.esodemoapp2.com:50051   \
   --v=10 -alsologtostderr 

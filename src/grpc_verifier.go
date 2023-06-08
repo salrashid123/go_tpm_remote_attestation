@@ -429,6 +429,7 @@ func main() {
 		ims, err := gotpmserver.VerifyAttestation(attestationMsg, gotpmserver.VerifyOpts{
 			Nonce:      []byte(string(cc)),
 			TrustedAKs: []crypto.PublicKey{ap},
+			AllowSHA1:  true,
 		})
 		if err != nil {
 			glog.Fatalf("     Attestation failed:  failed to verify %v", err)
@@ -511,13 +512,20 @@ func main() {
 		if *readEventLog {
 			glog.V(2).Infof("     Reading EventLog")
 
-			evtLogPcrMap, _, err := getPCRMap(tpm.HashAlgo_SHA1)
+			attestationMsg := &attest.Attestation{}
+			err = proto.Unmarshal(qResponse.Attestation, attestationMsg)
 			if err != nil {
-				glog.Fatalf("   Error getting PCRMap")
+				glog.Fatalf("     Attestation failed:  Could no unmarshall attestation, %v", err)
 			}
-			pcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: evtLogPcrMap}
 
-			ms, err := gotpmserver.ParseMachineState(qResponse.Eventlog, pcrs)
+			glog.V(2).Infof("     Verifying Attestation with AK Public Key:\n %v", string(akPubPEM))
+
+			ms, err := gotpmserver.VerifyAttestation(attestationMsg, gotpmserver.VerifyOpts{
+				Nonce:      []byte(string(cc)),
+				TrustedAKs: []crypto.PublicKey{ap},
+				AllowSHA1:  true,
+			})
+
 			if err != nil {
 				glog.Fatalf("  Failed to parse EventLog: %v", err)
 			}

@@ -50,6 +50,7 @@ import (
 
 	"github.com/google/go-tpm-tools/client"
 
+	"github.com/google/go-tpm-tools/proto/attest"
 	tpmpb "github.com/google/go-tpm-tools/proto/tpm"
 	"github.com/google/go-tpm/tpm2"
 	"github.com/google/go-tpm/tpmutil"
@@ -66,6 +67,7 @@ var (
 	serverKey          = flag.String("serverkey", "certs/attestor_key.pem", "Server SSL PrivateKey")
 	nonces             = make(map[string]string)
 	readEventLog       = flag.Bool("readEventLog", false, "Reading Event Log")
+	eventLog           = flag.String("eventLog", "/sys/kernel/security/tpm0/binary_bios_measurements", "Path to the eventlog")
 	useFullAttestation = flag.Bool("useFullAttestation", false, "Use Attestation")
 	platformCertFile   = flag.String("platformCertFile", "certs/platform_cert.der", "Platform Certificate File")
 	pcrList            = []int{}
@@ -231,7 +233,7 @@ func (s *server) Attest(ctx context.Context, in *verifier.AttestRequest) (*verif
 	}
 	defer tpm2.FlushContext(rwc, loadCreateHandle)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
 		glog.Errorf("     Unable to create PolicySecret: %v", err)
 		return &verifier.AttestResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -266,7 +268,20 @@ func (s *server) Attest(ctx context.Context, in *verifier.AttestRequest) (*verif
 		return &verifier.AttestResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Load failed for AK: %s", err))
 	}
 	glog.V(10).Infof("     AK CachedKey Name %s", hex.EncodeToString(kk.Name().Digest.Value))
-	attestationBlob, err := kk.Attest(client.AttestOpts{Nonce: []byte(in.Secret)})
+
+	var attestationBlob *attest.Attestation
+	if *readEventLog {
+		glog.V(20).Infof("     Getting EventLog from %s", *eventLog)
+		evtLog, err := os.ReadFile(*eventLog)
+		if err != nil {
+			glog.Errorf("     Error generating attestation %v", err)
+			return &verifier.AttestResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to attest: %v", err))
+		}
+		attestationBlob, err = kk.Attest(client.AttestOpts{Nonce: []byte(in.Secret), TCGEventLog: evtLog})
+	} else {
+		attestationBlob, err = kk.Attest(client.AttestOpts{Nonce: []byte(in.Secret)})
+	}
+
 	if err != nil {
 		glog.Errorf("     Error generating attestation %v", err)
 		return &verifier.AttestResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to attest: %v", err))
@@ -435,7 +450,7 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 	}
 	defer tpm2.FlushContext(rwc, sessCreateHandle)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessCreateHandle, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessCreateHandle, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR:   Unable to create PolicySecret: %v", err)
 		return &verifier.GetAKResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -512,7 +527,7 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 	}
 	defer tpm2.FlushContext(rwc, loadSession)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadSession, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadSession, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR:  Unable to create PolicySecret: %v", err)
 		return &verifier.GetAKResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -633,7 +648,7 @@ func (s *server) ActivateCredential(ctx context.Context, in *verifier.ActivateCr
 	}
 	defer tpm2.FlushContext(rwc, loadCreateHandle)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR: ActivateCredential  Unable to create PolicySecret : %v", err)
 		return &verifier.ActivateCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -672,7 +687,7 @@ func (s *server) ActivateCredential(ctx context.Context, in *verifier.ActivateCr
 	}
 	defer tpm2.FlushContext(rwc, sessActivateCredentialSessHandle1)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessActivateCredentialSessHandle1, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessActivateCredentialSessHandle1, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR: ActivateCredential  Unable to create PolicySecret : %v", err)
 		return &verifier.ActivateCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -694,7 +709,7 @@ func (s *server) ActivateCredential(ctx context.Context, in *verifier.ActivateCr
 	}
 	defer tpm2.FlushContext(rwc, sessActivateCredentialSessHandle2)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessActivateCredentialSessHandle2, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessActivateCredentialSessHandle2, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR: ActivateCredential  Unable to create PolicySecret : %v", err)
 		return &verifier.ActivateCredentialResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -762,7 +777,7 @@ func (s *server) Quote(ctx context.Context, in *verifier.QuoteRequest) (*verifie
 	}
 	defer tpm2.FlushContext(rwc, loadCreateHandle)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR:   Unable to create PolicySecret : %v", err)
 		return &verifier.QuoteResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -801,8 +816,9 @@ func (s *server) Quote(ctx context.Context, in *verifier.QuoteRequest) (*verifie
 
 	evtLog := []byte("")
 	if *readEventLog {
-		glog.V(20).Infof("     Getting EventLog")
-		evtLog, err = client.GetEventLog(rwc)
+		glog.V(20).Infof("     Getting EventLog from %s", *eventLog)
+		evtLog, err = os.ReadFile(*eventLog)
+		//evtLog, err = client.GetEventLog(rwc)
 		if err != nil {
 			glog.Errorf("ERROR:   failed to get event log: %v", err)
 			return &verifier.QuoteResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("failed to get event log: %v", err))
@@ -974,7 +990,7 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	}
 	defer tpm2.FlushContext(rwc, loadCreateHandle)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, loadCreateHandle, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR:  Unable to create PolicySecret  %v", err)
 		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -1051,7 +1067,7 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	// 	log.Fatalf("PolicyPCR failed: %v", err)
 	// }
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessCreateHandle, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessCreateHandle, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR:  PolicySecret failed  %v", err)
 		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
@@ -1112,7 +1128,7 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	}
 	defer tpm2.FlushContext(rwc, sessLoadHandle)
 
-	if _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessLoadHandle, nil, nil, nil, 0); err != nil {
+	if _, _, err := tpm2.PolicySecret(rwc, tpm2.HandleEndorsement, tpm2.AuthCommand{Session: tpm2.HandlePasswordSession, Attributes: tpm2.AttrContinueSession}, sessLoadHandle, nil, nil, nil, 0); err != nil {
 		glog.Errorf("ERROR:  Unable to create PolicySecret: %v", err)
 		return &verifier.PullRSAKeyResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Unable to create PolicySecret: %v", err))
 	}
