@@ -225,6 +225,8 @@ func main() {
 		// }
 	}
 
+	glog.V(5).Infof("=============== GetEKCert ===============")
+
 	var ekcert *x509.Certificate
 
 	ekReq := &verifier.GetEKCertRequest{
@@ -232,9 +234,9 @@ func main() {
 	}
 	ekCertResponse, err := c.GetEKCert(ctx, ekReq)
 	if err != nil {
-		glog.Infof("GetEKCert Failed, skipping loading Certificate from remote NV;  Original Error is: %v", err)
-	} else if len(ekCertResponse.EkCert) > 0 {
-		glog.V(5).Infof("=============== GetEKCert Returned from remote ===============")
+		glog.Fatalf("Error GetEKCert: %v", err)
+	}
+	if len(ekCertResponse.EkCert) > 0 {
 		ekcert, err = x509.ParseCertificate(ekCertResponse.EkCert)
 		if err != nil {
 			glog.Fatalf("ERROR:   ParseCertificate: %v", err)
@@ -278,6 +280,27 @@ func main() {
 			glog.Fatalf("ERROR:  EK does not have correct defaultParameters")
 		}
 
+	} else {
+		glog.Infof("GetEKCert empty so skipping loading Certificate from remote NV and instead using ekPub;  Original Error is: %v", err)
+		block, _ := pem.Decode(ekCertResponse.EkPub)
+		if block == nil {
+			glog.Fatalf("ERROR:  error decoding ekPub")
+		}
+		// ep, err := x509.ParsePKIXPublicKey(block.Bytes)
+		// if err != nil {
+		// 	glog.Fatalf("Unable to convert akPub: %v", err)
+		// }
+		ekPubPEM := pem.EncodeToMemory(
+			&pem.Block{
+				Type:  "PUBLIC KEY",
+				Bytes: block.Bytes,
+			},
+		)
+
+		// somehow establish trust with this ekPubPEM (since we don't have the ekCert to verify locally...)
+		// this ekpub is also returned fwith the 'getAKCert() api call
+		glog.V(10).Infof("     Decoded EkPublic Key: \n%v", string(ekPubPEM))
+
 	}
 
 	glog.V(5).Infof("=============== GetAKCert ===============")
@@ -314,6 +337,7 @@ func main() {
 			Bytes: ekBytes,
 		},
 	)
+	// this public key would be the same as the one we derived from GetEKCert()
 	glog.V(10).Infof("     Decoded EkPublic Key: \n%v", string(ekPubPEM))
 
 	ekh, keyName, err := tpm2.LoadExternal(rwc, ekPub, tpm2.Private{}, tpm2.HandleNull)

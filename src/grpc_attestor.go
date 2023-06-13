@@ -307,7 +307,7 @@ func (s *server) GetEKCert(ctx context.Context, in *verifier.GetEKCertRequest) (
 
 	// First acquire the AK, EK keys, certificates from NV
 
-	glog.V(5).Infof("=============== Load EncryptionKey and Certifcate from NV ===============")
+	glog.V(5).Infof("=============== Load EncryptionKey and Certificate from NV ===============")
 	ekk, err := client.EndorsementKeyRSA(rwc)
 	if err != nil {
 		glog.Errorf("ERROR:  could not get EndorsementKeyRSA: %v", err)
@@ -328,40 +328,40 @@ func (s *server) GetEKCert(ctx context.Context, in *verifier.GetEKCertRequest) (
 	)
 	glog.V(10).Infof("     Encryption PEM \n%s", string(ekPubPEM))
 
-	tpmEkPub, _, _, err := tpm2.ReadPublic(rwc, ekk.Handle())
-	if err != nil {
-		return &verifier.GetEKCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error ReadPublic failed: %s", err))
-	}
+	// tpmEkPub, _, _, err := tpm2.ReadPublic(rwc, ekk.Handle())
+	// if err != nil {
+	// 	return &verifier.GetEKCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Error ReadPublic failed: %s", err))
+	// }
 
-	ekPubBytes, err := tpmEkPub.Encode()
-	if err != nil {
-		return &verifier.GetEKCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Load failed for ekPubBytes: %v", err))
-	}
+	// ekPubBytes, err := tpmEkPub.Encode()
+	// if err != nil {
+	// 	return &verifier.GetEKCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("Load failed for ekPubBytes: %v", err))
+	// }
 
 	// now reread the EKEncryption directly from NV
 	//   the EKCertificate (x509) is saved at encryptionCertNVIndex
 	//   the following steps attempts to read that value in directly from NV
 	//  >>>>>> This is currently not supported but i'm adding in code anyway
 
+	var encCertBytesRaw []byte
 	ekcertBytes, err = tpm2.NVReadEx(rwc, encryptionCertNVIndex, tpm2.HandleOwner, "", 0)
 	if err != nil {
-		glog.Errorf("ERROR:   could not get NVReadEx: %v", err)
-		return &verifier.GetEKCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:  could not get NVReadEx: %v", err))
+		glog.Infof("   could not get EKCert from NV so using EKPub: %v", err)
+	} else {
+		encCert, err := x509.ParseCertificate(ekcertBytes)
+		if err != nil {
+			glog.Errorf("ERROR:   ParseCertificate: %v", err)
+			return &verifier.GetEKCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:   ParseCertificate: %v", err))
+		}
+		glog.V(10).Infof("     Encryption Issuer x509 %s", encCert.Issuer.CommonName)
+		encCertBytesRaw = encCert.Raw
 	}
-
-	encCert, err := x509.ParseCertificate(ekcertBytes)
-	if err != nil {
-		glog.Errorf("ERROR:   ParseCertificate: %v", err)
-		return &verifier.GetEKCertResponse{}, grpc.Errorf(codes.FailedPrecondition, fmt.Sprintf("ERROR:   ParseCertificate: %v", err))
-	}
-
-	glog.V(10).Infof("     Encryption Issuer x509 %s", encCert.Issuer.CommonName)
 
 	glog.V(2).Infof("     Returning GetEKCert")
 	return &verifier.GetEKCertResponse{
 		Uid:    in.Uid,
-		EkCert: encCert.Raw,
-		EkPub:  ekPubBytes,
+		EkCert: encCertBytesRaw,
+		EkPub:  ekPubPEM,
 	}, nil
 }
 
