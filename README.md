@@ -358,7 +358,7 @@ go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0
 
 Google signed Endorsement *Certificates* are not available on VMs. 
 
-On any other platform ([even a raspberry pi](https://gist.github.com/salrashid123/d99e698f84e5d35a863225b747af1f48), you can usually extract the signing certificate bound on the tpm)..
+On many other platform ([even a raspberry pi w/ TPM chip](https://gist.github.com/salrashid123/d99e698f84e5d35a863225b747af1f48), you can usually extract the the EK certificate bound on the tpm)..
 
 While the API documentation for [getShieldedInstanceIdentity](https://cloud.google.com/compute/docs/reference/rest/v1/instances/getShieldedInstanceIdentity) shows a placeholder for the certificates:
 
