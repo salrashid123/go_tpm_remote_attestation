@@ -65,14 +65,14 @@ gcloud compute instances create verifier \
   --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring
 ```
 
-On each, install `go 1.16+` and setup `libtspi-dev`, `gcc` (`apt-get update && apt-get install gcc libtspi-dev`)
+On each, install `go 1.19+` and setup `libtspi-dev`, `gcc` (`apt-get update && apt-get install gcc libtspi-dev`)
 
 ```bash
 apt-get update
 apt-get install libtspi-dev wget gcc git -y
 
-wget https://golang.org/dl/go1.17.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.17.linux-amd64.tar.gz
+wget https://golang.org/dl/go1.19.linux-amd64.tar.gz
+rm -rf /usr/local/go && tar -C /usr/local -xzf go1.19.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin/
 
 ```
@@ -107,7 +107,7 @@ Now test the client-server by transmitting both an RSA and AES key.
 On startup, the verifier will:
 
 1. Verifier contacts the Attestor
-2. Attestor returns EKCert (EK)
+2. Attestor returns EKCert (EK), if available*
 3. Verifier checks Issuer of EKCert
   
 Begin Remote Attestation
@@ -182,15 +182,25 @@ cd go_tpm_remote_attestation
 
 # make sure /etc/hosts contains the internal ip for the attestor's vm set as "attestor.esodemoapp2.com" in /etc/hosts
 
-go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 --readEventLog \
-   -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" \
+go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67  -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" \
    --host attestor.esodemoapp2.com:50051 \
-   --expectedPCRMapSHA256 0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a \
+   --expectedPCRMapSHA256 0:d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783,7:3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a \
    --expectedPCRMapSHA1 0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
    --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem --platformCA certs/CA_crt.pem \
    --readEventLog=true \
-   --useFullAttestation=true \
-   --v=10 -alsologtostderr 
+   --useFullAttestation=true --v=10 -alsologtostderr 
+```
+
+
+Note, you can get the pcr values for 0,7 on the attestor using [pcr_utils](https://github.com/salrashid123/tpm2/tree/master/pcr_utils).  As of `6/13/23`:
+
+```log
+$ go run main.go --mode=read --pcr=0 -v 10 -alsologtostderr
+I0613 18:56:49.776491    8823 main.go:66] ======= Print PCR  ========
+I0613 18:56:49.778764    8823 main.go:71] PCR(0) d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783
+$ go run main.go --mode=read --pcr=7 -v 10 -alsologtostderr
+I0613 18:56:54.544843    8870 main.go:66] ======= Print PCR  ========
+I0613 18:56:54.547071    8870 main.go:71] PCR(7) 3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a
 ```
 
 ### RSA
@@ -344,4 +354,55 @@ go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0
   --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem \
   --rsaKey=certs/tpm_client.key  --host verify.esodemoapp2.com:50051   \
   --v=10 -alsologtostderr 
+```
+
+### EKCert and AKCert
+
+Google signed Endorsement *Certificates* are not available on VMs. 
+
+While the API documentation for [getShieldedInstanceIdentity](https://cloud.google.com/compute/docs/reference/rest/v1/instances/getShieldedInstanceIdentity) shows a placeholder for the certificates:
+
+```
+{
+  "kind": string,
+  "signingKey": {
+    "ekCert": string,
+    "ekPub": string
+  },
+  "encryptionKey": {
+    "ekCert": string,
+    "ekPub": string
+  }
+}
+```
+
+it is not populated (see[retrieving-endorsement-key](https://cloud.google.com/compute/shielded-vm/docs/retrieving-endorsement-key))
+
+```bash
+gcloud compute instances get-shielded-identity attestor
+
+encryptionKey:
+  ekPub: |
+    -----BEGIN PUBLIC KEY-----
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyLLB37zQTi3KfKridPpY
+    tj9yKm0ci/QUGqrzBsVVqxqOsQUxocsaKMZPIO7VxJlJd8KHWMoGY6f1VOdNUFCN
+    ufg5WMqA/t6rXvjF4NtPTvR05dCV4JegBBDnOjF9NgmV67+NgAm3afq/Z1qvJ336
+    WUop2prbTWpseNtdlp2+4TOBSsNZgsum3CFr40qIsa2rb9xFDrqoMTVkgKGpJk+z
+    ta+pcxGXYFJfU9sb7F7cs3e+TzjucGFcpVEiFzVq6Mga8cmh32sufM/PuifVYSLi
+    BYV4s4c53gVq7v0Oda9LqaxT2A9EmKopcWUU8CEgbsBxhmVAhsnKwLDmJYKULkAk
+    uwIDAQAB
+    -----END PUBLIC KEY-----
+kind: compute#shieldedInstanceIdentity
+signingKey:
+  ekPub: |
+    -----BEGIN PUBLIC KEY-----
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtvr8f4lOUaHIMDoC9Baq
+    sLs2Irh1RrKmTbgf/cWZHvhCQUT3qGGB5gqI96/efF3pCKx/KL9tYpJ7iQ3TpJhv
+    E8sG+bfxA3qvoDXIzO8bsAPyEp6c77UfvHkasi4cKZP2kBIURy/TwOSeZco7qU51
+    V10pL4kcw8J0CeDr4KKap6m4gWXcdo4rOpRMy62bBRIaxWEbPrAlotHSoD6hvtlT
+    W0zBhs4zFrau+85YZNuobvvkPoZho/NosLKqNZ2gb2/ueY/mU0uAPhhtHtk7KWiN
+    p5iSqcWHyrzU/tZ3LwiRB/vOxeQhWH3+o3BJPU0z9Dm+5fFlO6Se4hm1/S8VxYZ4
+    owIDAQAB
+    -----END PUBLIC KEY-----
+
 ```

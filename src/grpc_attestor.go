@@ -341,7 +341,7 @@ func (s *server) GetEKCert(ctx context.Context, in *verifier.GetEKCertRequest) (
 	// now reread the EKEncryption directly from NV
 	//   the EKCertificate (x509) is saved at encryptionCertNVIndex
 	//   the following steps attempts to read that value in directly from NV
-	//   This is currently not supported but i'm adding in code anyway
+	//  >>>>>> This is currently not supported but i'm adding in code anyway
 
 	ekcertBytes, err = tpm2.NVReadEx(rwc, encryptionCertNVIndex, tpm2.HandleOwner, "", 0)
 	if err != nil {
