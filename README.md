@@ -406,3 +406,8 @@ signingKey:
     -----END PUBLIC KEY-----
 
 ```
+
+An alternative maybe to establish trust with the `ekPub` using out of band trusts as described here (i.e allow the remote party to use gcloud to read and trust the `ekPub`):
+
+** [TPM Key Attestation](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/tpm-key-attestation#BKMK_DeploymentOverview)
+
