@@ -1,7 +1,5 @@
 # TPM Remote Attestation protocol using go-tpm and gRPC
 
->>> see [https://github.com/salrashid123/go_tpm_remote_attestation](https://github.com/salrashid123/go_tpm_remote_attestation)
-
 This repo contains a sample `gRPC` client server application that uses a Trusted Platform Module for:
 
 * TPM [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html)
