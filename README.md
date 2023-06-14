@@ -411,7 +411,13 @@ An alternative maybe to establish trust with the `ekPub` using out of band trust
 
 ** [TPM Key Attestation](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/tpm-key-attestation#BKMK_DeploymentOverview)
 
-for example, you can 'force sign' a CA with the ekpublic key:
+quoting from [TPMs without EK certificates](https://safeboot.dev/attestation/):
+
+```
+Google Cloud's ShieldedVM service enables vTPM for the guests, although it does not provide an EK in the NVRAM either. The key can be retrieved out of band with these instructions, or the public component can be read from the tpm2 createek command described above. Using the Google Cloud ShieldedVM lookup service can function as an EKcert as far as establishing trust in an instance's vTPM.
+```
+
+or maybe you can for example, you can 'force sign' a CA with the ekpublic key (disclaimer, this maybe insecure)
 
 * [Issue CA-signed certificate for TPM public key](https://gist.github.com/salrashid123/10320c153ad6acdc31854c9775c43c0d)
 
