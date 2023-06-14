@@ -411,3 +411,7 @@ An alternative maybe to establish trust with the `ekPub` using out of band trust
 
 ** [TPM Key Attestation](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/tpm-key-attestation#BKMK_DeploymentOverview)
 
+for example, you can 'force sign' a CA with the ekpublic key:
+
+* [Issue CA-signed certificate for TPM public key](https://gist.github.com/salrashid123/10320c153ad6acdc31854c9775c43c0d)
+
