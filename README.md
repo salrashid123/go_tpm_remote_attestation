@@ -55,12 +55,12 @@ First create two VMs
 ```bash
 gcloud compute instances create attestor \
   --zone=us-central1-a --machine-type=e2-medium --no-service-account --no-scopes \
-  --image=debian-11-bullseye-v20211105 --image-project=debian-cloud  \
+  --image-family=debian-11 --image-project=debian-cloud  \
   --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring
 
 gcloud compute instances create verifier \
   --zone=us-central1-a --machine-type=e2-medium --no-service-account --no-scopes \
-  --image=debian-11-bullseye-v20211105 --image-project=debian-cloud  \
+  --image-family=debian-11 --image-project=debian-cloud  \
   --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring
 ```
 
