@@ -42,8 +42,9 @@ As you can see, the whole protocol is rather complicated but hinges on being abl
 
 also see
 
+ - [TPM based TLS using Attested Keys](https://github.com/salrashid123/tls_ak)
  - [go-attestation](https://github.com/google/go-attestation)
- - [CA scratchpad](https://github.com/salrashid123/ca_scratchpad)
+
 
 ## Setup
 
