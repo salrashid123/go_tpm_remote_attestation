@@ -31,7 +31,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"log"
 	"math/big"
 	mrnd "math/rand"
@@ -139,7 +138,7 @@ func main() {
 
 	var tlsCfg tls.Config
 	rootCAs := x509.NewCertPool()
-	ca_pem, err := ioutil.ReadFile(*caCertTLS)
+	ca_pem, err := os.ReadFile(*caCertTLS)
 	if err != nil {
 		glog.Errorf("failed to load root CA certificates  error=%v", err)
 		os.Exit(1)
@@ -151,13 +150,11 @@ func main() {
 	tlsCfg.RootCAs = rootCAs
 	tlsCfg.ServerName = "attestor.esodemoapp2.com"
 
-	mrnd.Seed(time.Now().UTC().UnixNano())
-
 	ce := credentials.NewTLS(&tlsCfg)
 
 	ctx := context.Background()
 
-	conn, err := grpc.Dial(*address, grpc.WithTransportCredentials(ce))
+	conn, err := grpc.NewClient(*address, grpc.WithTransportCredentials(ce))
 	if err != nil {
 		glog.Errorf("did not connect: %v", err)
 		os.Exit(1)
@@ -191,7 +188,7 @@ func main() {
 		glog.V(5).Infof("=============== GetPlatformCert Returned from remote ===============")
 		glog.V(5).Infof("     client provided uid: %s", platformCertResponse.Uid)
 
-		rootPEM, err := ioutil.ReadFile(*platformCA)
+		rootPEM, err := os.ReadFile(*platformCA)
 		if err != nil {
 			glog.Errorf(fmt.Sprintf("Error [%s] Reading Root platform cert %v", platformCertResponse.Uid, err))
 			os.Exit(1)
@@ -292,6 +289,25 @@ func main() {
 		defer tpm2.FlushContext(rwc, ekh)
 
 		glog.V(10).Infof("     Read (eK) from request with name: %s", hex.EncodeToString(keyName))
+
+		pk, err := ekPub.Key()
+		if err != nil {
+			glog.Errorf("ERROR:  Error reading publicKey from ekPub %v", err)
+			os.Exit(1)
+		}
+
+		rl, ok := pk.(*rsa.PublicKey)
+		if !ok {
+			glog.Errorf("ERROR:  ekPub public key is not rsa")
+			os.Exit(1)
+		}
+
+		if !rl.Equal(spubKey) {
+			glog.Errorf("ERROR:  ekPub public key does not match provided TPMT_PUBLIC")
+			os.Exit(1)
+		} else {
+			glog.V(20).Infof("     EK public key matches TPMT_PUBLIC")
+		}
 
 		if ekPub.MatchesTemplate(client.DefaultEKTemplateRSA()) {
 			glog.V(10).Infof("     EK Default parameter match template")
@@ -641,7 +657,7 @@ func main() {
 
 	cn := "verify.esodemoapp2.com"
 
-	ca_pem, err = ioutil.ReadFile(*caCertIssuer)
+	ca_pem, err = os.ReadFile(*caCertIssuer)
 	if err != nil {
 		glog.Errorf("failed to load root CA certificates  error=%v", err)
 		os.Exit(1)
@@ -657,7 +673,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	keyPEMBytes, err := ioutil.ReadFile(*caKeyIssuer)
+	keyPEMBytes, err := os.ReadFile(*caKeyIssuer)
 	if err != nil {
 		glog.Errorf("Unable to read %s  %v", *caKeyIssuer, err)
 		os.Exit(1)

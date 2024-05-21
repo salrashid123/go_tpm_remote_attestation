@@ -205,7 +205,7 @@ func (s *server) Attest(ctx context.Context, in *verifier.AttestRequest) (*verif
 	}
 
 	glog.V(10).Infof("     ContextLoad (ek) ========")
-	ekhBytes, err := ioutil.ReadFile(ekFile)
+	ekhBytes, err := os.ReadFile(ekFile)
 	if err != nil {
 		glog.Errorf("     ContextLoad failed for ekh: %v", err)
 		return &verifier.AttestResponse{}, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("ContextLoad failed for ekh: %v", err))
@@ -241,13 +241,13 @@ func (s *server) Attest(ctx context.Context, in *verifier.AttestRequest) (*verif
 	authCommandLoad := tpm2.AuthCommand{Session: loadCreateHandle, Attributes: tpm2.AttrContinueSession}
 
 	glog.V(10).Infof("     Read (akPub) ========")
-	akPub, err := ioutil.ReadFile(akPubFile)
+	akPub, err := os.ReadFile(akPubFile)
 	if err != nil {
 		glog.Errorf("     Read failed for akPub: %v", err)
 		return &verifier.AttestResponse{}, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Read failed for akPub: %v", err))
 	}
 	glog.V(10).Infof("     Read (akPriv) ========")
-	akPriv, err := ioutil.ReadFile(akPrivFile)
+	akPriv, err := os.ReadFile(akPrivFile)
 	if err != nil {
 		glog.Errorf("     Read failed for akPriv: %v", err)
 		return &verifier.AttestResponse{}, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Read failed for akPriv: %v", err))
@@ -784,13 +784,13 @@ func (s *server) Quote(ctx context.Context, in *verifier.QuoteRequest) (*verifie
 	authCommandLoad := tpm2.AuthCommand{Session: loadCreateHandle, Attributes: tpm2.AttrContinueSession}
 
 	glog.V(10).Infof("     Read (akPub) ========")
-	akPub, err := ioutil.ReadFile(akPubFile)
+	akPub, err := os.ReadFile(akPubFile)
 	if err != nil {
 		glog.Errorf("ERROR:   Read failed for akPub file: %v", err)
 		return &verifier.QuoteResponse{}, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Read failed for akPub file: %v", err))
 	}
 	glog.V(10).Infof("     Read (akPriv) ========")
-	akPriv, err := ioutil.ReadFile(akPrivFile)
+	akPriv, err := os.ReadFile(akPrivFile)
 	if err != nil {
 		glog.Errorf("ERROR:   Read failed for akPriv file: %v", err)
 		return &verifier.QuoteResponse{}, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Read failed for akPriv file: %v", err))
@@ -961,7 +961,7 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 	glog.V(5).Infof("======= Generate UnrestrictedKey ========")
 
 	glog.V(10).Infof("     ContextLoad (ek) ========")
-	ekhBytes, err := ioutil.ReadFile(ekFile)
+	ekhBytes, err := os.ReadFile(ekFile)
 	if err != nil {
 		glog.Errorf("ERROR:  ReadFile failed for ekh: %v", err)
 		return &verifier.PullRSAKeyResponse{}, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("ReadFile failed for ekh: %v", err))
@@ -996,13 +996,13 @@ func (s *server) PullRSAKey(ctx context.Context, in *verifier.PullRSAKeyRequest)
 
 	authCommandLoad := tpm2.AuthCommand{Session: loadCreateHandle, Attributes: tpm2.AttrContinueSession}
 
-	akPub, err := ioutil.ReadFile(akPubFile)
+	akPub, err := os.ReadFile(akPubFile)
 	if err != nil {
 		glog.Errorf("ERROR:  ReadFile failed for akPub:  %v", err)
 		return &verifier.PullRSAKeyResponse{}, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("ReadFile failed for akPub: %v", err))
 	}
 
-	akPriv, err := ioutil.ReadFile(akPrivFile)
+	akPriv, err := os.ReadFile(akPrivFile)
 	if err != nil {
 		glog.Errorf("ERROR:  ReadFile failed for akPriv:  %v", err)
 		return &verifier.PullRSAKeyResponse{}, status.Errorf(codes.FailedPrecondition, fmt.Sprintf("Readfile failed for akPriv: %v", err))
@@ -1343,7 +1343,7 @@ func main() {
 	}
 
 	var tlsConfig *tls.Config
-	ca, err := ioutil.ReadFile(*caCertTLS)
+	ca, err := os.ReadFile(*caCertTLS)
 	if err != nil {
 		glog.Fatalf("Faild to read CA Certificate file %s: %v", *caCertTLS, err)
 	}
