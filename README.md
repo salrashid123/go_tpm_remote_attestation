@@ -43,6 +43,7 @@ As you can see, the whole protocol is rather complicated but hinges on being abl
 also see
 
  - [TPM based TLS using Attested Keys](https://github.com/salrashid123/tls_ak)
+ - [Sign, Verify and decode using Google Cloud vTPM Attestation Key and Certificate](https://github.com/salrashid123/gcp-vtpm-ek-ak)
  - [go-attestation](https://github.com/google/go-attestation)
 
 
@@ -53,45 +54,61 @@ We will use a GCP Shielded VM for these tests
 First create two VMs
 
 ```bash
-gcloud compute instances create attestor \
-  --zone=us-central1-a --machine-type=e2-medium --no-service-account --no-scopes \
-  --image-family=debian-11 --image-project=debian-cloud  \
-  --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring
+gcloud compute instances create attestor --zone=us-central1-a \
+    --machine-type=n2d-standard-2  --min-cpu-platform="AMD Milan" \
+    --shielded-secure-boot --no-service-account --no-scopes \
+    --shielded-vtpm \
+    --shielded-integrity-monitoring \
+    --confidential-compute
 
-gcloud compute instances create verifier \
-  --zone=us-central1-a --machine-type=e2-medium --no-service-account --no-scopes \
-  --image-family=debian-11 --image-project=debian-cloud  \
-  --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring
+
+gcloud compute instances create verifier --zone=us-central1-a \
+    --machine-type=n2d-standard-2  --min-cpu-platform="AMD Milan" \
+    --shielded-secure-boot --no-service-account --no-scopes \
+    --shielded-vtpm \
+    --shielded-integrity-monitoring \
+    --confidential-compute
 ```
 
-On each, install `go 1.19+` and setup `libtspi-dev`, `gcc` (`apt-get update && apt-get install gcc libtspi-dev`)
+On each, install `go 1.20+` and setup `libtspi-dev`, `gcc` (`apt-get update && apt-get install gcc libtspi-dev`)
 
 ```bash
 apt-get update
 apt-get install libtspi-dev wget gcc git -y
 
-wget https://golang.org/dl/go1.19.linux-amd64.tar.gz
-rm -rf /usr/local/go && tar -C /usr/local -xzf go1.19.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin/
 
 ```
 
-on the *verifier* (which in this case is the client)  VM, edit `/etc/hosts`
+on the **verifier** (which in this case is the client)  VM, edit `/etc/hosts`
 
 and set the value of `attestor.esodemoapp2.com` to the IP of the client (in my case, its `10.128.0.14`).
 
-```
+```bash
 $ gcloud compute instances list --filter=name=attestor
 NAME      ZONE           MACHINE_TYPE  PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP      STATUS
 attestor  us-central1-a  e2-medium                  10.128.0.14  104.197.204.181  RUNNING
 ```
 
-```
+```bash
 root@verifier:# hostname
 verifier
 
 root@verifier:# more /etc/hosts
 10.128.0.14 attestor.esodemoapp2.com
+```
+
+For GCP Confidential VM's, PCR 0 and 7 are used for attestation and those have default values on the `attestor` vm of:
+
+```bash
+$ tpm2_pcrread -o pcrs sha1:0+sha256:0,7
+  sha1:
+    0 : 0x2AAB58E23EA5120D70A3EBCE56BD0E6D5E3035B7
+  sha256:
+    0 : 0xA0B5FF3383A1116BD7DC6DF177C0C2D433B9EE1813EA958FA5D166A202CB2A85
+    7 : 0x39227C17E8779C0DB03BBB4B6275F3871C97C59B3146768218887B825659E989
 ```
 
 
@@ -183,30 +200,31 @@ cd go_tpm_remote_attestation
 
 go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67  -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" \
    --host attestor.esodemoapp2.com:50051 \
-   --expectedPCRMapSHA256 0:d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783,7:3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a \
-   --expectedPCRMapSHA1 0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
+   --expectedPCRMapSHA256 0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85,7:39227c17e8779c0db03bbb4b6275f3871c97c59b3146768218887b825659e989 \
+   --expectedPCRMapSHA1 0:2aab58e23ea5120d70a3ebce56bd0e6d5e3035b7 \
    --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem --platformCA certs/CA_crt.pem \
    --readEventLog=true \
    --useFullAttestation=true --v=10 -alsologtostderr 
 ```
 
 
-Note, you can get the pcr values for 0,7 on the attestor using [pcr_utils](https://github.com/salrashid123/tpm2/tree/master/pcr_utils).  As of `6/13/23`:
+Note, you can get the pcr values for 0,7 on the attestor using [pcr_utils](https://github.com/salrashid123/tpm2/tree/master/pcr_utils).
 
 ```log
 $ go run main.go --mode=read --pcr=0 -v 10 -alsologtostderr
-I0613 18:56:49.776491    8823 main.go:66] ======= Print PCR  ========
-I0613 18:56:49.778764    8823 main.go:71] PCR(0) d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783
+  I0521 12:11:47.351972   30541 main.go:66] ======= Print PCR  ========
+  I0521 12:11:47.353688   30541 main.go:71] PCR(0) a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85
+
 $ go run main.go --mode=read --pcr=7 -v 10 -alsologtostderr
-I0613 18:56:54.544843    8870 main.go:66] ======= Print PCR  ========
-I0613 18:56:54.547071    8870 main.go:71] PCR(7) 3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a
+  I0521 12:11:53.084554   30585 main.go:66] ======= Print PCR  ========
+  I0521 12:11:53.086357   30585 main.go:71] PCR(7) 39227c17e8779c0db03bbb4b6275f3871c97c59b3146768218887b825659e989
 ```
 
 ### RSA
 
 #### Attestor RSA
 
-```log
+```bash
 go run src/grpc_attestor.go --grpcport :50051 \
   --unsealPcrs=0,7 \
   --caCertTLS certs/CA_crt.pem \
@@ -217,10 +235,10 @@ go run src/grpc_attestor.go --grpcport :50051 \
 
 #### Verifier RSA
 
-```log
+```bash
 go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
-  --expectedPCRMapSHA256 0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:3d91599581f7a3a3a1bb7c7a55a7b8a50967be6506a5f47a9e89fef756fab07a \
-  --expectedPCRMapSHA1 0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea \
+  --expectedPCRMapSHA256 0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85,7:39227c17e8779c0db03bbb4b6275f3871c97c59b3146768218887b825659e989 \
+  --expectedPCRMapSHA1 0:2aab58e23ea5120d70a3ebce56bd0e6d5e3035b7 \
   --rsaCert=certs/tpm_client.crt \
   --readEventLog=true --useFullAttestation=true \
   --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem    --platformCA certs/CA_crt.pem \
@@ -235,15 +253,8 @@ Please see the following for background on the eventlog and how to use it
 
 - [TPMJS Event Log](https://google.github.io/tpm-js/#pg_attestation)
 
->> Note, on [GCP Shielded VM](https://cloud.google.com/compute/docs/instances/integrity-monitoring), the default `PCR0` value is:
+>> Note, on `GCP Confidential VM`, the default `PCR0` value is shown above:
 
-```bash
-# tpm2_pcrread sha1:0+sha256:0
-  sha1:
-    0 : 0x0F2D3A2A1ADAA479AEECA8F5DF76AADC41B862EA
-  sha256:
-    0 : 0x24AF52A4F429B71A3184A6D64CDDAD17E54EA030E2AA6576BF3A5A3D8BD3328F
-```
 
 You can find a full end-to-end trace for the AES example under the `example/` folder
 
@@ -267,13 +278,32 @@ openssl x509 -in ekcert.der -inform DER -outform PEM -out ekcert.pem
 
 # openssl x509 -in ekcert.der -inform DER -outform PEM -out ekcert.pem
 openssl x509 -in ekcert.pem -text
-    Certificate:
-        Data:
-            Version: 3 (0x2)
-            Serial Number:
-                01:b0:01:fe:40:bf:96:77:47:51:a7:2e:9f:5d:e5:33:3d:6b:62
-            Signature Algorithm: sha256WithRSAEncryption
-            Issuer: C = US, ST = California, L = Mountain View, O = Google LLC, OU = Cloud, CN = "tpm_ek_v1_cloud_host-signer-0-2021-10-12T04:22:11-07:00 K:1, 3:nbvaGZFLcuc:0:18"
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            63:fe:ef:42:07:e0:a4:6c:2f:80:82:fb:d7:c8:46:13:47:1d:bd
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C = US, ST = California, L = Mountain View, O = Google LLC, OU = Google Cloud, CN = EK/AK CA Intermediate
+        Validity
+            Not Before: May 21 11:56:26 2024 GMT
+            Not After : May 14 11:56:25 2054 GMT
+        Subject: L = us-central1-a, O = Google Compute Engine, OU = srashid-test2, CN = 5839638749371249935
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+        X509v3 extensions:
+            X509v3 Key Usage: critical
+                Key Encipherment
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+            X509v3 Subject Key Identifier: 
+                38:FD:1D:8E:EF:2D:3C:00:6B:63:58:0E:64:4C:57:3D:B7:42:FB:A7
+            X509v3 Authority Key Identifier: 
+                04:6E:73:58:32:C4:A5:CA:C2:39:04:FE:33:7B:59:40:60:68:C8:B4
+            Authority Information Access: 
+                CA Issuers - URI:http://privateca-content-65d703c4-0000-2bb5-8c60-240588727a78.storage.googleapis.com/141284c118eedaec09f9/ca.crt
+
 ```
 
 and the encoded reference of the same in the `platform_cert.der`
@@ -325,39 +355,12 @@ This is just an academic exercise (so do not use the code as is).   However, som
 - [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
 
 
-### Ubuntu with AMD-SEV (--confidential-compute)
-
-If you use a GCP Confidential Compute VM for the attestor, use the pcr values it currently holds
-
-```bash
-gcloud compute instances create attestor-cc --zone=us-central1-a --machine-type=n2d-standard-2 \
-  --confidential-compute --maintenance-policy=TERMINATE \
-  --image=ubuntu-2004-focal-v20210927 --image-project=confidential-vm-images \
-  --no-service-account --no-scopes \
-  --shielded-secure-boot --shielded-vtpm --shielded-integrity-monitoring
-
-tpm2_pcrread  sha1:0,7+sha256:0,7
-  sha1:
-    0 : 0xC032C3B51DBB6F96B047421512FD4B4DFDE496F3
-    7 : 0x45B6A836BDC555783626C9E4E6234AC692F76B0B
-  sha256:
-    0 : 0x0F35C214608D93C7A6E68AE7359B4A8BE5A0E99EEA9107ECE427C4DEA4E439CF
-    7 : 0xDD0276B3BF0E30531A575A1CB5A02171EA0AD0F164D51E81F4CD0AB0BD5BAADD
-
-
-go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
-  --expectedPCRMapSHA256 0:0f35c214608d93c7a6e68ae7359b4a8be5a0e99eea9107ece427c4dea4e439cf,7:dd0276b3bf0e30531a575a1cb5a02171ea0ad0f164d51e81f4cd0ab0bd5baadd \
-  --expectedPCRMapSHA1 0:c032c3b51dbb6f96b047421512fd4b4dfde496f3 \
-  --rsaCert=certs/tpm_client.crt \
-  --readEventLog --useFullAttestation \
-  --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem \
-  --rsaKey=certs/tpm_client.key  --host verify.esodemoapp2.com:50051   \
-  --v=10 -alsologtostderr 
-```
 
 ### EKCert and AKCert
 
-Google signed Endorsement *Certificates* are not available on VMs. 
+Google signed Endorsement *Certificates* are available on `GCP Confidential VMs`
+
+- [Sign, Verify and decode using Google Cloud vTPM Attestation Key and Certificate](https://github.com/salrashid123/gcp-vtpm-ek-ak)
 
 On many other platform ([even a raspberry pi w/ TPM chip](https://gist.github.com/salrashid123/d99e698f84e5d35a863225b747af1f48), you can usually extract the the EK certificate bound on the tpm)..
 
@@ -383,27 +386,97 @@ it is not populated (see[retrieving-endorsement-key](https://cloud.google.com/co
 gcloud compute instances get-shielded-identity attestor
 
 encryptionKey:
+  ekCert: |
+    -----BEGIN CERTIFICATE-----
+    MIIF5jCCA86gAwIBAgITY/7vQgfgpGwvgIL718hGE0cdvTANBgkqhkiG9w0BAQsF
+    ADCBhjELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcT
+    DU1vdW50YWluIFZpZXcxEzARBgNVBAoTCkdvb2dsZSBMTEMxFTATBgNVBAsTDEdv
+    b2dsZSBDbG91ZDEeMBwGA1UEAxMVRUsvQUsgQ0EgSW50ZXJtZWRpYXRlMCAXDTI0
+    MDUyMTExNTYyNloYDzIwNTQwNTE0MTE1NjI1WjBuMRYwFAYDVQQHEw11cy1jZW50
+    cmFsMS1hMR4wHAYDVQQKExVHb29nbGUgQ29tcHV0ZSBFbmdpbmUxFjAUBgNVBAsT
+    DXNyYXNoaWQtdGVzdDIxHDAaBgNVBAMTEzU4Mzk2Mzg3NDkzNzEyNDk5MzUwggEi
+    MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDMKrnLJKHjOkXNmw0FOcw22Pnw
+    YiemQCIOSxi+K4GeYgTOpHwyrB3XB0Mc2UU0wkhJbmtWxgRIVDbqxTyxRXkYr71+
+    hZkQF9fIGdJOEU+FczePdFM42iGa4NiM24rgUFRV9E/JjZxWLrXcUZiewOORpSUC
+    yHn8IIV+cTYf66ywniubvUStgbEMMPotNkCUp6nBgu6JTtJiKBW1+MrFbke8laNx
+    9p1G7qpLlIGe4zvXvm9E+DxcFYRe2IWa6njmu4LVzZD6FN64LrlYrHcHCnbSslCf
+    iDectmmY5GAu4IgJhmT7uERtX+e0FLkG6c2MTj84YLIwktaurmzI1GjG4Fz/AgMB
+    AAGjggFgMIIBXDAOBgNVHQ8BAf8EBAMCBSAwDAYDVR0TAQH/BAIwADAdBgNVHQ4E
+    FgQUOP0dju8tPABrY1gOZExXPbdC+6cwHwYDVR0jBBgwFoAUBG5zWDLEpcrCOQT+
+    M3tZQGBoyLQwgY0GCCsGAQUFBwEBBIGAMH4wfAYIKwYBBQUHMAKGcGh0dHA6Ly9w
+    cml2YXRlY2EtY29udGVudC02NWQ3MDNjNC0wMDAwLTJiYjUtOGM2MC0yNDA1ODg3
+    MjdhNzguc3RvcmFnZS5nb29nbGVhcGlzLmNvbS8xNDEyODRjMTE4ZWVkYWVjMDlm
+    OS9jYS5jcnQwbAYKKwYBBAHWeQIBFQReMFwMDXVzLWNlbnRyYWwxLWECBgCk6UWf
+    4AwNc3Jhc2hpZC10ZXN0MgIIUQqQgLjhNQ8MCGF0dGVzdG9yoCAwHqADAgEAoQMB
+    Af+iAwEB/6MDAQEApAMBAQClAwEBADANBgkqhkiG9w0BAQsFAAOCAgEAY6u6Bj/f
+    6TB/5ublhA2Ph2Pm57Vch0/jbhybTF9a/zM6S2bQ5ih6wrXjbmzlEPGBMLo/DQoj
+    AlaQUFPYPTMF/0/eUcr2Rcl8amUtICHhHrdWvoMKEMgGPR4BCefTZjtEVCZ+9bw3
+    xQZS7s7iyh4agpELh+7zDVPvNghXC4q6FjGqYI/xbI/jtKmEe0hOaVNmGsMd+D2T
+    O0MYi1c4WrTqJ+qVDzL2alnd5zEUXOgJbhGotaoU4UD4n7eEtVeXxiBP7UOeOlWa
+    0hOuwRqV+5iy/zEBlihnwmOpFaDF/HRdnT3EUPNqG18EOURsnocf7ReogVqACEQc
+    8zqm4TwtmlTxB3Jq8ccH9tL3o6IIVA+Tz0KZSM43ry8pzVh1/G5tHPYlNMHgw1Ge
+    HuCMN2RIoOTc2+aOpEiTbQzbDlFx1vMtgrjXyLK+EFECOrE+Tt7X/DwOakaUOXBE
+    iuogCRVoQG4TGs0tliEADS8rAxNBU4VTT2FaGk0Z/eC6w1zuvOCPAqAtzEqcR5Pn
+    ChVSnFNJPbcWtA9Muou6FZ6FjmE85t4M+M+F/CLJIw5DKkR6Fr6aiaFu7kJJCN55
+    iXfLoR5lrydKQj7Kk2M/Q0gGDNCz/BBh1a58AKW477TAICRgOA8ADaXD8cT0HvEV
+    l+CEGH6rTqG3YAJPcAY8oKSTpEhAdzRXvkE=
+    -----END CERTIFICATE-----
   ekPub: |
     -----BEGIN PUBLIC KEY-----
-    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyLLB37zQTi3KfKridPpY
-    tj9yKm0ci/QUGqrzBsVVqxqOsQUxocsaKMZPIO7VxJlJd8KHWMoGY6f1VOdNUFCN
-    ufg5WMqA/t6rXvjF4NtPTvR05dCV4JegBBDnOjF9NgmV67+NgAm3afq/Z1qvJ336
-    WUop2prbTWpseNtdlp2+4TOBSsNZgsum3CFr40qIsa2rb9xFDrqoMTVkgKGpJk+z
-    ta+pcxGXYFJfU9sb7F7cs3e+TzjucGFcpVEiFzVq6Mga8cmh32sufM/PuifVYSLi
-    BYV4s4c53gVq7v0Oda9LqaxT2A9EmKopcWUU8CEgbsBxhmVAhsnKwLDmJYKULkAk
-    uwIDAQAB
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzCq5yySh4zpFzZsNBTnM
+    Ntj58GInpkAiDksYviuBnmIEzqR8Mqwd1wdDHNlFNMJISW5rVsYESFQ26sU8sUV5
+    GK+9foWZEBfXyBnSThFPhXM3j3RTONohmuDYjNuK4FBUVfRPyY2cVi613FGYnsDj
+    kaUlAsh5/CCFfnE2H+ussJ4rm71ErYGxDDD6LTZAlKepwYLuiU7SYigVtfjKxW5H
+    vJWjcfadRu6qS5SBnuM7175vRPg8XBWEXtiFmup45ruC1c2Q+hTeuC65WKx3Bwp2
+    0rJQn4g3nLZpmORgLuCICYZk+7hEbV/ntBS5BunNjE4/OGCyMJLWrq5syNRoxuBc
+    /wIDAQAB
     -----END PUBLIC KEY-----
 kind: compute#shieldedInstanceIdentity
 signingKey:
+  ekCert: |
+    -----BEGIN CERTIFICATE-----
+    MIIF5jCCA86gAwIBAgITfd/UjbVsFsyEukfmcBAeX+1VpDANBgkqhkiG9w0BAQsF
+    ADCBhjELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcT
+    DU1vdW50YWluIFZpZXcxEzARBgNVBAoTCkdvb2dsZSBMTEMxFTATBgNVBAsTDEdv
+    b2dsZSBDbG91ZDEeMBwGA1UEAxMVRUsvQUsgQ0EgSW50ZXJtZWRpYXRlMCAXDTI0
+    MDUyMTExNTYyNloYDzIwNTQwNTE0MTE1NjI1WjBuMRYwFAYDVQQHEw11cy1jZW50
+    cmFsMS1hMR4wHAYDVQQKExVHb29nbGUgQ29tcHV0ZSBFbmdpbmUxFjAUBgNVBAsT
+    DXNyYXNoaWQtdGVzdDIxHDAaBgNVBAMTEzU4Mzk2Mzg3NDkzNzEyNDk5MzUwggEi
+    MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCxHI6PIDhoneD9oGCBw1KxT88H
+    HCcJ3BzuJ2U/ubYlPD8ajR2M0zsSGyyIHtDSARYaODypI/OarU+C0lP1oj7EVkyj
+    4DQqBDjlKCWXhQnjmf2fHIdLsmEOAFfLBfY53H/CSZ37FFU7eyd17TkYP8l7GANZ
+    INOH7L5WZYxcAW4BDD9dQXWW6L+uJYYXNj+VdiGPPobQdT71MIQy77tm+itgu0J0
+    5Dj+4GzRD07mlaSYSJYqbJi+2bPXecTf0zFVwRLrhfbTzUxkZcZGBpCIKYXc3BiL
+    jp0YsolItPKCP5GRqwkrMhr3i8vzo7AjbWPzS1qkutKo4PLryWukqB9pRSC5AgMB
+    AAGjggFgMIIBXDAOBgNVHQ8BAf8EBAMCB4AwDAYDVR0TAQH/BAIwADAdBgNVHQ4E
+    FgQUSl92OK/4mLGYrwnyTnmEB3GJpB8wHwYDVR0jBBgwFoAUZ8O73ljj1lF2j7Ma
+    PtsHp+yTeuQwgY0GCCsGAQUFBwEBBIGAMH4wfAYIKwYBBQUHMAKGcGh0dHA6Ly9w
+    cml2YXRlY2EtY29udGVudC02NWQ1M2IxNC0wMDAwLTIxMmEtYTYzMy04ODNkMjRm
+    NTdiYjguc3RvcmFnZS5nb29nbGVhcGlzLmNvbS8wYzNlNzllYjA4OThkMDJlYmIw
+    YS9jYS5jcnQwbAYKKwYBBAHWeQIBFQReMFwMDXVzLWNlbnRyYWwxLWECBgCk6UWf
+    4AwNc3Jhc2hpZC10ZXN0MgIIUQqQgLjhNQ8MCGF0dGVzdG9yoCAwHqADAgEAoQMB
+    Af+iAwEB/6MDAQEApAMBAQClAwEBADANBgkqhkiG9w0BAQsFAAOCAgEATMGgyWEW
+    C/KXV0N1z+H0AZ0DlUw7sI125dLidZBcs8mn5NI8OBmWI0O2OSKAAcnaKWtI7qDn
+    7MHghp8CHv5oINF0vv753FyW7o/IDOvK5GgAYFBzdjG/d0bxGb+VhjlqGTu9E+Hb
+    rdYvcqhZjZHb0bA2p7g1bkELSR7cg2UmIKCVrVbHJIb+s5QolA4KHW+1ym7Wgafz
+    9PRWlRqtgmjM6YtT+5nqQD1FskMgYcKtjYGZfYYckvcX4/WAOwRVf/cWiYAQ6iIF
+    cONO2kE1Kq526Jn0kRH9Gg/frL4XDZWq3Vrtl5txog1Uu/CiABfevkQPVVawuYgi
+    /dH2fcdaZNaci95XdAA0pCvOnPsKIsmdvTSlwW1DLSI4E3o7op0chriAaKUmUNBr
+    kdkHgh8j427VVtzscwzWgB8C6cJoEAR4ddKMaQwG7D79wb+Ts566yNLzasOeGOp0
+    26+ibG5j1NvZ+6WOkpBYK9pJUPHMayc4NhYGZV/vzLwup1BnYLYrf8oGpFG4CZku
+    /d2lh0o+zCegbgAJ1o3pTTFAr15UnyKknPoC+NMVuPLcZkQZcxqpLKWLUhi/Qtxy
+    TdKlfyUFvOig40LqjGP/Kz9A53BsbQ4c5rOOHq4QhbJVjo6sTGU5t0pFOciox6rM
+    vJt7DCd5fO3Mdkte3Sg2EtOuYEYBNTDDGWY=
+    -----END CERTIFICATE-----
   ekPub: |
     -----BEGIN PUBLIC KEY-----
-    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtvr8f4lOUaHIMDoC9Baq
-    sLs2Irh1RrKmTbgf/cWZHvhCQUT3qGGB5gqI96/efF3pCKx/KL9tYpJ7iQ3TpJhv
-    E8sG+bfxA3qvoDXIzO8bsAPyEp6c77UfvHkasi4cKZP2kBIURy/TwOSeZco7qU51
-    V10pL4kcw8J0CeDr4KKap6m4gWXcdo4rOpRMy62bBRIaxWEbPrAlotHSoD6hvtlT
-    W0zBhs4zFrau+85YZNuobvvkPoZho/NosLKqNZ2gb2/ueY/mU0uAPhhtHtk7KWiN
-    p5iSqcWHyrzU/tZ3LwiRB/vOxeQhWH3+o3BJPU0z9Dm+5fFlO6Se4hm1/S8VxYZ4
-    owIDAQAB
+    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsRyOjyA4aJ3g/aBggcNS
+    sU/PBxwnCdwc7idlP7m2JTw/Go0djNM7EhssiB7Q0gEWGjg8qSPzmq1PgtJT9aI+
+    xFZMo+A0KgQ45Sgll4UJ45n9nxyHS7JhDgBXywX2Odx/wkmd+xRVO3snde05GD/J
+    exgDWSDTh+y+VmWMXAFuAQw/XUF1lui/riWGFzY/lXYhjz6G0HU+9TCEMu+7Zvor
+    YLtCdOQ4/uBs0Q9O5pWkmEiWKmyYvtmz13nE39MxVcES64X2081MZGXGRgaQiCmF
+    3NwYi46dGLKJSLTygj+RkasJKzIa94vL86OwI21j80tapLrSqODy68lrpKgfaUUg
+    uQIDAQAB
     -----END PUBLIC KEY-----
 
 ```

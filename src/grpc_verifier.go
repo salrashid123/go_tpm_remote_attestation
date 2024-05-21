@@ -35,6 +35,7 @@ import (
 	"log"
 	"math/big"
 	mrnd "math/rand"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -45,7 +46,7 @@ import (
 	"github.com/google/go-attestation/attributecert"
 	"github.com/google/go-tpm-tools/client"
 	gotpmserver "github.com/google/go-tpm-tools/server"
-	"github.com/google/go-tpm/tpm2"
+	"github.com/google/go-tpm/legacy/tpm2"
 	"github.com/google/uuid"
 	"golang.org/x/exp/utf8string"
 	"google.golang.org/grpc"
@@ -110,22 +111,26 @@ func main() {
 	var err error
 	rwc, err = tpm2.OpenTPM(tpmDevice)
 	if err != nil {
-		glog.Fatalf("can't open TPM %q: %v", tpmDevice, err)
+		glog.Errorf("can't open TPM %q: %v", tpmDevice, err)
+		os.Exit(1)
 	}
 	defer func() {
 		if err := rwc.Close(); err != nil {
-			glog.Fatalf("%v\ncan't close TPM: %v", tpmDevice, err)
+			glog.Errorf("%v\ncan't close TPM: %v", tpmDevice, err)
+			os.Exit(1)
 		}
 	}()
 	totalHandles := 0
 	for _, handleType := range handleNames["all"] {
 		handles, err := client.Handles(rwc, handleType)
 		if err != nil {
-			glog.Fatalf("getting handles: %v", err)
+			glog.Errorf("getting handles: %v", err)
+			os.Exit(1)
 		}
 		for _, handle := range handles {
 			if err = tpm2.FlushContext(rwc, handle); err != nil {
-				glog.Fatalf("flushing handle 0x%x: %v", handle, err)
+				glog.Errorf("flushing handle 0x%x: %v", handle, err)
+				os.Exit(1)
 			}
 			log.Printf("Handle 0x%x flushed\n", handle)
 			totalHandles++
@@ -136,10 +141,12 @@ func main() {
 	rootCAs := x509.NewCertPool()
 	ca_pem, err := ioutil.ReadFile(*caCertTLS)
 	if err != nil {
-		glog.Fatalf("failed to load root CA certificates  error=%v", err)
+		glog.Errorf("failed to load root CA certificates  error=%v", err)
+		os.Exit(1)
 	}
 	if !rootCAs.AppendCertsFromPEM(ca_pem) {
-		glog.Fatalf("no root CA certs parsed from file ")
+		glog.Errorf("no root CA certs parsed from file ")
+		os.Exit(1)
 	}
 	tlsCfg.RootCAs = rootCAs
 	tlsCfg.ServerName = "attestor.esodemoapp2.com"
@@ -152,7 +159,8 @@ func main() {
 
 	conn, err := grpc.Dial(*address, grpc.WithTransportCredentials(ce))
 	if err != nil {
-		glog.Fatalf("did not connect: %v", err)
+		glog.Errorf("did not connect: %v", err)
+		os.Exit(1)
 	}
 	defer conn.Close()
 
@@ -160,7 +168,8 @@ func main() {
 	defer cancel()
 	resp, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{Service: "verifier.VerifierServer"})
 	if err != nil {
-		glog.Fatalf("HealthCheck failed %+v", err)
+		glog.Errorf("HealthCheck failed %+v", err)
+		os.Exit(1)
 	}
 
 	if resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
@@ -176,7 +185,7 @@ func main() {
 	}
 	platformCertResponse, err := c.GetPlatformCert(ctx, req)
 	if err != nil {
-		glog.Fatalf("Error GetPlatformCert: %v", err)
+		glog.Errorf("Error GetPlatformCert: %v", err)
 	}
 	if len(platformCertResponse.PlatformCert) > 0 {
 		glog.V(5).Infof("=============== GetPlatformCert Returned from remote ===============")
@@ -184,32 +193,38 @@ func main() {
 
 		rootPEM, err := ioutil.ReadFile(*platformCA)
 		if err != nil {
-			glog.Fatalf(fmt.Sprintf("Error [%s] Reading Root platform cert %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error [%s] Reading Root platform cert %v", platformCertResponse.Uid, err))
+			os.Exit(1)
 		}
 
 		roots := x509.NewCertPool()
 		ok := roots.AppendCertsFromPEM([]byte(rootPEM))
 		if !ok {
-			glog.Fatalf(fmt.Sprintf("Error [%s] failed to parse certificate %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate %v", platformCertResponse.Uid, err))
+			os.Exit(1)
 		}
 
 		block, _ := pem.Decode([]byte(rootPEM))
 		if block == nil {
-			glog.Fatalf(fmt.Sprintf("Error [%s] failed to parse certificate PEM %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate PEM %v", platformCertResponse.Uid, err))
+			os.Exit(1)
 		}
 		platformRoot, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
-			glog.Fatalf(fmt.Sprintf("Error [%s] failed to parse certificate %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate %v", platformCertResponse.Uid, err))
+			os.Exit(1)
 		}
 
 		attributecert, err := attributecert.ParseAttributeCertificate(platformCertResponse.PlatformCert)
 		if err != nil {
-			glog.Fatalf(fmt.Sprintf("Error [%s] failed to parse  attribute certificate  %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error [%s] failed to parse  attribute certificate  %v", platformCertResponse.Uid, err))
+			os.Exit(1)
 		}
 
 		err = attributecert.CheckSignatureFrom(platformRoot)
 		if err != nil {
-			glog.Fatalf(fmt.Sprintf("Error [%s] failed to verify  attribute certificate  %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error [%s] failed to verify  attribute certificate  %v", platformCertResponse.Uid, err))
+			os.Exit(1)
 		}
 		glog.V(5).Infof(" Verified Platform cert signed by privacyCA")
 
@@ -234,19 +249,21 @@ func main() {
 	}
 	ekCertResponse, err := c.GetEKCert(ctx, ekReq)
 	if err != nil {
-		glog.Fatalf("Error GetEKCert: %v", err)
+		glog.Errorf("Error GetEKCert: %v", err)
+		os.Exit(1)
 	}
 	if len(ekCertResponse.EkCert) > 0 {
 		ekcert, err = x509.ParseCertificate(ekCertResponse.EkCert)
 		if err != nil {
-			glog.Fatalf("ERROR:   ParseCertificate: %v", err)
+			glog.Errorf("ERROR:   ParseCertificate: %v", err)
+			os.Exit(1)
 		}
 		spubKey := ekcert.PublicKey.(*rsa.PublicKey)
 
 		skBytes, err := x509.MarshalPKIXPublicKey(spubKey)
 		if err != nil {
-			glog.Fatalf("ERROR:  could  MarshalPKIXPublicKey: %v", err)
-
+			glog.Errorf("ERROR:  could  MarshalPKIXPublicKey: %v", err)
+			os.Exit(1)
 		}
 		ekPubPEM := pem.EncodeToMemory(
 			&pem.Block{
@@ -263,12 +280,14 @@ func main() {
 
 		ekPub, err := tpm2.DecodePublic(ekCertResponse.EkPub)
 		if err != nil {
-			glog.Fatalf("ERROR:  Error DecodePublic AK %v", err)
+			glog.Errorf("ERROR:  Error DecodePublic EKPublic %v", err)
+			os.Exit(1)
 		}
 
 		ekh, keyName, err := tpm2.LoadExternal(rwc, ekPub, tpm2.Private{}, tpm2.HandleNull)
 		if err != nil {
-			glog.Fatalf("ERROR:  Error loadingExternal EK %v", err)
+			glog.Errorf("ERROR:  Error loadingExternal EK %v", err)
+			os.Exit(1)
 		}
 		defer tpm2.FlushContext(rwc, ekh)
 
@@ -277,18 +296,20 @@ func main() {
 		if ekPub.MatchesTemplate(client.DefaultEKTemplateRSA()) {
 			glog.V(10).Infof("     EK Default parameter match template")
 		} else {
-			glog.Fatalf("ERROR:  EK does not have correct defaultParameters")
+			glog.Errorf("ERROR:  EK does not have correct defaultParameters")
+			os.Exit(1)
 		}
 
 	} else {
 		glog.Infof("GetEKCert empty so skipping loading Certificate from remote NV and instead using ekPub;  Original Error is: %v", err)
 		block, _ := pem.Decode(ekCertResponse.EkPub)
 		if block == nil {
-			glog.Fatalf("ERROR:  error decoding ekPub")
+			glog.Errorf("ERROR:  error decoding ekPub")
+			os.Exit(1)
 		}
 		// ep, err := x509.ParsePKIXPublicKey(block.Bytes)
 		// if err != nil {
-		// 	glog.Fatalf("Unable to convert akPub: %v", err)
+		// 	glog.Errorf("Unable to convert akPub: %v", err)
 		// }
 		ekPubPEM := pem.EncodeToMemory(
 			&pem.Block{
@@ -309,7 +330,7 @@ func main() {
 	}
 	akResponse, err := c.GetAK(ctx, akReq)
 	if err != nil {
-		glog.Fatalf("Error GetEKCert: %v", err)
+		glog.Errorf("Error GetEKCert: %v", err)
 	}
 
 	glog.V(20).Infof("     akPub: %v,", hex.EncodeToString(akResponse.AkPub))
@@ -319,16 +340,19 @@ func main() {
 
 	ekPub, err := tpm2.DecodePublic(akResponse.EkPub)
 	if err != nil {
-		glog.Fatalf("Error DecodePublic EK %v", err)
+		glog.Errorf("Error DecodePublic EK %v", err)
+		os.Exit(1)
 	}
 
 	ep, err := ekPub.Key()
 	if err != nil {
-		glog.Fatalf("ekPub.Key() failed: %s", err)
+		glog.Errorf("ekPub.Key() failed: %s", err)
+		os.Exit(1)
 	}
 	ekBytes, err := x509.MarshalPKIXPublicKey(ep)
 	if err != nil {
-		glog.Fatalf("Unable to convert akPub: %v", err)
+		glog.Errorf("Unable to convert akPub: %v", err)
+		os.Exit(1)
 	}
 
 	ekPubPEM := pem.EncodeToMemory(
@@ -342,22 +366,26 @@ func main() {
 
 	ekh, keyName, err := tpm2.LoadExternal(rwc, ekPub, tpm2.Private{}, tpm2.HandleNull)
 	if err != nil {
-		glog.Fatalf("Error loadingExternal EK %v", err)
+		glog.Errorf("Error loadingExternal EK %v", err)
+		os.Exit(1)
 	}
 	defer tpm2.FlushContext(rwc, ekh)
 
 	tPub, err := tpm2.DecodePublic(akResponse.AkPub)
 	if err != nil {
-		glog.Fatalf("Error DecodePublic AK %v", tPub)
+		glog.Errorf("Error DecodePublic AK %v", tPub)
+		os.Exit(1)
 	}
 
 	ap, err := tPub.Key()
 	if err != nil {
-		glog.Fatalf("akPub.Key() failed: %s", err)
+		glog.Errorf("akPub.Key() failed: %s", err)
+		os.Exit(1)
 	}
 	akBytes, err := x509.MarshalPKIXPublicKey(ap)
 	if err != nil {
-		glog.Fatalf("Unable to convert akPub: %v", err)
+		glog.Errorf("Unable to convert akPub: %v", err)
+		os.Exit(1)
 	}
 
 	akPubPEM := pem.EncodeToMemory(
@@ -371,11 +399,13 @@ func main() {
 	if tPub.MatchesTemplate(client.AKTemplateRSA()) {
 		glog.V(10).Infof("     AK Default parameter match template")
 	} else {
-		glog.Fatalf("AK does not have correct defaultParameters")
+		glog.Errorf("AK does not have correct defaultParameters")
+		os.Exit(1)
 	}
 	h, keyName, err := tpm2.LoadExternal(rwc, tPub, tpm2.Private{}, tpm2.HandleNull)
 	if err != nil {
-		glog.Fatalf("Error loadingExternal AK %v", err)
+		glog.Errorf("Error loadingExternal AK %v", err)
+		os.Exit(1)
 	}
 	defer tpm2.FlushContext(rwc, h)
 	glog.V(10).Infof("     Loaded AK KeyName %s", hex.EncodeToString(keyName))
@@ -389,7 +419,8 @@ func main() {
 	glog.V(10).Infof("     Sending Nonce: %s", nonce)
 	credBlob, encryptedSecret0, err := tpm2.MakeCredential(rwc, ekh, []byte(nonce), keyName)
 	if err != nil {
-		glog.Fatalf("MakeCredential failed: %v", err)
+		glog.Errorf("MakeCredential failed: %v", err)
+		os.Exit(1)
 	}
 	glog.V(2).Infof("     <-- End makeCredential()")
 
@@ -404,13 +435,15 @@ func main() {
 	}
 	acResponse, err := c.ActivateCredential(ctx, acReq)
 	if err != nil {
-		glog.Fatalf("Error ActivateCredential: %v", err)
+		glog.Errorf("Error ActivateCredential: %v", err)
+		os.Exit(1)
 	}
 
 	glog.V(10).Infof("     Returned Secret: %s", string(acResponse.Secret))
 
 	if string(acResponse.Secret) != nonce {
-		glog.Fatalf(fmt.Sprintf("Error Expected Nonce [%s]does not match provided secret: [%s]", nonce, string(acResponse.Secret)), err)
+		glog.Errorf(fmt.Sprintf("Error Expected Nonce [%s]does not match provided secret: [%s]", nonce, string(acResponse.Secret)), err)
+		os.Exit(1)
 	}
 
 	glog.V(5).Infof("     AK Verification Complete")
@@ -423,7 +456,8 @@ func main() {
 
 	pcrSelected, _, err := getPCRMap(tpmpb.HashAlgo_SHA256)
 	if err != nil {
-		glog.Fatalf("Unable to find pcrs for  Quote %v", err)
+		glog.Errorf("Unable to find pcrs for  Quote %v", err)
+		os.Exit(1)
 	}
 	var pcrs []int32
 	for k := range pcrSelected {
@@ -439,13 +473,15 @@ func main() {
 		}
 		aResponse, err := c.Attest(ctx, aReq)
 		if err != nil {
-			glog.Fatalf("Error Quote: %v", err)
+			glog.Errorf("Error Quote: %v", err)
+			os.Exit(1)
 		}
 
 		attestationMsg := &attest.Attestation{}
 		err = proto.Unmarshal(aResponse.Attestation, attestationMsg)
 		if err != nil {
-			glog.Fatalf("     Attestation failed:  Could no unmarshall attestation, %v", err)
+			glog.Errorf("     Attestation failed:  Could no unmarshall attestation, %v", err)
+			os.Exit(1)
 		}
 
 		glog.V(2).Infof("     Verifying Attestation with AK Public Key:\n %v", string(akPubPEM))
@@ -456,7 +492,8 @@ func main() {
 			AllowSHA1:  true,
 		})
 		if err != nil {
-			glog.Fatalf("     Attestation failed:  failed to verify %v", err)
+			glog.Errorf("     Attestation failed:  failed to verify %v", err)
+			os.Exit(1)
 		}
 		for _, q := range attestationMsg.Quotes {
 			glog.V(5).Infof("Quotes Hash %s\n", q.Pcrs.Hash.String())
@@ -480,7 +517,8 @@ func main() {
 		}
 		qResponse, err := c.Quote(ctx, qReq)
 		if err != nil {
-			glog.Fatalf("Error Quote: %v", err)
+			glog.Errorf("Error Quote: %v", err)
+			os.Exit(1)
 		}
 
 		glog.V(20).Infof("     Attestation: %s", hex.EncodeToString(qResponse.Attestation))
@@ -491,7 +529,8 @@ func main() {
 
 		att, err := tpm2.DecodeAttestationData(attestation)
 		if err != nil {
-			glog.Fatalf("DecodeAttestationData(%v) failed: %v", attestation, err)
+			glog.Errorf("DecodeAttestationData(%v) failed: %v", attestation, err)
+			os.Exit(1)
 		}
 
 		glog.V(10).Infof("     Attestation ExtraData (nonce): %s ", string(att.ExtraData))
@@ -499,7 +538,7 @@ func main() {
 		glog.V(10).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
 
 		if string(cc) != string(att.ExtraData) {
-			glog.Fatalf("Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), string(cc))
+			glog.Errorf("Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), string(cc))
 		}
 
 		sigL := tpm2.SignatureRSA{
@@ -509,12 +548,14 @@ func main() {
 
 		_, pcrHash, err := getPCRMap(tpm.HashAlgo_SHA256)
 		if err != nil {
-			glog.Fatalf("Error getting PCRMap: %v", err)
+			glog.Errorf("Error getting PCRMap: %v", err)
+			os.Exit(1)
 		}
 		glog.V(5).Infof("     sha256 of Expected PCR Value: --> %x", pcrHash)
 
 		if fmt.Sprintf("%x", pcrHash) != hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest) {
-			glog.Fatalf("Unexpected PCR hash Value expected: %s  Got %s", fmt.Sprintf("%x", pcrHash), hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
+			glog.Errorf("Unexpected PCR hash Value expected: %s  Got %s", fmt.Sprintf("%x", pcrHash), hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
+			os.Exit(1)
 		}
 
 		glog.V(2).Infof("     Decoding PublicKey for AK ========")
@@ -524,12 +565,13 @@ func main() {
 		hsh := crypto.SHA256.New()
 		hsh.Write(attestation)
 		if err := rsa.VerifyPKCS1v15(ap.(*rsa.PublicKey), crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
-			glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
+			glog.Errorf("VerifyPKCS1v15 failed: %v", err)
 		}
 
 		// Now compare the nonce that is embedded within the attestation.  This should match the one we sent in earlier.
 		if string(cc) != string(att.ExtraData) {
-			glog.Fatalf("Unexpected secret Value expected: %v  Got %v", string(cc), string(att.ExtraData))
+			glog.Errorf("Unexpected secret Value expected: %v  Got %v", string(cc), string(att.ExtraData))
+			os.Exit(1)
 		}
 		glog.V(2).Infof("     Quote/Verify nonce Verified ")
 
@@ -539,7 +581,8 @@ func main() {
 			attestationMsg := &attest.Attestation{}
 			err = proto.Unmarshal(qResponse.Attestation, attestationMsg)
 			if err != nil {
-				glog.Fatalf("     Attestation failed:  Could no unmarshall attestation, %v", err)
+				glog.Errorf("     Attestation failed:  Could no unmarshall attestation, %v", err)
+				os.Exit(1)
 			}
 
 			glog.V(2).Infof("     Verifying Attestation with AK Public Key:\n %v", string(akPubPEM))
@@ -551,7 +594,8 @@ func main() {
 			})
 
 			if err != nil {
-				glog.Fatalf("  Failed to parse EventLog: %v", err)
+				glog.Errorf("  Failed to parse EventLog: %v", err)
+				os.Exit(1)
 			}
 
 			for _, event := range ms.RawEvents {
@@ -590,7 +634,8 @@ func main() {
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(2), 20)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		glog.Fatalf("Failed to generate serial number: %v", err)
+		glog.Errorf("Failed to generate serial number: %v", err)
+		os.Exit(1)
 	}
 	glog.V(10).Infof("     Issuing certificate with serialNumber %d", serialNumber)
 
@@ -598,25 +643,30 @@ func main() {
 
 	ca_pem, err = ioutil.ReadFile(*caCertIssuer)
 	if err != nil {
-		glog.Fatalf("failed to load root CA certificates  error=%v", err)
+		glog.Errorf("failed to load root CA certificates  error=%v", err)
+		os.Exit(1)
 	}
 	block, _ := pem.Decode(ca_pem)
 	if block == nil {
-		glog.Fatalf("Unable to decode %s %v", *caCertIssuer, err)
+		glog.Errorf("Unable to decode %s %v", *caCertIssuer, err)
+		os.Exit(1)
 	}
 	ca, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		glog.Fatalf("Unable to parse %s %v", *caCertIssuer, err)
+		glog.Errorf("Unable to parse %s %v", *caCertIssuer, err)
+		os.Exit(1)
 	}
 
 	keyPEMBytes, err := ioutil.ReadFile(*caKeyIssuer)
 	if err != nil {
-		glog.Fatalf("Unable to read %s  %v", *caKeyIssuer, err)
+		glog.Errorf("Unable to read %s  %v", *caKeyIssuer, err)
+		os.Exit(1)
 	}
 	privPem, _ := pem.Decode(keyPEMBytes)
 	parsedKey, err := x509.ParsePKCS1PrivateKey(privPem.Bytes)
 	if err != nil {
-		glog.Fatalf("Unable to parse %s %v", *caKeyIssuer, err)
+		glog.Errorf("Unable to parse %s %v", *caKeyIssuer, err)
+		os.Exit(1)
 	}
 
 	ct := &x509.Certificate{
@@ -640,7 +690,8 @@ func main() {
 
 	cert_b, err := x509.CreateCertificate(rand.Reader, ct, ca, ap, parsedKey)
 	if err != nil {
-		glog.Fatalf("Failed to createCertificate: %v", err)
+		glog.Errorf("Failed to createCertificate: %v", err)
+		os.Exit(1)
 	}
 
 	akCertPEM := pem.EncodeToMemory(
@@ -661,7 +712,8 @@ func main() {
 	//   A non-nil pcrs parameter adds a requirement that the TPM must have specific PCR values to use the signing key.
 	pcrMap, _, err := getPCRMap(tpm.HashAlgo_SHA256)
 	if err != nil {
-		glog.Fatalf("  Could not get PCRMap: %s", err)
+		glog.Errorf("  Could not get PCRMap: %s", err)
+		os.Exit(1)
 	}
 	vpcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: pcrMap}
 
@@ -669,11 +721,13 @@ func main() {
 	if *importMode == "AES" {
 		importBlob, err := gotpmserver.CreateImportBlob(ep, []byte(*aes256Key), vpcrs)
 		if err != nil {
-			glog.Fatalf("Unable to CreateImportBlob : %v", err)
+			glog.Errorf("Unable to CreateImportBlob : %v", err)
+			os.Exit(1)
 		}
 		sealedOutput, err := proto.Marshal(importBlob)
 		if err != nil {
-			glog.Fatalf("Unable to marshall ImportBlob: ", err)
+			glog.Errorf("Unable to marshall ImportBlob: ", err)
+			os.Exit(1)
 		}
 
 		// Print out the hash of the AES key.
@@ -690,29 +744,34 @@ func main() {
 		}
 	} else if *importMode == "RSA" {
 
-		certPEM, err := ioutil.ReadFile(*exportedRSACert)
+		certPEM, err := os.ReadFile(*exportedRSACert)
 		if err != nil {
-			glog.Fatalf("Could not find public certificate %v", err)
+			glog.Errorf("Could not find public certificate %v", err)
+			os.Exit(1)
 		}
 		block, _ := pem.Decode([]byte(certPEM))
 		if block == nil {
-			glog.Fatalf("failed to parse certificate PEM")
+			glog.Errorf("failed to parse certificate PEM")
+			os.Exit(1)
 		}
 		cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
-			glog.Fatalf("failed to parse certificate: " + err.Error())
+			glog.Errorf("failed to parse certificate: " + err.Error())
+			os.Exit(1)
 		}
 		glog.V(5).Infof("     Loaded x509 %s", cert.Issuer)
 
-		privateKeyPEM, err := ioutil.ReadFile(*exportedRSAKey)
+		privateKeyPEM, err := os.ReadFile(*exportedRSAKey)
 		if err != nil {
-			glog.Fatalf("Could not find private Key %v", err)
+			glog.Errorf("Could not find private Key %v", err)
+			os.Exit(1)
 		}
 
 		block, _ = pem.Decode(privateKeyPEM)
 		priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 		if err != nil {
-			glog.Fatalf("failed to parse private Key: " + err.Error())
+			glog.Errorf("failed to parse private Key: " + err.Error())
+			os.Exit(1)
 		}
 
 		// Generate a test signature using this RSA key.
@@ -723,7 +782,8 @@ func main() {
 		digest := sha256.Sum256(dataToSign)
 		signature, err := rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, digest[:])
 		if err != nil {
-			glog.Fatalf("Error from signing: %s\n", err)
+			glog.Errorf("Error from signing: %s\n", err)
+			os.Exit(1)
 		}
 
 		glog.V(10).Infof("     Test signature data:  %s", base64.RawStdEncoding.EncodeToString(signature))
@@ -731,11 +791,13 @@ func main() {
 
 		importBlob, err := gotpmserver.CreateSigningKeyImportBlob(ep, priv, vpcrs)
 		if err != nil {
-			glog.Fatalf("Unable to CreateImportBlob : %v", err)
+			glog.Errorf("Unable to CreateImportBlob : %v", err)
+			os.Exit(1)
 		}
 		sealedOutput, err := proto.Marshal(importBlob)
 		if err != nil {
-			glog.Fatalf("Unable to marshall ImportBlob: ", err)
+			glog.Errorf("Unable to marshall ImportBlob: ", err)
+			os.Exit(1)
 		}
 
 		preq = &verifier.PushSecretRequest{
@@ -747,7 +809,8 @@ func main() {
 
 	presp, err := c.PushSecret(ctx, preq)
 	if err != nil {
-		glog.Fatalf("Error Pushing Secret: %v", err)
+		glog.Errorf("Error Pushing Secret: %v", err)
+		os.Exit(1)
 	}
 	glog.V(5).Infof("     Verification %s", base64.RawStdEncoding.EncodeToString(presp.Verification))
 
@@ -762,7 +825,8 @@ func main() {
 	}
 	psResponse, err := c.PullRSAKey(ctx, psReq)
 	if err != nil {
-		glog.Fatalf("Error PullRSAKey: %v", err)
+		glog.Errorf("Error PullRSAKey: %v", err)
+		os.Exit(1)
 	}
 
 	glog.V(20).Infof("     SigningKey Attestation %s\n", base64.StdEncoding.EncodeToString(psResponse.Attestation))
@@ -771,7 +835,8 @@ func main() {
 	glog.V(20).Infof("     Read and Decode (attestion)")
 	att, err := tpm2.DecodeAttestationData(psResponse.Attestation)
 	if err != nil {
-		glog.Fatalf("DecodeAttestationData failed: %v", err)
+		glog.Errorf("DecodeAttestationData failed: %v", err)
+		os.Exit(1)
 	}
 	glog.V(20).Infof("     Attestation AttestedCertifyInfo.Name.Digest.Value: %s", hex.EncodeToString(att.AttestedCertifyInfo.Name.Digest.Value))
 
@@ -782,7 +847,8 @@ func main() {
 	ahsh.Write(psResponse.Attestation)
 
 	if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, ahsh.Sum(nil), psResponse.AttestationSignature); err != nil {
-		glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
+		glog.Errorf("VerifyPKCS1v15 failed: %v", err)
+		os.Exit(1)
 	}
 	glog.V(10).Infof("     Attestation of Unrestricted Signing Key Verified")
 
@@ -790,26 +856,31 @@ func main() {
 	// also verify that the key template matches what we expect for an unrestricted key
 	uPub, err := tpm2.DecodePublic(psResponse.TpmPublicKey)
 	if err != nil {
-		glog.Fatalf("Error Decode Unrestricted key Public %v", err)
+		glog.Errorf("Error Decode Unrestricted key Public %v", err)
+		os.Exit(1)
 	}
 
 	up, err := uPub.Key()
 	if err != nil {
-		glog.Fatalf("ukPub.Key() failed: %s", err)
+		glog.Errorf("ukPub.Key() failed: %s", err)
+		os.Exit(1)
 	}
 	fkey, ok := up.(*rsa.PublicKey)
 	if !ok {
-		glog.Fatalf("Unable to extract public key from CSR %v", err)
+		glog.Errorf("Unable to extract public key from CSR %v", err)
+		os.Exit(1)
 	}
 	if uPub.MatchesTemplate(unrestrictedKeyParams) {
 		glog.V(10).Infof("     Unrestricted key parameter matches template")
 	} else {
-		glog.Fatalf("uK does not have correct template parameters")
+		glog.Errorf("uK does not have correct template parameters")
+		os.Exit(1)
 	}
 
 	ukBytes, err := x509.MarshalPKIXPublicKey(up)
 	if err != nil {
-		glog.Fatalf("Unable to convert ukPub: %v", err)
+		glog.Errorf("Unable to convert ukPub: %v", err)
+		os.Exit(1)
 	}
 
 	ukPubPEM := pem.EncodeToMemory(
@@ -830,7 +901,8 @@ func main() {
 	uhsh.Write([]byte(*u))
 
 	if err := rsa.VerifyPKCS1v15(fkey, crypto.SHA256, uhsh.Sum(nil), psResponse.TestSignature); err != nil {
-		glog.Fatalf("VerifyPKCS1v15 failed: %v", err)
+		glog.Errorf("VerifyPKCS1v15 failed: %v", err)
+		os.Exit(1)
 	}
 	glog.V(10).Infof("     Test Signature Verified")
 
@@ -851,7 +923,8 @@ func main() {
 	}
 	ok, err = att.AttestedCertifyInfo.Name.MatchesPublic(params)
 	if err != nil {
-		glog.Fatalf("     AttestedCertifyInfo.MatchesPublic(%v) failed: %v", att, err)
+		glog.Errorf("     AttestedCertifyInfo.MatchesPublic(%v) failed: %v", att, err)
+		os.Exit(1)
 	}
 	glog.V(10).Infof("     Unrestricted RSA Public key parameters matches AttestedCertifyInfo  %v", ok)
 
@@ -866,7 +939,8 @@ func main() {
 	serialNumberLimit = new(big.Int).Lsh(big.NewInt(2), 20)
 	serialNumber, err = rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		glog.Fatalf("Failed to generate serial number: %v", err)
+		glog.Errorf("Failed to generate serial number: %v", err)
+		os.Exit(1)
 	}
 	glog.V(10).Infof("     Issuing certificate with serialNumber %d", serialNumber)
 
@@ -893,7 +967,8 @@ func main() {
 
 	cert_b, err = x509.CreateCertificate(rand.Reader, ct, ca, up, parsedKey)
 	if err != nil {
-		glog.Fatalf("Failed to createCertificate: %v", err)
+		glog.Errorf("Failed to createCertificate: %v", err)
+		os.Exit(1)
 	}
 
 	ukCertPEM := pem.EncodeToMemory(
