@@ -24,6 +24,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -39,6 +40,7 @@ import (
 	"strings"
 	"time"
 
+	certparser "github.com/salrashid123/gcp-tpm/parser"
 	"github.com/salrashid123/go_tpm_registrar/verifier"
 
 	"github.com/golang/glog"
@@ -67,21 +69,26 @@ const (
 var (
 	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:dd0276b3bf0e30531a575a1cb5a02171ea0ad0f164d51e81f4cd0ab0bd5baadd", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
 	expectedPCRMapSHA1   = flag.String("expectedPCRMapSHA1", "0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "EventLog values PCR value map as sha1.  Used only if readEventLog is set to true")
-	u                    = flag.String("uid", uuid.New().String(), "uid of client")
-	platformCA           = flag.String("platformCA", "certs/platform_ca.pem", "Platform CA")
-	caCertTLS            = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to Trust for TLS")
-	caCertIssuer         = flag.String("caCertIssuer", "certs/CA_crt.pem", "CA Certificate to issue X509 Certificates")
-	caKeyIssuer          = flag.String("caKeyIssuer", "certs/CA_key.pem", "CA Key to sign x509")
-	rwc                  io.ReadWriteCloser
-	importMode           = flag.String("importMode", "AES", "RSA|AES")
-	aes256Key            = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES key to export")
-	readEventLog         = flag.Bool("readEventLog", false, "Reading Event Log")
-	useFullAttestation   = flag.Bool("useFullAttestation", false, "Use Attestation")
-	exportedRSACert      = flag.String("rsaCert", "certs/tpm_client.crt", "RSA Public certificate for the key to export")
-	exportedRSAKey       = flag.String("rsaKey", "certs/tpm_client.key", "RSA key to export")
-	letterRunes          = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	address              = flag.String("host", "attestor.esodemoapp2.com:50051", "host:port of Attestor")
-	handleNames          = map[string][]tpm2.HandleType{
+
+	ekrootCA = flag.String("ekrootCA", "certs/ek_root.pem", "EK rootsCA")
+
+	ekintermediateCA = flag.String("ekintermediateCA", "certs/ek_intermediate.pem", "intermediate CA")
+
+	u                  = flag.String("uid", uuid.New().String(), "uid of client")
+	platformCA         = flag.String("platformCA", "certs/platform_ca.pem", "Platform CA")
+	caCertTLS          = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to Trust for TLS")
+	caCertIssuer       = flag.String("caCertIssuer", "certs/CA_crt.pem", "CA Certificate to issue X509 Certificates")
+	caKeyIssuer        = flag.String("caKeyIssuer", "certs/CA_key.pem", "CA Key to sign x509")
+	rwc                io.ReadWriteCloser
+	importMode         = flag.String("importMode", "AES", "RSA|AES")
+	aes256Key          = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES key to export")
+	readEventLog       = flag.Bool("readEventLog", false, "Reading Event Log")
+	useFullAttestation = flag.Bool("useFullAttestation", false, "Use Attestation")
+	exportedRSACert    = flag.String("rsaCert", "certs/tpm_client.crt", "RSA Public certificate for the key to export")
+	exportedRSAKey     = flag.String("rsaKey", "certs/tpm_client.key", "RSA key to export")
+	letterRunes        = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	address            = flag.String("host", "attestor.esodemoapp2.com:50051", "host:port of Attestor")
+	handleNames        = map[string][]tpm2.HandleType{
 		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
 		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
 		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
@@ -275,6 +282,58 @@ func main() {
 
 		glog.V(10).Infof("    EkCert Public Key \n%s\n", ekPubPEM)
 
+		// verify the certificate against roots
+
+		glog.V(10).Infof("Verify with EKcert with chain")
+
+		rootPEM, err := os.ReadFile(*ekrootCA)
+		if err != nil {
+			glog.Errorf("ERROR:   error reading ekcertRoot: %v", err)
+			os.Exit(1)
+		}
+
+		roots := x509.NewCertPool()
+		ok := roots.AppendCertsFromPEM([]byte(rootPEM))
+		if !ok {
+			glog.Errorf("ERROR:   error appending ekcert to verifier: %v", err)
+			os.Exit(1)
+		}
+
+		var exts []asn1.ObjectIdentifier
+		for _, ext := range ekcert.UnhandledCriticalExtensions {
+			if ext.Equal(certparser.OidExtensionSubjectAltName) {
+				continue
+			}
+			exts = append(exts, ext)
+		}
+		ekcert.UnhandledCriticalExtensions = exts
+
+		intermediatePEM, err := os.ReadFile(*ekintermediateCA)
+		if err != nil {
+			glog.Errorf("ERROR:   error reading ek intermediate ca: %v", err)
+			os.Exit(1)
+		}
+
+		intermediates := x509.NewCertPool()
+		ok = intermediates.AppendCertsFromPEM([]byte(intermediatePEM))
+		if !ok {
+			glog.Errorf("ERROR:   error appending ek intermediate ca: %v", err)
+			os.Exit(1)
+		}
+
+		opts := x509.VerifyOptions{
+			Roots:         roots,
+			Intermediates: intermediates,
+			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsage(x509.ExtKeyUsageAny)},
+		}
+		if _, err := ekcert.Verify(opts); err != nil {
+			glog.Errorf("ERROR:   error verifying ek intermediate ca: %v", err)
+			os.Exit(1)
+		}
+		glog.V(10).Infof("Verified ekcert Certificate Chain")
+
+		///
+
 		ekPub, err := tpm2.DecodePublic(ekCertResponse.EkPub)
 		if err != nil {
 			glog.Errorf("ERROR:  Error DecodePublic EKPublic %v", err)
@@ -317,7 +376,7 @@ func main() {
 		}
 
 	} else {
-		glog.Infof("GetEKCert empty so skipping loading Certificate from remote NV and instead using ekPub;  Original Error is: %v", err)
+		glog.Warning("====> GetEKCert empty so skipping loading Certificate from remote NV and instead using ekPub as-is")
 		block, _ := pem.Decode(ekCertResponse.EkPub)
 		if block == nil {
 			glog.Errorf("ERROR:  error decoding ekPub")

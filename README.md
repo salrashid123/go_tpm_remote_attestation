@@ -495,3 +495,38 @@ or maybe you can for example, you can 'force sign' a CA with the ekpublic key (d
 
 * [Issue CA-signed certificate for TPM public key](https://gist.github.com/salrashid123/10320c153ad6acdc31854c9775c43c0d)
 
+
+### GCP EK CA Signing Certificate
+
+Step 3 in the flow above describes the EKCertificate (if avaliable).  You should verify that using a CA (if applicable).
+
+This isn't just the platform certificate but rather the manufacturer of the TPM's CA
+
+We describe  this bit here:
+
+- [Sign, Verify and decode using Google Cloud vTPM Attestation Key and Certificate](https://github.com/salrashid123/gcp-vtpm-ek-ak)
+
+For now, we acquired the EKCA like so and used to cross check the EKCert on the verifier
+
+```bash
+### EK 
+## Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Root
+wget http://privateca-content-62d71773-0000-21da-852e-f4f5e80d7778.storage.googleapis.com/032bf9d39db4fa06aade/ca.crt -O ek_root.crt 
+# Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Root
+wget http://privateca-content-65d703c4-0000-2bb5-8c60-240588727a78.storage.googleapis.com/141284c118eedaec09f9/ca.crt -O ek_intermediate.crt
+
+openssl x509 -in ek_intermediate.crt -text -noout
+
+openssl x509 -inform der -in ek_intermediate.crt -out ek_intermediate.pem
+openssl x509 -inform der -in ek_root.crt -out ek_root.pem
+cat ek_root.pem ek_intermediate.pem > ek_chain.pem
+rm ek_root.pem ek_intermediate.pem
+
+# convert der to pem
+openssl x509 -inform der -in ek_intermediate.crt -out ek_intermediate.pem
+openssl x509 -inform der -in ek_root.crt -out ek_root.pem
+
+## to verify the EKCert you got from the vm:
+gcloud compute instances get-shielded-identity attestor --format=json | jq -r '.encryptionKey.ekCert' > ekcert.pem
+openssl verify -verbose -CAfile ek_chain.pem  ekcert.pem 
+```

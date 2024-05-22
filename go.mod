@@ -29,6 +29,7 @@ require (
 	github.com/google/logger v1.1.1 // indirect
 	github.com/pborman/uuid v1.2.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/salrashid123/gcp-tpm/parser v0.0.0-20220930151352-4675346f7ef3 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/crypto v0.23.0 // indirect
 	golang.org/x/sys v0.20.0 // indirect
