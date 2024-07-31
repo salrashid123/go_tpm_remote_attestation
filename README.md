@@ -57,24 +57,22 @@ First create two VMs
 gcloud compute instances create attestor --zone=us-central1-a \
     --machine-type=n2d-standard-2  --min-cpu-platform="AMD Milan" \
     --shielded-secure-boot --no-service-account --no-scopes \
-    --shielded-vtpm \
-    --shielded-integrity-monitoring \
-    --confidential-compute
+    --shielded-vtpm --confidential-compute-type=SEV \
+    --shielded-integrity-monitoring 
 
 
 gcloud compute instances create verifier --zone=us-central1-a \
     --machine-type=n2d-standard-2  --min-cpu-platform="AMD Milan" \
     --shielded-secure-boot --no-service-account --no-scopes \
-    --shielded-vtpm \
-    --shielded-integrity-monitoring \
-    --confidential-compute
+    --shielded-vtpm --confidential-compute-type=SEV \
+    --shielded-integrity-monitoring
 ```
 
-On each, install `go 1.20+` and setup `libtspi-dev`, `gcc` (`apt-get update && apt-get install gcc libtspi-dev`)
+On each, install `go 1.20+` and setup `libtspi-dev`, `gcc` (`apt-get update && apt-get install gcc libtspi-dev tpm2-tools`)
 
 ```bash
 apt-get update
-apt-get install libtspi-dev wget gcc git -y
+apt-get install libtspi-dev wget gcc git tpm2-tools -y
 
 wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
 rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
@@ -364,7 +362,7 @@ Google signed Endorsement *Certificates* are available on `GCP Confidential VMs`
 
 On many other platform ([even a raspberry pi w/ TPM chip](https://gist.github.com/salrashid123/d99e698f84e5d35a863225b747af1f48), you can usually extract the the EK certificate bound on the tpm)..
 
-While the API documentation for [getShieldedInstanceIdentity](https://cloud.google.com/compute/docs/reference/rest/v1/instances/getShieldedInstanceIdentity) shows a placeholder for the certificates:
+The API documentation for [getShieldedInstanceIdentity](https://cloud.google.com/compute/docs/reference/rest/v1/instances/getShieldedInstanceIdentity) shows a placeholder for the certificates:
 
 ```
 {
@@ -380,7 +378,6 @@ While the API documentation for [getShieldedInstanceIdentity](https://cloud.goog
 }
 ```
 
-it is not populated (see[retrieving-endorsement-key](https://cloud.google.com/compute/shielded-vm/docs/retrieving-endorsement-key))
 
 ```bash
 gcloud compute instances get-shielded-identity attestor
@@ -512,8 +509,8 @@ For now, we acquired the EKCA like so and used to cross check the EKCert on the 
 ### EK 
 ## Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Root
 wget http://privateca-content-62d71773-0000-21da-852e-f4f5e80d7778.storage.googleapis.com/032bf9d39db4fa06aade/ca.crt -O ek_root.crt 
-# Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Root
-wget http://privateca-content-65d703c4-0000-2bb5-8c60-240588727a78.storage.googleapis.com/141284c118eedaec09f9/ca.crt -O ek_intermediate.crt
+# Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Intermediate
+wget http://privateca-content-633beb94-0000-25c1-a9d7-001a114ba6e8.storage.googleapis.com/c59a22589ab43a57e3a4/ca.crt -O ek_intermediate.crt
 
 openssl x509 -in ek_intermediate.crt -text -noout
 
