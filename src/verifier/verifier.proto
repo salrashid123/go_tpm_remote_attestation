@@ -5,106 +5,61 @@ package verifier;
 option go_package = "github.com/salrashid123/go_tpm_remote_attestation/verifier";
 
 service Verifier {
-  rpc GetPlatformCert (GetPlatformCertRequest) returns (GetPlatformCertResponse) { }
-  rpc GetEKCert (GetEKCertRequest) returns (GetEKCertResponse) { }
+  rpc GetPlatformCert (GetPlatformCertRequest) returns (GetPlatformCertResponse) { }  
+  rpc GetEK (GetEKRequest) returns (GetEKResponse) { }
   rpc GetAK (GetAKRequest) returns (GetAKResponse) { }
-  rpc ActivateCredential (ActivateCredentialRequest) returns (ActivateCredentialResponse) { }
-  rpc Quote (QuoteRequest) returns (QuoteResponse) { }
   rpc Attest (AttestRequest) returns (AttestResponse) { }
-  rpc PushSecret (PushSecretRequest) returns (PushSecretResponse) { }
-  rpc PullRSAKey (PullRSAKeyRequest) returns (PullRSAKeyResponse) { }      
+  rpc Quote (QuoteRequest) returns (QuoteResponse) { } 
+  rpc GetKey (GetAttestedKeyRequest) returns (GetAttestedKeyResponse) { }   
 }
 
-enum SecretType {
-  RAW = 0;
-  RSA = 1;
-  AES = 2;
-}  
-
-message GetPlatformCertRequest {
-  string uid = 1;
-}
+message GetPlatformCertRequest {}
 
 message GetPlatformCertResponse {
-  string uid = 1;
-  bytes platformCert = 2;
+  bytes platformCert = 1;
 }
 
-message GetEKCertRequest {
-  string uid = 1;
-}
+message GetEKRequest {}
 
-message GetEKCertResponse {
-  string uid = 1;
+message GetEKResponse {
+  bytes ekPub = 1;
   bytes ekCert = 2;
-  bytes ekPub = 3;
 }
 
-message GetAKRequest {
-  string uid = 1;
-}
+message GetAKRequest {}
 
 message GetAKResponse {
-  string uid = 1;
-  bytes ekPub = 2;
-  bytes akName = 3;  
-  bytes akPub = 4;
-}
-
-message ActivateCredentialRequest {
-  string uid = 1;
-  bytes credBlob = 2;
-  bytes encryptedSecret = 3;
-}
-
-message ActivateCredentialResponse {
-  string uid = 1;
-  bytes secret = 2;
-}
-
-message QuoteRequest {
-  string uid = 1;
-  repeated int32 pcrs = 2;
-  string secret =3;
-}
-
-message QuoteResponse {
-  string uid = 1;
-  bytes attestation = 2;
-  bytes signature = 3;
-  bytes eventlog = 4;  
+  bytes attestation_parameters = 1;
 }
 
 message AttestRequest {
-  string uid = 1;
-  string secret =3;
+  bytes encryptedCredentials = 1;
 }
 
 message AttestResponse {
-  string uid = 1;
-  bytes attestation = 2; 
+  bytes secret = 1;
 }
 
-message PushSecretRequest {
-  string uid = 1;
-  SecretType secret_type = 2;
-  bytes importBlob = 3;  
+message QuoteRequest {
+  bytes nonce = 1;
 }
 
-message PushSecretResponse {
-  string uid = 1;
-  bytes verification = 2;  
+message QuoteResponse {
+  bytes platformAttestation = 1;
 }
 
-message PullRSAKeyRequest {
-  string uid = 1;
-  repeated int32 pcrs = 2;
+enum KeyType {
+  TLS = 0;
+  Signature = 1;
+  Encryption = 2;
+  AES = 3;
+}  
+message GetAttestedKeyRequest {
+  string kid = 1;
+  KeyType key_type = 2;
 }
 
-message PullRSAKeyResponse {
-  string uid = 1;
-  bytes tpm_public_key = 2;
-  bytes test_signature = 3;
-  bytes attestation_signature = 4;
-  bytes attestation = 5;
+message GetAttestedKeyResponse {
+  bytes key = 1;
+  bytes keyCertification = 2;
 }

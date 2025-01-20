@@ -12,17 +12,13 @@ require (
 	github.com/google/go-tspi v0.3.0 // indirect
 	github.com/google/uuid v1.6.0
 	github.com/salrashid123/go_tpm_registrar/verifier v0.0.0
-	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842
 	golang.org/x/net v0.25.0
 	golang.org/x/text v0.15.0 // indirect
 	google.golang.org/grpc v1.64.0
-	google.golang.org/protobuf v1.34.1
+	google.golang.org/protobuf v1.34.1 // indirect
 )
 
-require (
-	github.com/google/go-attestation v0.5.1
-	github.com/salrashid123/gcp-tpm/parser v0.0.0-20220930151352-4675346f7ef3
-)
+require github.com/google/go-attestation v0.5.1
 
 require (
 	github.com/google/certificate-transparency-go v1.1.8 // indirect

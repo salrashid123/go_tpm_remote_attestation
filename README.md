@@ -7,7 +7,6 @@ This repo contains a sample `gRPC` client server application that uses a Trusted
 * Sealed and PCR bound Transfer of RSA or AES keys.
 * Parse TPM EventLog
 
-
 Attestation:
 
 ( Images taken from [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html) )
@@ -30,13 +29,40 @@ You can use this standalone to setup a gRPC client/server for remote attestation
 
 There are two parts:
 
-* `attestor`:  a `gRPC` server which accepts connections from a verifier, performs remote attestation, quote/verify and then then securely receives a sealed key from a verifier.  The key is distributed such that it can _only_ get loaded or decoded on the attestor that has the TPM
+* `attestor`:  a `gRPC` server which accepts connections from a verifier, performs remote attestation, quote/verify and then transmits an ECC public key back to the verifier which is certified to exist on that TPM
 
-* `verifier`: a `gRPC` client which connects to the corresponding attestor, and the attestor proves it owns a specific TPM.  Once complete, the verifier will send a sealed RSA or AES Key that can only be decoded by that client.
+* `verifier`: a `gRPC` client which connects to the corresponding attestor, and the attestor proves it owns a specific TPM.
 
 ---
 
-As you can see, the whole protocol is rather complicated but hinges on being able to trust the initial Endorsement Key.   As mentioned, this is normally done by validating that the EndorsementPublic certificate is infact real and signed by a 3rd party (eg, the manufacturer of the TPM).  In the case of google's shielded vTPM, it is signed by google's subordinate CA and includes information about the VM's instance_id value.  This protocol also "validates" the PlatformCA which itself includes a reference (serial# reference) to the EndorsementKey.  I suppose it can contain the hash of the EKcert as another attribute...
+On startup, the verifier will:
+
+1. Verifier contacts the Attestor
+2. Attestor returns a demo Platform Certificate
+3. Verifier checks the platform certificate specifications and verifies it with a demo platform CA
+4. Attestor returns EKCert (EK)
+5. Verifier checks Issuer and Signature of EKCert
+  
+Begin Remote Attestation
+
+6. Verifier Requests Attestation Key (AK). Attestor return AK
+7. Verifier uses (EK,AK) to begin Remote Attestation (`MakeCredential`) which involves using AK,EK to encrypt a value that it sends to Attestor
+8. Attestor decodes the secret sent by Verifier (`ActivateCredential`) and returns the decrypted value to Verifier
+9. Verifier confirms the secret sent matches.  Verifier associates AK with EK
+
+End Remote Attestation
+
+Begin Quote/Verify
+
+10. Verifier Requests Quote over PCR values 
+11. Attestor generates Quote over PCR value and uses AK to sign
+12. Attestor generates EventLog 
+13. Attestor returns Quote and EventLog to Verifier 
+14. Verifier checks signature of the Attestation is by the AK and the PCR values from the Quote.  Verifier replays the eventLog to confirm derived PCR value.
+
+15. (optional) Attestor creates an ECC key on the TPM and certifies it using the AK
+16. (optional) Verifier requests certified ECC key from Verifier
+17. (optional) Verifier confirms ECC key was certified by AK 
 
 ---
 
@@ -47,11 +73,11 @@ also see
  - [go-attestation](https://github.com/google/go-attestation)
 
 
-## Setup
+## Setup on GCE
 
 We will use a GCP Shielded VM for these tests 
 
-First create two VMs
+First create a VM
 
 ```bash
 gcloud compute instances create attestor --zone=us-central1-a \
@@ -60,15 +86,13 @@ gcloud compute instances create attestor --zone=us-central1-a \
     --shielded-vtpm --confidential-compute-type=SEV \
     --shielded-integrity-monitoring 
 
-
-gcloud compute instances create verifier --zone=us-central1-a \
-    --machine-type=n2d-standard-2  --min-cpu-platform="AMD Milan" \
-    --shielded-secure-boot --no-service-account --no-scopes \
-    --shielded-vtpm --confidential-compute-type=SEV \
-    --shielded-integrity-monitoring
+gcloud compute firewall-rules create allow-tpm-verifier \
+   --action allow --direction INGRESS   --source-ranges 0.0.0.0/0    --rules tcp:50051
 ```
 
-On each, install `go 1.20+` and setup `libtspi-dev`, `gcc` (`apt-get update && apt-get install gcc libtspi-dev tpm2-tools`)
+### Attestor VM
+
+Install `go 1.20+` and setup `libtspi-dev`, `gcc` (`apt-get update && apt-get install gcc libtspi-dev tpm2-tools`)
 
 ```bash
 apt-get update
@@ -77,25 +101,14 @@ apt-get install libtspi-dev wget gcc git tpm2-tools -y
 wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
 rm -rf /usr/local/go && tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin/
-
 ```
 
-on the **verifier** (which in this case is the client)  VM, edit `/etc/hosts`
-
-and set the value of `attestor.esodemoapp2.com` to the IP of the client (in my case, its `10.128.0.14`).
+Get the external IP
 
 ```bash
 $ gcloud compute instances list --filter=name=attestor
-NAME      ZONE           MACHINE_TYPE  PREEMPTIBLE  INTERNAL_IP  EXTERNAL_IP      STATUS
-attestor  us-central1-a  e2-medium                  10.128.0.14  104.197.204.181  RUNNING
-```
-
-```bash
-root@verifier:# hostname
-verifier
-
-root@verifier:# more /etc/hosts
-10.128.0.14 attestor.esodemoapp2.com
+NAME      ZONE           MACHINE_TYPE    PREEMPTIBLE  INTERNAL_IP    EXTERNAL_IP    STATUS
+attestor  us-central1-a  n2d-standard-2               10.128.15.208  34.121.64.117  RUNNING
 ```
 
 For GCP Confidential VM's, PCR 0 and 7 are used for attestation and those have default values on the `attestor` vm of:
@@ -106,232 +119,356 @@ $ tpm2_pcrread -o pcrs sha1:0+sha256:0,7
     0 : 0x2AAB58E23EA5120D70A3EBCE56BD0E6D5E3035B7
   sha256:
     0 : 0xA0B5FF3383A1116BD7DC6DF177C0C2D433B9EE1813EA958FA5D166A202CB2A85
-    7 : 0x39227C17E8779C0DB03BBB4B6275F3871C97C59B3146768218887B825659E989
+    7 : 0x41154B2091D52958CF4B5028BD91BA4354C176050602F6D0DFBABFFA3F951186
 ```
-
-
-ofcourse you can use any hostname here but the certificated provided in this repo matches the SAN values for TLS.
-
-
-## Tests
-
-Now test the client-server by transmitting both an RSA and AES key.
-
-
-On startup, the verifier will:
-
-1. Verifier contacts the Attestor
-2. Attestor returns EKCert (EK), if available*
-3. Verifier checks Issuer of EKCert
-  
-Begin Remote Attestation
-
-4. Verifier Requests Attestation Key (AK). Attestor return AK
-5. Verifier uses (EK,AK) to begin Remote Attestation (MakeCredential) which involves using AK,EK to encrypt a value that it sends to Attestor
-6. Attestor decodes the secret sent by Verifier (ActivateCredential) and returns the decrypted value to Verifier
-7. Verifier confirms the secret sent matches.  Verifier associates AK with EK
-
-End Remote Attestation
-
-Begin Quote/Verify
-
-8. Verifier Requests Quote over PCR values 
-9. Attestor generates Quote over PCR value and uses AK to sign
-10. Attestor generates EventLog 
-11. Attestor returns Quote and EventLog to Verifier 
-12. Verifier checks signature of the Attestation is by the AK and the PCR values from the Quote.  Verifier replays the eventLog to confirm derived PCR value.
-13. Verifier uses CA private key to sign an x509 certificate tied to the AK.  The verifier _could_ return this x509 back to the attestor over a new (unimplemented) gRPC API call.
-
-End Quote/Verify
-
-Begin Sealed Transfer (PushSecret)
-
-14. Verifier uses EK to encrypt either a local RSA or AES Key 
-15. Verifier transmits encrypted Key to Attestor 
-16. Attestor either decrypts the AES key or imports the External RSA key into its TPM
-17. Attestor generates a test signature using the RSA key or calculates the Hash value of AES key.
-18. Attestor returns the signature or hash to Verifier. 
-19. Verifier confirms the signature value or hash (thereby confirming the Attestor decoded the RSA or AES key)
-
-End Sealed Transfer
-
-Begin Unrestricted SigningKey Transfer (PullSecret)
-
-20. Verifier Requests Unrestricted Signing Key
-21. Attestor generates RSA Key on TPM as a child of EK
-22. Attestor uses AK to [Certify](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_certify.1.md) the new key
-23. Attestor transmits the TPM Wire firmat of the RSA key and test signature over some preshared data.
-24. Verifier uses AK to confirm the authenticity of the Certification and RSA Public key is attested.
-25. Verifier uses RSA Public key to verify the signature provided over preshared data
-26. Verifier extracts the public key from the TPM Wireformat and compares it with the Key embedded in the attestation
-27. Verifier uses the TPM Wire format Public key to verify the specifications for the unrestricted key (e,g matches template)
-28. Verifier uses CA private key to sign an x509certificate tied to the SigningKey.  The verifier _could_ return this x509 back to the attestor over a new (unimplemented) gRPC API call.
-    The attestor could use this x509 and private key on its TPM to create an mTLS connection.  See [crypto.Signer for TPM](https://github.com/salrashid123/signer#usage-tls) and [mTLS with TPM bound private key](https://github.com/salrashid123/go_tpm_https_embed) 
-
-End Unrestricted SigningKey Transfer
-
-### AES
-
-#### Attestor AES
-
-```bash
-git clone https://github.com/salrashid123/go_tpm_remote_attestation.git
-cd go_tpm_remote_attestation
-
-go run src/grpc_attestor.go --grpcport :50051 \
- --unsealPcrs=0,7 \
- --caCertTLS certs/CA_crt.pem \
- --servercert certs/attestor_crt.pem \
- --serverkey certs/attestor_key.pem \
-  -useFullAttestation=true --readEventLog=true \
-  --platformCertFile certs/platform_cert.der \
-  --v=10 -alsologtostderr
-```
-
-#### Verifier AES
-
-```bash
-git clone https://github.com/salrashid123/go_tpm_remote_attestation.git
-cd go_tpm_remote_attestation
-
-# make sure /etc/hosts contains the internal ip for the attestor's vm set as "attestor.esodemoapp2.com" in /etc/hosts
-
-go run src/grpc_verifier.go --importMode=AES  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67  -aes256Key "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW" \
-   --host attestor.esodemoapp2.com:50051 \
-   --expectedPCRMapSHA256 0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85,7:39227c17e8779c0db03bbb4b6275f3871c97c59b3146768218887b825659e989 \
-   --expectedPCRMapSHA1 0:2aab58e23ea5120d70a3ebce56bd0e6d5e3035b7 \
-   --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem --platformCA certs/CA_crt.pem \
-   --readEventLog=true \
-   --useFullAttestation=true --v=10 -alsologtostderr 
-```
-
-
-Note, you can get the pcr values for 0,7 on the attestor using [pcr_utils](https://github.com/salrashid123/tpm2/tree/master/pcr_utils).
 
 ```log
-$ go run main.go --mode=read --pcr=0 -v 10 -alsologtostderr
-  I0521 12:11:47.351972   30541 main.go:66] ======= Print PCR  ========
-  I0521 12:11:47.353688   30541 main.go:71] PCR(0) a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85
+$ go run src/grpc_attestor.go --grpcport :50051  --v=10 -alsologtostderr
 
-$ go run main.go --mode=read --pcr=7 -v 10 -alsologtostderr
-  I0521 12:11:53.084554   30585 main.go:66] ======= Print PCR  ========
-  I0521 12:11:53.086357   30585 main.go:71] PCR(7) 39227c17e8779c0db03bbb4b6275f3871c97c59b3146768218887b825659e989
+I0119 03:15:14.571472    4626 grpc_attestor.go:293] Getting EKCert
+I0119 03:15:14.587224    4626 grpc_attestor.go:313] ECCert with available Issuer: CN=EK/AK CA Intermediate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
+I0119 03:15:14.857007    4626 grpc_attestor.go:409] Generated ECC Public 
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9yKgPRWKB9Chjnkjy46ivtPOQG5R
+p7THPIQ3lRox15lHpS/FUqthJKHUrCVOYYxBYJF0+Ebogb2GJrYJ+HTHKQ==
+-----END PUBLIC KEY-----
+I0119 03:15:14.857698    4626 grpc_attestor.go:434] Starting gRPC server on port :50051
+
+
+
+I0119 03:15:25.390763    4626 grpc_attestor.go:126] ======= GetPlatformCert ========
+I0119 03:15:25.390795    4626 grpc_attestor.go:127]      client provided uid: 
+I0119 03:15:25.390856    4626 grpc_attestor.go:145]      Returning GetPlatformCert ========
+I0119 03:15:25.430128    4626 grpc_attestor.go:153] ======= GetEK ========
+I0119 03:15:25.469365    4626 grpc_attestor.go:165] ======= GetAK ========
+I0119 03:15:25.567951    4626 grpc_attestor.go:188] ======= Attest ========
+I0119 03:15:25.853384    4626 grpc_attestor.go:222] ======= Quote ========
+I0119 03:15:26.227629    4626 grpc_attestor.go:259] ======= GetTLSKey ========
 ```
 
-### RSA
+### Verifier
 
-#### Attestor RSA
+First get the Attestor EK Signing certificates.
 
 ```bash
-go run src/grpc_attestor.go --grpcport :50051 \
-  --unsealPcrs=0,7 \
-  --caCertTLS certs/CA_crt.pem \
-  --servercert certs/attestor_crt.pem -useFullAttestation=true  --readEventLog=true \
-  --serverkey certs/attestor_key.pem --platformCertFile certs/platform_cert.der  \
-  --v=10 -alsologtostderr
+### EK 
+## get the EK
+
+gcloud compute instances get-shielded-identity attestor \
+   --format=json --zone=us-central1-a | jq -r '.encryptionKey.ekCert' > certs/ekcert.pem
+
+openssl x509 -inform pem -text -in certs/ekcert.pem
+### gives a 
+            # Authority Information Access: 
+            #     CA Issuers - URI:http://privateca-content-65d1688e-0000-2203-850e-30fd381456f8.storage.googleapis.com/810af313406ad3e2079b/ca.crt
+
+## get the intermediate from the ek
+# Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Intermediate
+
+curl -s $(openssl x509 -in certs/ekcert.pem -noout -text | grep -Po "((?<=CA Issuers - URI:)http://.*)$") | openssl x509 -inform DER -outform PEM \
+   -out certs/ek_intermediate.pem
+
+## get the root from the intermediate
+curl -s $(openssl x509 -in certs/ek_intermediate.pem -noout -text | grep -Po "((?<=CA Issuers - URI:)http://.*)$") | openssl x509 \
+    -inform DER -outform PEM -out certs/ek_root.pem
 ```
 
-#### Verifier RSA
+Now run the verifier:
+
+```log
+export ATTESTOR_ADDRESS=34.121.64.117 
+
+go run src/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
+       --ekintermediateCA=certs/ek_intermediate.pem  --ekrootCA=certs/ek_root.pem  --expectedPCRMapSHA256=0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85 \
+        --v=10 -alsologtostderr
+
+
+I0118 22:15:24.548210  621636 grpc_verifier.go:90] =============== GetPlatformCert ===============
+I0118 22:15:24.698309  621636 grpc_verifier.go:97] =============== GetPlatformCert Returned from remote ===============
+I0118 22:15:24.698360  621636 grpc_verifier.go:98]      client provided uid: 
+I0118 22:15:24.698974  621636 grpc_verifier.go:129]      PlatformCertificate Issuer: Not Specified
+I0118 22:15:24.699137  621636 grpc_verifier.go:136]  Verified Platform cert signed by privacyCA
+I0118 22:15:24.699170  621636 grpc_verifier.go:141]  Platform Cert's Holder SerialNumber 1b001fe40bf96774751a72e9f5de5333d6b62
+I0118 22:15:24.699195  621636 grpc_verifier.go:152] =============== start GetEK ===============
+I0118 22:15:24.740614  621636 grpc_verifier.go:283]      EKCert  GCE InstanceID 2003763118985041850
+I0118 22:15:24.740684  621636 grpc_verifier.go:284]      EKCert  GCE InstanceName attestor
+I0118 22:15:24.740724  621636 grpc_verifier.go:285]      EKCert  GCE ProjectId core-eso
+I0118 22:15:24.740796  621636 grpc_verifier.go:289]         EKCertificate ========
+-----BEGIN CERTIFICATE-----
+MIIF3DCCA8SgAwIBAgITDZ/7tOQJpK9gHOfYMSe0c/w9qTANBgkqhkiG9w0BAQsF
+ADCBhjELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcT
+DU1vdW50YWluIFZpZXcxEzARBgNVBAoTCkdvb2dsZSBMTEMxFTATBgNVBAsTDEdv
+b2dsZSBDbG91ZDEeMBwGA1UEAxMVRUsvQUsgQ0EgSW50ZXJtZWRpYXRlMCAXDTI1
+MDExOTAyNTQyNloYDzIwNTUwMTEyMDI1NDI1WjBpMRYwFAYDVQQHEw11cy1jZW50
+cmFsMS1hMR4wHAYDVQQKExVHb29nbGUgQ29tcHV0ZSBFbmdpbmUxETAPBgNVBAsT
+CGNvcmUtZXNvMRwwGgYDVQQDExMyMDAzNzYzMTE4OTg1MDQxODUwMIIBIjANBgkq
+hkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApl1i3sLXqyjOjxNo+pqpgzkEDVzVm2Td
+Nfz2fYUjqENVJ630csOjBJ9Jn/XEYqjR7STAP9TouxYEWqFoPaQTD1iXLRU7eBGA
+i6QCXyhZcPlNymOJAtcUcsBl882T8DXtpPDfJjspGWQDgjmAPK/79UQMZGssN27W
+OKDujxZZsgAmqNFQt5IUffP0QF1JTW7BP4SSwdggwH9FW3KfkJ7Wl8ON06CjFMFn
+OjlfIb8VnaEBYjGZyB5CSvBU+jvWJhLgqXzaEQep6azOeYRMsDGwVuBdM2Ulkyo8
+PGaap0LvA9t4j3wtFWeZtb1Kmi+2P/svONX09+l07sWyXqTGzNzevwIDAQABo4IB
+WzCCAVcwDgYDVR0PAQH/BAQDAgUgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFK89
+SclI0RZ4b6W6a6fSejIN9g1iMB8GA1UdIwQYMBaAFA8hnVbhqcCJxWzaI8DE8TKw
+Sol6MIGNBggrBgEFBQcBAQSBgDB+MHwGCCsGAQUFBzAChnBodHRwOi8vcHJpdmF0
+ZWNhLWNvbnRlbnQtNjVkMTY4OGUtMDAwMC0yMjAzLTg1MGUtMzBmZDM4MTQ1NmY4
+LnN0b3JhZ2UuZ29vZ2xlYXBpcy5jb20vODEwYWYzMTM0MDZhZDNlMjA3OWIvY2Eu
+Y3J0MGcGCisGAQQB1nkCARUEWTBXDA11cy1jZW50cmFsMS1hAgYA569zXpwMCGNv
+cmUtZXNvAggbzsvwuSHXugwIYXR0ZXN0b3KgIDAeoAMCAQChAwEB/6IDAQH/owMB
+AQCkAwEBAKUDAQEAMA0GCSqGSIb3DQEBCwUAA4ICAQCetb98rvc0MrC4MbdF7UUb
+o5OAo/nXQnHwXvzTXzIgV4g8aMcdw0MyaoLApKJf37Q0nku9qNcP/fMAPLYJWnqO
+2bhPfVHXG4dYvIg+zluFvECWkZJrgvgTNZgmNPJYGWtPYd8fcucJUFfMo5DV22IR
+W7NmfzRPXjp9GjJeXQjKyx0xJtWb3Fbvvjh84ANFX8CoqU5BRzfwz+9CYVWdiNXM
+ITuf9v4Y2/vb+WAP2yXEuYjgj1a2yNezrKRy+qDksm4i+0AnRRvnQS72CBVWRnAU
+5RcX2lHPOjp0M6VeWL4iNZXyRJOL9ycvIl7FVhBl7Bv2oUg7IQxFT2tw68oF2shl
+06UN4U27ZCf1PWNZX+qTLBVmPxqla8+Rq8n0qqsraOgnjD9F7OU98ghquIPfP3zh
+JtyeE1TFlm0g+fTO6fopWXFdYXrQFagpYvPy0PtXg2vYhtoRndBflp2giGPb1evS
+1pcjJUr76kXovng9TMzgH/3MyNHgUphvI+gTFje3Tng2K9aFip7vqPvhaXDB3Dkz
+1VgjdXyV+DSOyb3sKxOhItozktU1Z5o1lezjUeY9dAFV3Bonme/a8X4Q718yNP5Q
+kM4M6NKWJOpvgm17VDyNUAniCU/Xqrk8njkYk6C7n8D1BbzTanwAry4vKFxUy0vQ
+Ld6Gu3BJL7eEhWkWIGf8GQ==
+-----END CERTIFICATE-----
+
+I0118 22:15:24.740901  621636 grpc_verifier.go:305]      EKCert  Issuer CN=EK/AK CA Intermediate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
+I0118 22:15:24.741000  621636 grpc_verifier.go:306]      EKCert  IssuingCertificateURL [http://privateca-content-65d1688e-0000-2203-850e-30fd381456f8.storage.googleapis.com/810af313406ad3e2079b/ca.crt]
+I0118 22:15:24.741044  621636 grpc_verifier.go:311]     Verifying EKCert
+I0118 22:15:24.743577  621636 grpc_verifier.go:366]     EKCert Verified
+I0118 22:15:24.743630  621636 grpc_verifier.go:368]      EKPub: 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApl1i3sLXqyjOjxNo+pqp
+gzkEDVzVm2TdNfz2fYUjqENVJ630csOjBJ9Jn/XEYqjR7STAP9TouxYEWqFoPaQT
+D1iXLRU7eBGAi6QCXyhZcPlNymOJAtcUcsBl882T8DXtpPDfJjspGWQDgjmAPK/7
+9UQMZGssN27WOKDujxZZsgAmqNFQt5IUffP0QF1JTW7BP4SSwdggwH9FW3KfkJ7W
+l8ON06CjFMFnOjlfIb8VnaEBYjGZyB5CSvBU+jvWJhLgqXzaEQep6azOeYRMsDGw
+VuBdM2Ulkyo8PGaap0LvA9t4j3wtFWeZtb1Kmi+2P/svONX09+l07sWyXqTGzNze
+vwIDAQAB
+-----END PUBLIC KEY-----
+
+I0118 22:15:24.743713  621636 grpc_verifier.go:384] =============== end GetEKCert ===============
+I0118 22:15:24.743761  621636 grpc_verifier.go:387] =============== start GetAK ===============
+I0118 22:15:24.840372  621636 grpc_verifier.go:420]       ak public 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAstrZU393Zuewk8wsYbw1
+H8k00A2WBkn6VUMHghIPQyn+EN/ts/f5fKk0ZNkGJQb2POhRieSMKUUG+HmKFpBL
+k1udZs3oESx5oIVbeXlFnp5+POa0S4eCgPTuRoJohrBmgDOK9P8COIYLTRzv8bdy
+Jr2iDIG+ZQbMqNsci4ItDnJRnPdJenN85ahghn0B6nTKJpwH1RuNBqXeu1Y03TuD
+9LECjzL0mWnNJ0othJd8JjuW9nr1CU1roD5hmLxqJth7KKJAj1ZO/+3uYJZds4cS
+Dop48Pblb3MCgaS3BMTxnbTi+4ts05s0APu9+nYwzrie8QISFerZ9rNFJdbFjPjo
+owIDAQAB
+-----END PUBLIC KEY-----
+
+I0118 22:15:24.840462  621636 grpc_verifier.go:421] =============== end GetAK ===============
+I0118 22:15:24.840528  621636 grpc_verifier.go:424] =============== start Attest ===============
+I0118 22:15:24.840908  621636 grpc_verifier.go:437]       Outbound Secret: MpcYIFtsz7nDz4nYvmJTbyaEoEsUN/ecYrVSoMFMC44=
+I0118 22:15:25.129612  621636 grpc_verifier.go:453]       Inbound Secret: MpcYIFtsz7nDz4nYvmJTbyaEoEsUN/ecYrVSoMFMC44=
+I0118 22:15:25.129699  621636 grpc_verifier.go:456]       inbound/outbound Secrets Match; accepting AK
+I0118 22:15:25.129753  621636 grpc_verifier.go:461] =============== end Attest ===============
+I0118 22:15:25.129808  621636 grpc_verifier.go:464] =============== start Quote/Verify ===============
+I0118 22:15:25.495091  621636 grpc_verifier.go:509]       quote-attested public 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAstrZU393Zuewk8wsYbw1
+H8k00A2WBkn6VUMHghIPQyn+EN/ts/f5fKk0ZNkGJQb2POhRieSMKUUG+HmKFpBL
+k1udZs3oESx5oIVbeXlFnp5+POa0S4eCgPTuRoJohrBmgDOK9P8COIYLTRzv8bdy
+Jr2iDIG+ZQbMqNsci4ItDnJRnPdJenN85ahghn0B6nTKJpwH1RuNBqXeu1Y03TuD
+9LECjzL0mWnNJ0othJd8JjuW9nr1CU1roD5hmLxqJth7KKJAj1ZO/+3uYJZds4cS
+Dop48Pblb3MCgaS3BMTxnbTi+4ts05s0APu9+nYwzrie8QISFerZ9rNFJdbFjPjo
+owIDAQAB
+-----END PUBLIC KEY-----
+
+I0118 22:15:25.495271  621636 grpc_verifier.go:536]      quotes verified
+I0118 22:15:25.495715  621636 grpc_verifier.go:565]      secureBoot State enabled: [true]
+I0118 22:15:25.495910  621636 grpc_verifier.go:571] =============== end Quote/Verify ===============
+I0118 22:15:25.495945  621636 grpc_verifier.go:574] =============== start NewKey ===============
+I0118 22:15:25.592241  621636 grpc_verifier.go:586]         PublicKey ========
+-----BEGIN Public Key-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9yKgPRWKB9Chjnkjy46ivtPOQG5R
+p7THPIQ3lRox15lHpS/FUqthJKHUrCVOYYxBYJF0+Ebogb2GJrYJ+HTHKQ==
+-----END Public Key-----
+
+I0118 22:15:25.592449  621636 grpc_verifier.go:655]      key verified 
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9yKgPRWKB9Chjnkjy46ivtPOQG5R
+p7THPIQ3lRox15lHpS/FUqthJKHUrCVOYYxBYJF0+Ebogb2GJrYJ+HTHKQ==
+-----END PUBLIC KEY-----
+
+I0118 22:15:25.592494  621636 grpc_verifier.go:656] =============== end NewKey ===============        
+```
+
+
+#### Local TPM
+
+If you want to test locally, you need to acquire your TPM's issuer and intermediate root certificates.
+
+For my laptop, the PCR value and issuers was `certs/ECCert.pem` 
+
+
+EKCert:
+
+```
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            24:eb:bd:b3:08:6f:8a:ab:e5:d6:91:d5:55:f9:d0:14:e7:5f:29:bb
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: C=CH, O=STMicroelectronics NV, CN=STM TPM EK Intermediate CA 06
+        X509v3 extensions:
+            X509v3 Authority Key Identifier: 
+                FB:17:D7:0D:73:48:70:E9:19:C4:E8:E6:03:97:5E:66:4E:0E:43:DE
+            X509v3 Subject Alternative Name: critical
+                DirName:/2.23.133.2.1=id:53544D20/2.23.133.2.2=ST33HTPHAHD8/2.23.133.2.3=id:00010102
+```
+
+With PCRs:
 
 ```bash
-go run src/grpc_verifier.go --importMode=RSA  --uid 369c327d-ad1f-401c-aa91-d9b0e69bft67 \
-  --expectedPCRMapSHA256 0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85,7:39227c17e8779c0db03bbb4b6275f3871c97c59b3146768218887b825659e989 \
-  --expectedPCRMapSHA1 0:2aab58e23ea5120d70a3ebce56bd0e6d5e3035b7 \
-  --rsaCert=certs/tpm_client.crt \
-  --readEventLog=true --useFullAttestation=true \
-  --caCertTLS certs/CA_crt.pem --caCertIssuer certs/CA_crt.pem --caKeyIssuer certs/CA_key.pem    --platformCA certs/CA_crt.pem \
-  --rsaKey=certs/tpm_client.key  --host attestor.esodemoapp2.com:50051   \
-  --v=10 -alsologtostderr 
+$ sudo tpm2_pcrread -o pcrs sha1:0+sha256:0,7
+[sudo] password for srashid: 
+  sha1:
+    0 : 0x5FAB55B431F59B753BBD0C3885C85201099BF5DD
+  sha256:
+    0 : 0x3C5B53C48B7A21E554FBB14678C67DAFD792151CD3BDC6017E35F1B4A41FF412
+    7 : 0xAE2CE658A648D02A7F587BF36BFBAEE41DF3E3F241DAD2385C411D9B38D3904A
+
+
+## run attestor
+go run src/grpc_attestor.go --grpcport :50051  --v=10 -alsologtostderr
+
+
+## run verifier
+export ATTESTOR_ADDRESS=127.0.0.1
+go run src/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
+       --ekintermediateCA=certs/stmtpmek_combined.pem  --ekrootCA=certs/gstpmroot.pem  --expectedPCRMapSHA256=0:3c5b53c48b7a21e554fbb14678c67dafd792151cd3bdc6017e35f1b4a41ff412     --v=10 -alsologtostderr
 ```
-
-
-#### EventLog
-
-Please see the following for background on the eventlog and how to use it 
-
-- [TPMJS Event Log](https://google.github.io/tpm-js/#pg_attestation)
-
->> Note, on `GCP Confidential VM`, the default `PCR0` value is shown above:
-
-
-You can find a full end-to-end trace for the AES example under the `example/` folder
 
 ---
 
 ### Platform Certificate
 
-The platform certificate used in this protocol is just a sample, static one tied to a ShieldedVM's EKCert serial number.
+The platform certificate used in this protocol is just a sample, static one I downloaded from the [go-attestation testdata](https://github.com/google/go-attestation/tree/master/attributecert/testdata).
 
-I did this because i do not know how to generate a platform cert in go.  Instead i used  NSA's [Platform Attribute Certificate Creator (paccor)](https://github.com/nsacyber/paccor) in java to create the cert separately.
+Specifically, [Intel_pc1.cer](https://github.com/google/go-attestation/blob/master/attributecert/testdata/Intel_pc1.cer) which is verified against [IntelSigningKey_20April2017.cer](https://github.com/google/go-attestation/blob/master/attributecert/testdata/IntelSigningKey_20April2017.cer)
 
-What this means is we just make believe/pretend that the platform cert is valid by statically comparing the serialnumbers. In reality the verifier should check the certificate serial number and that a valid privacy ca signed the cert..
+Ideally, the Platform Certificate contains a reference back to the TPM's EKCertificate [`pg 12: Assertions Made by a Platform Certificate`](https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf)
 
-[Attribute Certificate](https://github.com/salrashid123/attribute_certificate).
 
-Note a sample serial number that is in the EKCert
+```
+2.1.5.2 EK Certificates
+126 This assertion is used by the Privacy-CA to verify that the platform contains a unique TPM
+127 referenced by this Platform Certificate.
+128 This SHALL be an unambiguous indication of the EK Certificates of the TPM incorporated
+129 into the platform. The Platform Certificate SHALL contain references to all TCG required
+130 Endorsement Key (EK) Certificates. The “TCG Infrastructure Working Group Reference
+131 Architecture for Interoperability (Part I)” [2] requires the TPM Manufacturer to issue an EK
+132 Certificate for each TPM Endorsement Key. The Platform Certificate MAY also contain
+133 references to optional EK Certificates, such as those issued by the Platform OEM or Platform
+134 Owner. 
+```
+
+However, the test platform certs here don't include this.
+
+instead, i just used the serial number in the EKCert 
+
+For example, if the EKCert is:
 
 ```bash
-tpm2_nvread -o ekcert.der 0x01c00002
-openssl x509 -in ekcert.der -inform DER -outform PEM -out ekcert.pem
+## ekpublic
+$ tpm2_createek -c ek.ctx -G rsa -u ek.pub 
+$ tpm2_readpublic -c ek.ctx -o ek.pem -f PEM -Q
 
-# openssl x509 -in ekcert.der -inform DER -outform PEM -out ekcert.pem
-openssl x509 -in ekcert.pem -text
+## ekcert
+$ tpm2_getekcertificate -X -o ECcert.bin
+$ openssl x509 -in ECcert.bin -inform DER -noout -text
+
+$  openssl x509 -inform pem -text -in ECCert.pem
 Certificate:
     Data:
         Version: 3 (0x2)
         Serial Number:
-            63:fe:ef:42:07:e0:a4:6c:2f:80:82:fb:d7:c8:46:13:47:1d:bd
+            24:eb:bd:b3:08:6f:8a:ab:e5:d6:91:d5:55:f9:d0:14:e7:5f:29:bb
         Signature Algorithm: sha256WithRSAEncryption
-        Issuer: C = US, ST = California, L = Mountain View, O = Google LLC, OU = Google Cloud, CN = EK/AK CA Intermediate
+        Issuer: C=CH, O=STMicroelectronics NV, CN=STM TPM EK Intermediate CA 06
         Validity
-            Not Before: May 21 11:56:26 2024 GMT
-            Not After : May 14 11:56:25 2054 GMT
-        Subject: L = us-central1-a, O = Google Compute Engine, OU = srashid-test2, CN = 5839638749371249935
+            Not Before: Sep 25 00:00:00 2020 GMT
+            Not After : Dec 31 00:00:00 2049 GMT
+        Subject: 
         Subject Public Key Info:
             Public Key Algorithm: rsaEncryption
                 Public-Key: (2048 bit)
+                Modulus:
+                    00:f9:2b:c1:d6:d6:66:74:df:10:e2:7f:ff:ea:73:
+                    8f:0e:e0:4d:92:49:ed:4c:45:13:3b:c6:09:b5:a8:
+                    72:a6:00:3a:2e:08:9a:5c:ad:16:ee:c6:11:05:1d:
+                    76:d9:56:f4:43:6a:38:da:3c:bd:ef:c2:49:b8:c4:
+                    85:d3:fa:de:9c:1d:82:aa:82:22:56:99:bf:65:dc:
+                    8a:07:7d:c3:d6:0b:91:01:cf:05:09:8c:07:e1:b8:
+                    ef:fe:da:f4:5a:eb:ea:ad:84:26:1a:26:93:db:f0:
+                    0a:fd:b4:ba:9d:55:34:f5:fe:6a:0b:16:0d:77:0a:
+                    46:8f:8c:38:e7:57:34:4c:53:91:95:07:f9:d5:6e:
+                    95:9e:96:87:87:25:0d:c0:bf:a0:0d:72:0d:1e:85:
+                    b5:af:99:24:54:a0:13:d4:29:b9:22:78:db:31:57:
+                    49:ac:96:4a:3f:e5:d1:2b:65:ab:50:eb:2e:17:d8:
+                    43:a5:f5:19:c7:9c:65:69:ae:b4:ae:44:dc:bc:42:
+                    85:c6:e6:b2:c1:90:09:74:64:2f:0a:63:8a:64:99:
+                    21:1d:7c:b9:84:7d:8c:5b:d4:71:ed:c0:af:2b:64:
+                    fa:49:d1:20:53:ed:5f:8d:85:84:03:ce:d3:57:81:
+                    c9:38:67:95:24:0a:0d:e9:b1:b3:f4:31:71:08:fa:
+                    aa:7b
+                Exponent: 65537 (0x10001)
         X509v3 extensions:
-            X509v3 Key Usage: critical
-                Key Encipherment
+            X509v3 Authority Key Identifier: 
+                FB:17:D7:0D:73:48:70:E9:19:C4:E8:E6:03:97:5E:66:4E:0E:43:DE
+            X509v3 Subject Alternative Name: critical
+                DirName:/tcg-at-tpmManufacturer=id:53544D20/tcg-at-tpmModel=ST33HTPHAHD8/tcg-at-tpmVersion=id:00010102
+            X509v3 Subject Directory Attributes: 
+                TPM Specification:
+    0:d=0  hl=2 l=  12 cons: SEQUENCE          
+    2:d=1  hl=2 l=   3 prim:  UTF8STRING        :2.0
+    7:d=1  hl=2 l=   1 prim:  INTEGER           :00
+   10:d=1  hl=2 l=   2 prim:  INTEGER           :8A
+
+
             X509v3 Basic Constraints: critical
                 CA:FALSE
-            X509v3 Subject Key Identifier: 
-                38:FD:1D:8E:EF:2D:3C:00:6B:63:58:0E:64:4C:57:3D:B7:42:FB:A7
-            X509v3 Authority Key Identifier: 
-                04:6E:73:58:32:C4:A5:CA:C2:39:04:FE:33:7B:59:40:60:68:C8:B4
+            X509v3 Extended Key Usage: 
+                Endorsement Key Certificate
+            X509v3 Key Usage: critical
+                Key Encipherment
             Authority Information Access: 
-                CA Issuers - URI:http://privateca-content-65d703c4-0000-2bb5-8c60-240588727a78.storage.googleapis.com/141284c118eedaec09f9/ca.crt
+                CA Issuers - URI:http://secure.globalsign.com/stmtpmekint06.crt
+    Signature Algorithm: sha256WithRSAEncryption
 
 ```
 
-and the encoded reference of the same in the `platform_cert.der`
+Then the attribute Certificate may include the serial number as such
 
-
-```bash
-$ openssl asn1parse -inform DER -in certs/platform_cert.der
-
-    0:d=0  hl=4 l=1268 cons: SEQUENCE          
-    4:d=1  hl=4 l= 988 cons: SEQUENCE          
-    8:d=2  hl=2 l=   1 prim: INTEGER           :01
-   11:d=2  hl=3 l= 218 cons: SEQUENCE          
-...
-  713:d=4  hl=2 l=   3 prim: OBJECT            :X509v3 Authority Key Identifier
-  718:d=4  hl=2 l= 113 prim: OCTET STRING      [HEX DUMP]:306F8014B7BAB002A1E7BE34C6C1055C6678E5BB535DA154A154A4523050310B3009060355040613025553310F300D060355040A0C06476F6F676C6531133011060355040B0C0A456E7465727072697365311B301906035504030C12456E746572707269736520526F6F74204341820102
-  833:d=3  hl=2 l=  65 cons: SEQUENCE          
-  835:d=4  hl=2 l=   3 prim: OBJECT            :X509v3 Certificate Policies
-  840:d=4  hl=2 l=  58 prim: OCTET STRING      [HEX DUMP]:3038303606022A033030302E06082B0601050507020230220C20544347205472757374656420506C6174666F726D20456E646F7273656D656E74
-  900:d=3  hl=2 l=  94 cons: SEQUENCE          
-  902:d=4  hl=2 l=   3 prim: OBJECT            :X509v3 Subject Alternative Name
-  907:d=4  hl=2 l=  87 prim: OCTET STRING      [HEX DUMP]:3055A45330513119301706066781050501040C0D4E6F74205370656369666965643119301706066781050501010C0D4E6F74205370656369666965643119301706066781050501050C0D4E6F7420537065636966696564
-   
+```text
+     PlatformCertificate Issuer: CN=www.intel.com,OU=Transparent Supply Chain,O=Intel Corporation,L=Santa Clara,ST=CA,C=US
+     PlatformCertificate Version: 2
+     PlatformCertificate CredentialSpecification: 
+     PlatformCertificate PlatformManufacturer: Intel
+     PlatformCertificate PlatformModel: DE3815TYKH
+     PlatformCertificate PlatformVersion: H26998-402
+     PlatformCertificate PropertiesURI: 
+     PlatformCertificate Holder.Issuer: CN=STM TPM EK Intermediate CA 06
+     PlatformCertificate Holder.Serial: 24EBBDB3086F8AABE5D691D555F9D014E75F29BB
+     PlatformCertificate Holder.Issuer.CommonName: C=CH, O=STMicroelectronics NV, CN=STM TPM EK Intermediate CA 06
+     PlatformCertificate TBBSecurityAssertions.Iso9000URI: 
+     PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileOid: 
+     PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileURI: 
+     PlatformCertificate TBBSecurityAssertions.CcInfo.TargetOid: 
+     PlatformCertificate TBBSecurityAssertions.CcInfo.TargetURI: 
+     PlatformCertificate TBBSecurityAssertions.CcInfo.Version: 
+     PlatformCertificate TCGPlatformSpecification.Version: {1 2 1}
+     PlatformCertificate TCGPlatformSpecification.Version.MajorVersion: 1
+     PlatformCertificate TCGPlatformSpecification.Version.MinorVersion: 2
+     PlatformCertificate TCGPlatformSpecification.Version.Revision: 1
+     PlatformCertificate UserNotice.UserNotice.ExplicitText: 
+     PlatformCertificate UserNotice.UserNotice.Organization: 
+     PlatformCertificate UserNotice.UserNotice.NoticeNumbers: []
 ```
 
-This links the platform cert with that specific EKCert
-
-You can verify the Platform cert was signed by a given CA by using [go-attestation.attributecert.AttributeCertificate.CheckSignatureFrom](https://pkg.go.dev/github.com/google/go-attestation@v0.3.2/attributecert#AttributeCertificate.CheckSignatureFrom)
-
-
-- [`2.1.5 Assertions Made by a Platform Certificate`](https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf)
+Note the serialNumber in the attribute certificate and EKCertificate
 
 ```
 3.2 Platform Certificate
@@ -340,7 +477,9 @@ The Platform Certificate makes the assertions listed in section 2.1.6. This cert
 adheres to RFC 5755 [11] and all requirements and limitations from that specification apply unless otherwise noted.
 ```
 
-- [Host Integrity at Runtime and Start-up (HIRS)](https://github.com/nsacyber/HIRS/tree/master)
+Note: attribute cert parsing is [supported in openssl](https://github.com/openssl/openssl/issues/14648) but i haven't tried using this.
+
+You can also use [paccor](https://github.com/salrashid123/attribute_certificate0.)
 
 
 ### Applications
@@ -352,178 +491,3 @@ This is just an academic exercise (so do not use the code as is).   However, som
 - [TPM based mTLS](https://github.com/salrashid123/signer#usage-tls)
 - [Trusted Platform Module (TPM) recipes with tpm2_tools and go-tpm](https://github.com/salrashid123/tpm2)
 
-
-
-### EKCert and AKCert
-
-Google signed Endorsement *Certificates* are available on `GCP Confidential VMs`
-
-- [Sign, Verify and decode using Google Cloud vTPM Attestation Key and Certificate](https://github.com/salrashid123/gcp-vtpm-ek-ak)
-
-On many other platform ([even a raspberry pi w/ TPM chip](https://gist.github.com/salrashid123/d99e698f84e5d35a863225b747af1f48), you can usually extract the the EK certificate bound on the tpm)..
-
-The API documentation for [getShieldedInstanceIdentity](https://cloud.google.com/compute/docs/reference/rest/v1/instances/getShieldedInstanceIdentity) shows a placeholder for the certificates:
-
-```
-{
-  "kind": string,
-  "signingKey": {
-    "ekCert": string,
-    "ekPub": string
-  },
-  "encryptionKey": {
-    "ekCert": string,
-    "ekPub": string
-  }
-}
-```
-
-
-```bash
-gcloud compute instances get-shielded-identity attestor
-
-encryptionKey:
-  ekCert: |
-    -----BEGIN CERTIFICATE-----
-    MIIF5jCCA86gAwIBAgITY/7vQgfgpGwvgIL718hGE0cdvTANBgkqhkiG9w0BAQsF
-    ADCBhjELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcT
-    DU1vdW50YWluIFZpZXcxEzARBgNVBAoTCkdvb2dsZSBMTEMxFTATBgNVBAsTDEdv
-    b2dsZSBDbG91ZDEeMBwGA1UEAxMVRUsvQUsgQ0EgSW50ZXJtZWRpYXRlMCAXDTI0
-    MDUyMTExNTYyNloYDzIwNTQwNTE0MTE1NjI1WjBuMRYwFAYDVQQHEw11cy1jZW50
-    cmFsMS1hMR4wHAYDVQQKExVHb29nbGUgQ29tcHV0ZSBFbmdpbmUxFjAUBgNVBAsT
-    DXNyYXNoaWQtdGVzdDIxHDAaBgNVBAMTEzU4Mzk2Mzg3NDkzNzEyNDk5MzUwggEi
-    MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQDMKrnLJKHjOkXNmw0FOcw22Pnw
-    YiemQCIOSxi+K4GeYgTOpHwyrB3XB0Mc2UU0wkhJbmtWxgRIVDbqxTyxRXkYr71+
-    hZkQF9fIGdJOEU+FczePdFM42iGa4NiM24rgUFRV9E/JjZxWLrXcUZiewOORpSUC
-    yHn8IIV+cTYf66ywniubvUStgbEMMPotNkCUp6nBgu6JTtJiKBW1+MrFbke8laNx
-    9p1G7qpLlIGe4zvXvm9E+DxcFYRe2IWa6njmu4LVzZD6FN64LrlYrHcHCnbSslCf
-    iDectmmY5GAu4IgJhmT7uERtX+e0FLkG6c2MTj84YLIwktaurmzI1GjG4Fz/AgMB
-    AAGjggFgMIIBXDAOBgNVHQ8BAf8EBAMCBSAwDAYDVR0TAQH/BAIwADAdBgNVHQ4E
-    FgQUOP0dju8tPABrY1gOZExXPbdC+6cwHwYDVR0jBBgwFoAUBG5zWDLEpcrCOQT+
-    M3tZQGBoyLQwgY0GCCsGAQUFBwEBBIGAMH4wfAYIKwYBBQUHMAKGcGh0dHA6Ly9w
-    cml2YXRlY2EtY29udGVudC02NWQ3MDNjNC0wMDAwLTJiYjUtOGM2MC0yNDA1ODg3
-    MjdhNzguc3RvcmFnZS5nb29nbGVhcGlzLmNvbS8xNDEyODRjMTE4ZWVkYWVjMDlm
-    OS9jYS5jcnQwbAYKKwYBBAHWeQIBFQReMFwMDXVzLWNlbnRyYWwxLWECBgCk6UWf
-    4AwNc3Jhc2hpZC10ZXN0MgIIUQqQgLjhNQ8MCGF0dGVzdG9yoCAwHqADAgEAoQMB
-    Af+iAwEB/6MDAQEApAMBAQClAwEBADANBgkqhkiG9w0BAQsFAAOCAgEAY6u6Bj/f
-    6TB/5ublhA2Ph2Pm57Vch0/jbhybTF9a/zM6S2bQ5ih6wrXjbmzlEPGBMLo/DQoj
-    AlaQUFPYPTMF/0/eUcr2Rcl8amUtICHhHrdWvoMKEMgGPR4BCefTZjtEVCZ+9bw3
-    xQZS7s7iyh4agpELh+7zDVPvNghXC4q6FjGqYI/xbI/jtKmEe0hOaVNmGsMd+D2T
-    O0MYi1c4WrTqJ+qVDzL2alnd5zEUXOgJbhGotaoU4UD4n7eEtVeXxiBP7UOeOlWa
-    0hOuwRqV+5iy/zEBlihnwmOpFaDF/HRdnT3EUPNqG18EOURsnocf7ReogVqACEQc
-    8zqm4TwtmlTxB3Jq8ccH9tL3o6IIVA+Tz0KZSM43ry8pzVh1/G5tHPYlNMHgw1Ge
-    HuCMN2RIoOTc2+aOpEiTbQzbDlFx1vMtgrjXyLK+EFECOrE+Tt7X/DwOakaUOXBE
-    iuogCRVoQG4TGs0tliEADS8rAxNBU4VTT2FaGk0Z/eC6w1zuvOCPAqAtzEqcR5Pn
-    ChVSnFNJPbcWtA9Muou6FZ6FjmE85t4M+M+F/CLJIw5DKkR6Fr6aiaFu7kJJCN55
-    iXfLoR5lrydKQj7Kk2M/Q0gGDNCz/BBh1a58AKW477TAICRgOA8ADaXD8cT0HvEV
-    l+CEGH6rTqG3YAJPcAY8oKSTpEhAdzRXvkE=
-    -----END CERTIFICATE-----
-  ekPub: |
-    -----BEGIN PUBLIC KEY-----
-    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzCq5yySh4zpFzZsNBTnM
-    Ntj58GInpkAiDksYviuBnmIEzqR8Mqwd1wdDHNlFNMJISW5rVsYESFQ26sU8sUV5
-    GK+9foWZEBfXyBnSThFPhXM3j3RTONohmuDYjNuK4FBUVfRPyY2cVi613FGYnsDj
-    kaUlAsh5/CCFfnE2H+ussJ4rm71ErYGxDDD6LTZAlKepwYLuiU7SYigVtfjKxW5H
-    vJWjcfadRu6qS5SBnuM7175vRPg8XBWEXtiFmup45ruC1c2Q+hTeuC65WKx3Bwp2
-    0rJQn4g3nLZpmORgLuCICYZk+7hEbV/ntBS5BunNjE4/OGCyMJLWrq5syNRoxuBc
-    /wIDAQAB
-    -----END PUBLIC KEY-----
-kind: compute#shieldedInstanceIdentity
-signingKey:
-  ekCert: |
-    -----BEGIN CERTIFICATE-----
-    MIIF5jCCA86gAwIBAgITfd/UjbVsFsyEukfmcBAeX+1VpDANBgkqhkiG9w0BAQsF
-    ADCBhjELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcT
-    DU1vdW50YWluIFZpZXcxEzARBgNVBAoTCkdvb2dsZSBMTEMxFTATBgNVBAsTDEdv
-    b2dsZSBDbG91ZDEeMBwGA1UEAxMVRUsvQUsgQ0EgSW50ZXJtZWRpYXRlMCAXDTI0
-    MDUyMTExNTYyNloYDzIwNTQwNTE0MTE1NjI1WjBuMRYwFAYDVQQHEw11cy1jZW50
-    cmFsMS1hMR4wHAYDVQQKExVHb29nbGUgQ29tcHV0ZSBFbmdpbmUxFjAUBgNVBAsT
-    DXNyYXNoaWQtdGVzdDIxHDAaBgNVBAMTEzU4Mzk2Mzg3NDkzNzEyNDk5MzUwggEi
-    MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCxHI6PIDhoneD9oGCBw1KxT88H
-    HCcJ3BzuJ2U/ubYlPD8ajR2M0zsSGyyIHtDSARYaODypI/OarU+C0lP1oj7EVkyj
-    4DQqBDjlKCWXhQnjmf2fHIdLsmEOAFfLBfY53H/CSZ37FFU7eyd17TkYP8l7GANZ
-    INOH7L5WZYxcAW4BDD9dQXWW6L+uJYYXNj+VdiGPPobQdT71MIQy77tm+itgu0J0
-    5Dj+4GzRD07mlaSYSJYqbJi+2bPXecTf0zFVwRLrhfbTzUxkZcZGBpCIKYXc3BiL
-    jp0YsolItPKCP5GRqwkrMhr3i8vzo7AjbWPzS1qkutKo4PLryWukqB9pRSC5AgMB
-    AAGjggFgMIIBXDAOBgNVHQ8BAf8EBAMCB4AwDAYDVR0TAQH/BAIwADAdBgNVHQ4E
-    FgQUSl92OK/4mLGYrwnyTnmEB3GJpB8wHwYDVR0jBBgwFoAUZ8O73ljj1lF2j7Ma
-    PtsHp+yTeuQwgY0GCCsGAQUFBwEBBIGAMH4wfAYIKwYBBQUHMAKGcGh0dHA6Ly9w
-    cml2YXRlY2EtY29udGVudC02NWQ1M2IxNC0wMDAwLTIxMmEtYTYzMy04ODNkMjRm
-    NTdiYjguc3RvcmFnZS5nb29nbGVhcGlzLmNvbS8wYzNlNzllYjA4OThkMDJlYmIw
-    YS9jYS5jcnQwbAYKKwYBBAHWeQIBFQReMFwMDXVzLWNlbnRyYWwxLWECBgCk6UWf
-    4AwNc3Jhc2hpZC10ZXN0MgIIUQqQgLjhNQ8MCGF0dGVzdG9yoCAwHqADAgEAoQMB
-    Af+iAwEB/6MDAQEApAMBAQClAwEBADANBgkqhkiG9w0BAQsFAAOCAgEATMGgyWEW
-    C/KXV0N1z+H0AZ0DlUw7sI125dLidZBcs8mn5NI8OBmWI0O2OSKAAcnaKWtI7qDn
-    7MHghp8CHv5oINF0vv753FyW7o/IDOvK5GgAYFBzdjG/d0bxGb+VhjlqGTu9E+Hb
-    rdYvcqhZjZHb0bA2p7g1bkELSR7cg2UmIKCVrVbHJIb+s5QolA4KHW+1ym7Wgafz
-    9PRWlRqtgmjM6YtT+5nqQD1FskMgYcKtjYGZfYYckvcX4/WAOwRVf/cWiYAQ6iIF
-    cONO2kE1Kq526Jn0kRH9Gg/frL4XDZWq3Vrtl5txog1Uu/CiABfevkQPVVawuYgi
-    /dH2fcdaZNaci95XdAA0pCvOnPsKIsmdvTSlwW1DLSI4E3o7op0chriAaKUmUNBr
-    kdkHgh8j427VVtzscwzWgB8C6cJoEAR4ddKMaQwG7D79wb+Ts566yNLzasOeGOp0
-    26+ibG5j1NvZ+6WOkpBYK9pJUPHMayc4NhYGZV/vzLwup1BnYLYrf8oGpFG4CZku
-    /d2lh0o+zCegbgAJ1o3pTTFAr15UnyKknPoC+NMVuPLcZkQZcxqpLKWLUhi/Qtxy
-    TdKlfyUFvOig40LqjGP/Kz9A53BsbQ4c5rOOHq4QhbJVjo6sTGU5t0pFOciox6rM
-    vJt7DCd5fO3Mdkte3Sg2EtOuYEYBNTDDGWY=
-    -----END CERTIFICATE-----
-  ekPub: |
-    -----BEGIN PUBLIC KEY-----
-    MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsRyOjyA4aJ3g/aBggcNS
-    sU/PBxwnCdwc7idlP7m2JTw/Go0djNM7EhssiB7Q0gEWGjg8qSPzmq1PgtJT9aI+
-    xFZMo+A0KgQ45Sgll4UJ45n9nxyHS7JhDgBXywX2Odx/wkmd+xRVO3snde05GD/J
-    exgDWSDTh+y+VmWMXAFuAQw/XUF1lui/riWGFzY/lXYhjz6G0HU+9TCEMu+7Zvor
-    YLtCdOQ4/uBs0Q9O5pWkmEiWKmyYvtmz13nE39MxVcES64X2081MZGXGRgaQiCmF
-    3NwYi46dGLKJSLTygj+RkasJKzIa94vL86OwI21j80tapLrSqODy68lrpKgfaUUg
-    uQIDAQAB
-    -----END PUBLIC KEY-----
-
-```
-
-An alternative maybe to establish trust with the `ekPub` using out of band trusts as described here (i.e allow the remote party to use gcloud to read and trust the `ekPub`):
-
-** [TPM Key Attestation](https://learn.microsoft.com/en-us/windows-server/identity/ad-ds/manage/component-updates/tpm-key-attestation#BKMK_DeploymentOverview)
-
-quoting from [TPMs without EK certificates](https://safeboot.dev/attestation/):
-
-```
-Google Cloud's ShieldedVM service enables vTPM for the guests, although it does not provide an EK in the NVRAM either. The key can be retrieved out of band with these instructions, or the public component can be read from the tpm2 createek command described above. Using the Google Cloud ShieldedVM lookup service can function as an EKcert as far as establishing trust in an instance's vTPM.
-```
-
-or maybe you can for example, you can 'force sign' a CA with the ekpublic key (disclaimer, this maybe insecure)
-
-* [Issue CA-signed certificate for TPM public key](https://gist.github.com/salrashid123/10320c153ad6acdc31854c9775c43c0d)
-
-
-### GCP EK CA Signing Certificate
-
-Step 3 in the flow above describes the EKCertificate (if avaliable).  You should verify that using a CA (if applicable).
-
-This isn't just the platform certificate but rather the manufacturer of the TPM's CA
-
-We describe  this bit here:
-
-- [Sign, Verify and decode using Google Cloud vTPM Attestation Key and Certificate](https://github.com/salrashid123/gcp-vtpm-ek-ak)
-
-For now, we acquired the EKCA like so and used to cross check the EKCert on the verifier
-
-```bash
-### EK 
-## Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Root
-wget http://privateca-content-62d71773-0000-21da-852e-f4f5e80d7778.storage.googleapis.com/032bf9d39db4fa06aade/ca.crt -O ek_root.crt 
-# Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Intermediate
-wget http://privateca-content-633beb94-0000-25c1-a9d7-001a114ba6e8.storage.googleapis.com/c59a22589ab43a57e3a4/ca.crt -O ek_intermediate.crt
-
-openssl x509 -in ek_intermediate.crt -text -noout
-
-openssl x509 -inform der -in ek_intermediate.crt -out ek_intermediate.pem
-openssl x509 -inform der -in ek_root.crt -out ek_root.pem
-cat ek_root.pem ek_intermediate.pem > ek_chain.pem
-rm ek_root.pem ek_intermediate.pem
-
-# convert der to pem
-openssl x509 -inform der -in ek_intermediate.crt -out ek_intermediate.pem
-openssl x509 -inform der -in ek_root.crt -out ek_root.pem
-
-## to verify the EKCert you got from the vm:
-gcloud compute instances get-shielded-identity attestor --format=json | jq -r '.encryptionKey.ekCert' > ekcert.pem
-openssl verify -verbose -CAfile ek_chain.pem  ekcert.pem 
-```

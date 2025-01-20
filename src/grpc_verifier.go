@@ -1,166 +1,84 @@
-// Copyright 2020 Google LLC
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto"
-	"crypto/rand"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/sha1"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"flag"
 	"fmt"
 	"hash"
-	"io"
-	"log"
-	"math/big"
-	mrnd "math/rand"
 	"os"
 	"strconv"
 	"strings"
-	"time"
-
-	certparser "github.com/salrashid123/gcp-tpm/parser"
-	"github.com/salrashid123/go_tpm_registrar/verifier"
 
 	"github.com/golang/glog"
+	"github.com/google/go-attestation/attest"
 	"github.com/google/go-attestation/attributecert"
-	"github.com/google/go-tpm-tools/client"
-	gotpmserver "github.com/google/go-tpm-tools/server"
-	"github.com/google/go-tpm/legacy/tpm2"
+	x509ext "github.com/google/go-attestation/x509"
+
 	"github.com/google/uuid"
-	"golang.org/x/exp/utf8string"
-	"google.golang.org/grpc"
-	"google.golang.org/protobuf/proto"
 
-	//"github.com/google/go-attestation/attest"
-
-	"github.com/google/go-tpm-tools/proto/attest"
 	"github.com/google/go-tpm-tools/proto/tpm"
-	tpmpb "github.com/google/go-tpm-tools/proto/tpm"
+	"github.com/google/go-tpm-tools/server"
+
+	oid "github.com/google/go-attestation/oid"
+	"github.com/google/go-tpm/legacy/tpm2"
+	"github.com/salrashid123/go_tpm_registrar/verifier"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/peer"
 )
 
-const (
-	tpmDevice = "/dev/tpm0"
-)
+const ()
 
 var (
-	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:24af52a4f429b71a3184a6d64cddad17e54ea030e2aa6576bf3a5a3d8bd3328f,7:dd0276b3bf0e30531a575a1cb5a02171ea0ad0f164d51e81f4cd0ab0bd5baadd", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
-	expectedPCRMapSHA1   = flag.String("expectedPCRMapSHA1", "0:0f2d3a2a1adaa479aeeca8f5df76aadc41b862ea", "EventLog values PCR value map as sha1.  Used only if readEventLog is set to true")
-
-	ekrootCA = flag.String("ekrootCA", "certs/ek_root.pem", "EK rootsCA")
-
-	ekintermediateCA = flag.String("ekintermediateCA", "certs/ek_intermediate.pem", "intermediate CA")
-
-	u                  = flag.String("uid", uuid.New().String(), "uid of client")
-	platformCA         = flag.String("platformCA", "certs/platform_ca.pem", "Platform CA")
-	caCertTLS          = flag.String("caCertTLS", "certs/CA_crt.pem", "CA Certificate to Trust for TLS")
-	caCertIssuer       = flag.String("caCertIssuer", "certs/CA_crt.pem", "CA Certificate to issue X509 Certificates")
-	caKeyIssuer        = flag.String("caKeyIssuer", "certs/CA_key.pem", "CA Key to sign x509")
-	rwc                io.ReadWriteCloser
-	importMode         = flag.String("importMode", "AES", "RSA|AES")
-	aes256Key          = flag.String("aes256Key", "G-KaPdSgUkXp2s5v8y/B?E(H+MbQeThW", "AES key to export")
-	readEventLog       = flag.Bool("readEventLog", false, "Reading Event Log")
-	useFullAttestation = flag.Bool("useFullAttestation", false, "Use Attestation")
-	exportedRSACert    = flag.String("rsaCert", "certs/tpm_client.crt", "RSA Public certificate for the key to export")
-	exportedRSAKey     = flag.String("rsaKey", "certs/tpm_client.key", "RSA key to export")
-	letterRunes        = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-	address            = flag.String("host", "attestor.esodemoapp2.com:50051", "host:port of Attestor")
-	handleNames        = map[string][]tpm2.HandleType{
-		"all":       []tpm2.HandleType{tpm2.HandleTypeLoadedSession, tpm2.HandleTypeSavedSession, tpm2.HandleTypeTransient},
-		"loaded":    []tpm2.HandleType{tpm2.HandleTypeLoadedSession},
-		"saved":     []tpm2.HandleType{tpm2.HandleTypeSavedSession},
-		"transient": []tpm2.HandleType{tpm2.HandleTypeTransient},
-	}
-	unrestrictedKeyParams = tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagUserWithAuth | tpm2.FlagSign,
-		AuthPolicy: []byte{},
-		RSAParameters: &tpm2.RSAParams{
-			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgRSASSA,
-				Hash: tpm2.AlgSHA256,
-			},
-			KeyBits: 2048,
-		},
-	}
+	address              = flag.String("host", "localhost:50051", "host:port of gRPC server")
+	grpcServerName       = flag.String("grpcservername", "attestor.domain.com", "SNI for grpc server")
+	tlsCert              = flag.String("tlsCert", "certs/root-ca.crt", "tls Certificate")
+	platformCA           = flag.String("platformCA", "certs/IntelSigningKey_20April2017.cer", "Platform CA")
+	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
+	ekRootCA             = flag.String("ekrootCA", "certs/ek_root.pem", "EK rootsCA")
+	ekIntermediateCA     = flag.String("ekintermediateCA", "certs/ek_intermediate.pem", "EK intermediate CA")
 )
 
 func main() {
-
+	flag.Set("logtostderr", "true")
+	flag.Set("stderrthreshold", "INFO")
 	flag.Parse()
-
 	var err error
-	rwc, err = tpm2.OpenTPM(tpmDevice)
-	if err != nil {
-		glog.Errorf("can't open TPM %q: %v", tpmDevice, err)
-		os.Exit(1)
-	}
-	defer func() {
-		if err := rwc.Close(); err != nil {
-			glog.Errorf("%v\ncan't close TPM: %v", tpmDevice, err)
-			os.Exit(1)
-		}
-	}()
-	totalHandles := 0
-	for _, handleType := range handleNames["all"] {
-		handles, err := client.Handles(rwc, handleType)
-		if err != nil {
-			glog.Errorf("getting handles: %v", err)
-			os.Exit(1)
-		}
-		for _, handle := range handles {
-			if err = tpm2.FlushContext(rwc, handle); err != nil {
-				glog.Errorf("flushing handle 0x%x: %v", handle, err)
-				os.Exit(1)
-			}
-			log.Printf("Handle 0x%x flushed\n", handle)
-			totalHandles++
-		}
-	}
 
-	var tlsCfg tls.Config
-	rootCAs := x509.NewCertPool()
-	ca_pem, err := os.ReadFile(*caCertTLS)
+	grpcRootCAs := x509.NewCertPool()
+	ca_pem, err := os.ReadFile(*tlsCert)
 	if err != nil {
 		glog.Errorf("failed to load root CA certificates  error=%v", err)
 		os.Exit(1)
 	}
-	if !rootCAs.AppendCertsFromPEM(ca_pem) {
+	if !grpcRootCAs.AppendCertsFromPEM(ca_pem) {
 		glog.Errorf("no root CA certs parsed from file ")
 		os.Exit(1)
 	}
-	tlsCfg.RootCAs = rootCAs
-	tlsCfg.ServerName = "attestor.esodemoapp2.com"
+	tlsCfg := tls.Config{
+		RootCAs:    grpcRootCAs,
+		ServerName: *grpcServerName,
+	}
 
 	ce := credentials.NewTLS(&tlsCfg)
-
 	ctx := context.Background()
 
+	// first connect to the GRPC service using default TLS certs
+	//conn, err := grpc.NewClient(*address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	conn, err := grpc.NewClient(*address, grpc.WithTransportCredentials(ce))
 	if err != nil {
 		glog.Errorf("did not connect: %v", err)
@@ -168,74 +86,90 @@ func main() {
 	}
 	defer conn.Close()
 
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	defer cancel()
-	resp, err := healthpb.NewHealthClient(conn).Check(ctx, &healthpb.HealthCheckRequest{Service: "verifier.VerifierServer"})
-	if err != nil {
-		glog.Errorf("HealthCheck failed %+v", err)
-		os.Exit(1)
-	}
-
-	if resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
-		log.Fatalf("service not in serving state: ", resp.GetStatus().String())
-	}
-	glog.V(2).Infof("RPC HealthChekStatus:%v", resp.GetStatus())
-
 	c := verifier.NewVerifierClient(conn)
-
 	glog.V(5).Infof("=============== GetPlatformCert ===============")
-	req := &verifier.GetPlatformCertRequest{
-		Uid: *u,
-	}
+	req := &verifier.GetPlatformCertRequest{}
 	platformCertResponse, err := c.GetPlatformCert(ctx, req)
 	if err != nil {
 		glog.Errorf("Error GetPlatformCert: %v", err)
 	}
 	if len(platformCertResponse.PlatformCert) > 0 {
 		glog.V(5).Infof("=============== GetPlatformCert Returned from remote ===============")
-		glog.V(5).Infof("     client provided uid: %s", platformCertResponse.Uid)
 
-		rootPEM, err := os.ReadFile(*platformCA)
+		rootDER, err := os.ReadFile(*platformCA)
 		if err != nil {
-			glog.Errorf(fmt.Sprintf("Error [%s] Reading Root platform cert %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error Reading Root platform cert", err))
 			os.Exit(1)
 		}
 
-		roots := x509.NewCertPool()
-		ok := roots.AppendCertsFromPEM([]byte(rootPEM))
-		if !ok {
-			glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate %v", platformCertResponse.Uid, err))
-			os.Exit(1)
-		}
-
-		block, _ := pem.Decode([]byte(rootPEM))
-		if block == nil {
-			glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate PEM %v", platformCertResponse.Uid, err))
-			os.Exit(1)
-		}
-		platformRoot, err := x509.ParseCertificate(block.Bytes)
+		platformRoot, err := x509.ParseCertificate(rootDER)
 		if err != nil {
-			glog.Errorf(fmt.Sprintf("Error [%s] failed to parse certificate %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error failed to parse certificate %v", err))
 			os.Exit(1)
 		}
 
-		attributecert, err := attributecert.ParseAttributeCertificate(platformCertResponse.PlatformCert)
+		ac, err := attributecert.ParseAttributeCertificate(platformCertResponse.PlatformCert)
 		if err != nil {
-			glog.Errorf(fmt.Sprintf("Error [%s] failed to parse  attribute certificate  %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error  failed to parse  attribute certificate  %v", err))
 			os.Exit(1)
 		}
 
-		err = attributecert.CheckSignatureFrom(platformRoot)
+		glog.V(20).Infof("     PlatformCertificate Issuer: %s\n", ac.Issuer)
+		glog.V(20).Infof("     PlatformCertificate Version: %d\n", ac.Version)
+
+		glog.V(20).Infof("     PlatformCertificate CredentialSpecification: %s\n", ac.CredentialSpecification)
+		glog.V(20).Infof("     PlatformCertificate PlatformManufacturer: %s\n", ac.PlatformManufacturer)
+		glog.V(20).Infof("     PlatformCertificate PlatformModel: %s\n", ac.PlatformModel)
+		glog.V(20).Infof("     PlatformCertificate PlatformVersion: %s\n", ac.PlatformVersion)
+		glog.V(20).Infof("     PlatformCertificate PropertiesURI: %s\n", ac.PropertiesURI)
+
+		for j, c := range ac.Components {
+			glog.V(20).Infof("        PlatformCertificate Components[%d].Manufacturer: %s\n", j, c.Manufacturer)
+			glog.V(20).Infof("        PlatformCertificate Components[%d].ManufacturerID: %d\n", j, c.ManufacturerID)
+			glog.V(20).Infof("        PlatformCertificate Components[%d].Model: %s\n", j, c.Model)
+			glog.V(20).Infof("        PlatformCertificate Components[%d].Revision: %s\n", j, c.Revision)
+			glog.V(20).Infof("        PlatformCertificate Components[%d].Serial: %s\n", j, c.Serial)
+			for i, a := range c.Addresses {
+				glog.V(20).Infof("        PlatformCertificate Components[%d].Addresses[%d].AddressType: %s\n", j, i, a.AddressType)
+				glog.V(20).Infof("        PlatformCertificate Components[%d].Addresses[%d].AddressValue: %s\n", j, i, a.AddressValue)
+			}
+			glog.V(20).Infof("        PlatformCertificate Components[%d].FieldReplaceable: %t\n", j, c.FieldReplaceable)
+		}
+
+		glog.V(20).Infof("     PlatformCertificate Holder.Issuer: %s\n", ac.Holder.Issuer)
+		glog.V(20).Infof("     PlatformCertificate Holder.Serial: %d\n", ac.Holder.Serial)
+		glog.V(20).Infof("     PlatformCertificate Holder.Issuer.CommonName: %s\n", ac.Holder.Issuer.CommonName)
+
+		for i, p := range ac.Properties {
+			glog.V(20).Infof("        PlatformCertificate Properties[%d]. Name [%s] Value [%s]\n", i, p.PropertyName, p.PropertyValue)
+		}
+		glog.V(20).Infof("     PlatformCertificate TBBSecurityAssertions.Iso9000URI: %s\n", ac.TBBSecurityAssertions.Iso9000URI)
+		glog.V(20).Infof("     PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileOid: %s\n", ac.TBBSecurityAssertions.CcInfo.ProfileOid)
+		glog.V(20).Infof("     PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileURI: %s\n", ac.TBBSecurityAssertions.CcInfo.ProfileURI)
+		glog.V(20).Infof("     PlatformCertificate TBBSecurityAssertions.CcInfo.TargetOid: %s\n", ac.TBBSecurityAssertions.CcInfo.TargetOid)
+		glog.V(20).Infof("     PlatformCertificate TBBSecurityAssertions.CcInfo.TargetURI: %s\n", ac.TBBSecurityAssertions.CcInfo.TargetURI)
+		glog.V(20).Infof("     PlatformCertificate TBBSecurityAssertions.CcInfo.Version: %s\n", ac.TBBSecurityAssertions.CcInfo.Version)
+
+		glog.V(20).Infof("     PlatformCertificate TCGPlatformSpecification.Version: %d\n", ac.TCGPlatformSpecification.Version)
+		glog.V(20).Infof("     PlatformCertificate TCGPlatformSpecification.Version.MajorVersion: %d\n", ac.TCGPlatformSpecification.Version.MajorVersion)
+		glog.V(20).Infof("     PlatformCertificate TCGPlatformSpecification.Version.MinorVersion: %d\n", ac.TCGPlatformSpecification.Version.MinorVersion)
+		glog.V(20).Infof("     PlatformCertificate TCGPlatformSpecification.Version.Revision: %d\n", ac.TCGPlatformSpecification.Version.Revision)
+
+		glog.V(20).Infof("     PlatformCertificate UserNotice.UserNotice.ExplicitText: %s\n", ac.UserNotice.ExplicitText)
+		glog.V(20).Infof("     PlatformCertificate UserNotice.UserNotice.Organization: %s\n", ac.UserNotice.NoticeRef.Organization)
+		glog.V(20).Infof("     PlatformCertificate UserNotice.UserNotice.NoticeNumbers: %d\n", ac.UserNotice.NoticeRef.NoticeNumbers)
+
+		err = ac.CheckSignatureFrom(platformRoot)
 		if err != nil {
-			glog.Errorf(fmt.Sprintf("Error [%s] failed to verify  attribute certificate  %v", platformCertResponse.Uid, err))
+			glog.Errorf(fmt.Sprintf("Error [%s] failed to verify  attribute certificate  %v", err))
 			os.Exit(1)
 		}
-		glog.V(5).Infof(" Verified Platform cert signed by privacyCA")
+		glog.V(20).Infof(" Verified Platform cert signed by privacyCA")
 
 		// todo, save the serial number here...we need to compare the serail number seen here againt the EKCert (which we don't have at the point; i know
 		// i can just change the protomessage to send it unilaterally...btw, the EKCert is sent in the makeCredential call just...so maybe save the serialnumber from
 		// here
-		glog.V(5).Infof(" Platform Cert's Holder SerialNumber %s\n", fmt.Sprintf("%x", attributecert.Holder.Serial))
+		glog.V(20).Infof(" Platform Cert's Holder SerialNumber %s\n", fmt.Sprintf("%x", ac.Holder.Serial))
 
 		// if _, err := cert.Verify(opts); err != nil {
 		// 	if err.Error() != "x509: unhandled critical extension" {
@@ -244,818 +178,514 @@ func main() {
 		// }
 	}
 
-	glog.V(5).Infof("=============== GetEKCert ===============")
+	// get the EKCert;  you can also 'just read' it from certs/ekcert.epm
+	//  if you downloaded it earlier and trust it; its verified later against roots.
+	glog.V(5).Infof("=============== start GetEK ===============")
+	ekReq := &verifier.GetEKRequest{}
 
-	var ekcert *x509.Certificate
-
-	ekReq := &verifier.GetEKCertRequest{
-		Uid: *u,
-	}
-	ekCertResponse, err := c.GetEKCert(ctx, ekReq)
+	pr := new(peer.Peer)
+	ekResponse, err := c.GetEK(ctx, ekReq, grpc.Peer(pr))
 	if err != nil {
-		glog.Errorf("Error GetEKCert: %v", err)
+		glog.Errorf("GetEK Failed,   Original Error is: %v", err)
 		os.Exit(1)
 	}
-	if len(ekCertResponse.EkCert) > 0 {
-		ekcert, err = x509.ParseCertificate(ekCertResponse.EkCert)
-		if err != nil {
-			glog.Errorf("ERROR:   ParseCertificate: %v", err)
-			os.Exit(1)
-		}
-		spubKey := ekcert.PublicKey.(*rsa.PublicKey)
 
-		skBytes, err := x509.MarshalPKIXPublicKey(spubKey)
-		if err != nil {
-			glog.Errorf("ERROR:  could  MarshalPKIXPublicKey: %v", err)
-			os.Exit(1)
-		}
-		ekPubPEM := pem.EncodeToMemory(
-			&pem.Block{
-				Type:  "PUBLIC KEY",
-				Bytes: skBytes,
-			},
-		)
-		// https://pkg.go.dev/github.com/google/certificate-transparency-go/x509
-		// you should verify the EKCert here and the serialNumber (which we just got in the OfferPlatformCert() call)
-		glog.V(10).Infof("     EKCert Encryption Issuer x509 \n%v", ekcert.Issuer)
-		glog.V(10).Infof("     EKCert Encryption SerialNumber \n%s", fmt.Sprint(ekcert.SerialNumber))
-
-		glog.V(10).Infof("    EkCert Public Key \n%s\n", ekPubPEM)
-
-		// verify the certificate against roots
-
-		glog.V(10).Infof("Verify with EKcert with chain")
-
-		rootPEM, err := os.ReadFile(*ekrootCA)
-		if err != nil {
-			glog.Errorf("ERROR:   error reading ekcertRoot: %v", err)
-			os.Exit(1)
-		}
-
-		roots := x509.NewCertPool()
-		ok := roots.AppendCertsFromPEM([]byte(rootPEM))
+	switch info := pr.AuthInfo.(type) {
+	case credentials.TLSInfo:
+		authType := info.AuthType()
+		sn := info.State.ServerName
+		glog.V(20).Infof("        AuthType, ServerName %s, %s\n", authType, sn)
+		tlsInfo, ok := pr.AuthInfo.(credentials.TLSInfo)
 		if !ok {
-			glog.Errorf("ERROR:   error appending ekcert to verifier: %v", err)
+			glog.Errorf("ERROR:  Could get remote TLS")
 			os.Exit(1)
 		}
+		ekm, err := tlsInfo.State.ExportKeyingMaterial("my_nonce", nil, 32)
+		if err != nil {
+			glog.Errorf("ERROR:  Could getting EKM %v", err)
+			os.Exit(1)
+		}
+		glog.V(20).Infof("        EKM my_nonce: %s\n", hex.EncodeToString(ekm))
+	default:
+		glog.Errorf("Unknown AuthInfo type")
+		os.Exit(1)
+	}
 
-		var exts []asn1.ObjectIdentifier
-		for _, ext := range ekcert.UnhandledCriticalExtensions {
-			if ext.Equal(certparser.OidExtensionSubjectAltName) {
-				continue
+	// first try to verify the ekcert
+	// Note: GCE confidential vm's have ekCerts https://github.com/salrashid123/gcp-vtpm-ek-ak which you can get via API
+	// the following root and intermediates are for GCE confidential VMs
+	// $ gcloud compute instances get-shielded-identity attestor --format=json | jq -r '.encryptionKey.ekCert' > certs/ekcert.pem
+	// $ gcloud compute instances get-shielded-identity attestor --format=json | jq -r '.signingKey.ekCert' > certs/akcert.pem
+	// $ curl -s $(openssl x509 -in certs/ekcert.pem -noout -text | grep -Po "((?<=CA Issuers - URI:)http://.*)$") | openssl x509 -inform DER -outform PEM -out certs/ek_intermediate.pem
+	// $ curl -s $(openssl x509 -in certs/ek_intermediate.pem -noout -text | grep -Po "((?<=CA Issuers - URI:)http://.*)$") | openssl x509 -inform DER -outform PEM -out certs/ek_root.pem
+	//
+	// for other TPMs,  you can get the EK on the TPM itself and verify against the manufacturers CA
+	//  see https://github.com/salrashid123/tls_ak?tab=readme-ov-file#local-testing
+	//
+	var ekPubPEM []byte
+
+	ekcert, err := x509.ParseCertificate(ekResponse.EkCert)
+	if err != nil {
+		glog.Errorf("ERROR:   ParseCertificate: %v", err)
+		os.Exit(1)
+	}
+
+	// optionally parse SAN.DirName, eg:
+	// pg 24,26: https://trustedcomputinggroup.org/wp-content/uploads/TCG_IWG_Credential_Profile_EK_V2.1_R13.pdf
+	// X509v3 Subject Alternative Name: critical
+	//   DirName:/2.23.133.2.1=id:53544D20/2.23.133.2.2=ST33HTPHAHD8/2.23.133.2.3=id:00010102
+	// 2.23.133.2.1 tcg-at-tpmManufacturer TPM Manufacturer Name for EK Credential Profile for TPM 2.0
+	//     id:53544D20 = hex("STM")
+	// 2.23.133.2.2 tcg-at-tpmModel TPM Model Number defined in EK Credential Profile for TPM 2.0
+	// 2.23.133.2.3 tcg-at-tpmVersion TPM Version defined in EK Credential Profile for TPM 2.0
+
+	var oidExtensionSubjectAltName = []int{2, 5, 29, 17}
+	var oidExtensionSubjectDirectoryAttributes = []int{2, 5, 29, 9}
+	type tpmSpecification struct {
+		Family   string
+		Level    int
+		Revision int
+	}
+	type attribute struct {
+		Type   asn1.ObjectIdentifier
+		Values []asn1.RawValue `asn1:"set"`
+	}
+	for _, ex := range ekcert.Extensions {
+		if ex.Id.Equal(oidExtensionSubjectAltName) {
+			s, err := x509ext.ParseSubjectAltName(ex)
+			if err != nil {
+				glog.Errorf("failed to unmarshal EK SAN " + err.Error())
+				os.Exit(1)
 			}
-			exts = append(exts, ext)
-		}
-		ekcert.UnhandledCriticalExtensions = exts
+			for _, na := range s.DirectoryNames {
+				for _, attr := range na.Names {
+					if attr.Type.Equal(oid.TPMManufacturer) {
+						glog.V(20).Infof("     TPM Manufacturer %s", attr.Value)
+					}
+					if attr.Type.Equal(oid.TPMModel) {
+						glog.V(20).Infof("     TPM Model %s", attr.Value)
+					}
+					if attr.Type.Equal(oid.TPMVersion) {
+						// todo: parse the major/minor version properly
+						glog.V(20).Infof("     TPM Version %s", attr.Value)
+					}
+				}
 
-		intermediatePEM, err := os.ReadFile(*ekintermediateCA)
-		if err != nil {
-			glog.Errorf("ERROR:   error reading ek intermediate ca: %v", err)
-			os.Exit(1)
-		}
-
-		intermediates := x509.NewCertPool()
-		ok = intermediates.AppendCertsFromPEM([]byte(intermediatePEM))
-		if !ok {
-			glog.Errorf("ERROR:   error appending ek intermediate ca: %v", err)
-			os.Exit(1)
-		}
-
-		opts := x509.VerifyOptions{
-			Roots:         roots,
-			Intermediates: intermediates,
-			KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsage(x509.ExtKeyUsageAny)},
-		}
-		if _, err := ekcert.Verify(opts); err != nil {
-			glog.Errorf("ERROR:   error verifying ek intermediate ca: %v", err)
-			os.Exit(1)
-		}
-		glog.V(10).Infof("Verified ekcert Certificate Chain")
-
-		///
-
-		ekPub, err := tpm2.DecodePublic(ekCertResponse.EkPub)
-		if err != nil {
-			glog.Errorf("ERROR:  Error DecodePublic EKPublic %v", err)
-			os.Exit(1)
+			}
 		}
 
-		ekh, keyName, err := tpm2.LoadExternal(rwc, ekPub, tpm2.Private{}, tpm2.HandleNull)
-		if err != nil {
-			glog.Errorf("ERROR:  Error loadingExternal EK %v", err)
-			os.Exit(1)
+		if ex.Id.Equal(oidExtensionSubjectDirectoryAttributes) {
+
+			var attrs []attribute
+			_, err := asn1.Unmarshal(ex.Value, &attrs)
+			if err != nil {
+				glog.Errorf("failed to parse EK SubjectDirectoryAttributes" + err.Error())
+				os.Exit(1)
+			}
+
+			for _, attr := range attrs {
+				if attr.Type.Equal(oid.TPMSpecification) {
+					if len(attr.Values) != 1 {
+						glog.Errorf("failed to parse EK SubjectDirectoryAttributes ", errors.New("expected SET size of 1"))
+						os.Exit(1)
+					}
+					value := attr.Values[0]
+					var spec tpmSpecification
+					rest, err := asn1.Unmarshal(value.FullBytes, &spec)
+					if err != nil {
+						glog.Errorf("failed to parse EK SubjectDirectoryAttributes ", err)
+						os.Exit(1)
+					}
+					if len(rest) != 0 {
+						glog.Errorf("failed to parse EK SubjectDirectoryAttributes ", err)
+						os.Exit(1)
+					}
+					glog.V(20).Infof("     TPM Family %s", spec.Family)
+					glog.V(20).Infof("     TPM Level %d", spec.Level)
+					glog.V(20).Infof("     TPM Revision %d", spec.Revision)
+				}
+			}
 		}
-		defer tpm2.FlushContext(rwc, ekh)
-
-		glog.V(10).Infof("     Read (eK) from request with name: %s", hex.EncodeToString(keyName))
-
-		pk, err := ekPub.Key()
-		if err != nil {
-			glog.Errorf("ERROR:  Error reading publicKey from ekPub %v", err)
-			os.Exit(1)
-		}
-
-		rl, ok := pk.(*rsa.PublicKey)
-		if !ok {
-			glog.Errorf("ERROR:  ekPub public key is not rsa")
-			os.Exit(1)
-		}
-
-		if !rl.Equal(spubKey) {
-			glog.Errorf("ERROR:  ekPub public key does not match provided TPMT_PUBLIC")
-			os.Exit(1)
-		} else {
-			glog.V(20).Infof("     EK public key matches TPMT_PUBLIC")
-		}
-
-		if ekPub.MatchesTemplate(client.DefaultEKTemplateRSA()) {
-			glog.V(10).Infof("     EK Default parameter match template")
-		} else {
-			glog.Errorf("ERROR:  EK does not have correct defaultParameters")
-			os.Exit(1)
-		}
-
-	} else {
-		glog.Warning("====> GetEKCert empty so skipping loading Certificate from remote NV and instead using ekPub as-is")
-		block, _ := pem.Decode(ekCertResponse.EkPub)
-		if block == nil {
-			glog.Errorf("ERROR:  error decoding ekPub")
-			os.Exit(1)
-		}
-		// ep, err := x509.ParsePKIXPublicKey(block.Bytes)
-		// if err != nil {
-		// 	glog.Errorf("Unable to convert akPub: %v", err)
-		// }
-		ekPubPEM := pem.EncodeToMemory(
-			&pem.Block{
-				Type:  "PUBLIC KEY",
-				Bytes: block.Bytes,
-			},
-		)
-
-		// somehow establish trust with this ekPubPEM (since we don't have the ekCert to verify locally...)
-		// this ekpub is also returned fwith the 'getAKCert() api call
-		glog.V(10).Infof("     Decoded EkPublic Key: \n%v", string(ekPubPEM))
-
 	}
 
-	glog.V(5).Infof("=============== GetAKCert ===============")
-	akReq := &verifier.GetAKRequest{
-		Uid: *u,
+	// if the service is on GCP, the ekcert has some special details encoded inside it
+	gceInfo, err := server.GetGCEInstanceInfo(ekcert)
+	if err == nil && gceInfo != nil {
+		glog.V(10).Infof("     EKCert  GCE InstanceID %d", gceInfo.InstanceId)
+		glog.V(10).Infof("     EKCert  GCE InstanceName %s", gceInfo.InstanceName)
+		glog.V(10).Infof("     EKCert  GCE ProjectId %s", gceInfo.ProjectId)
 	}
-	akResponse, err := c.GetAK(ctx, akReq)
+
+	ekcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ekResponse.EkCert})
+	glog.V(2).Infof("        EKCertificate ========\n%s\n", ekcrtPEM)
+
+	spubKey := ekcert.PublicKey.(*rsa.PublicKey)
+
+	skBytes, err := x509.MarshalPKIXPublicKey(spubKey)
 	if err != nil {
-		glog.Errorf("Error GetEKCert: %v", err)
-	}
-
-	glog.V(20).Infof("     akPub: %v,", hex.EncodeToString(akResponse.AkPub))
-	glog.V(20).Infof("     akName: %v,", hex.EncodeToString(akResponse.AkName))
-
-	glog.V(5).Infof("=============== MakeCredential ===============")
-
-	ekPub, err := tpm2.DecodePublic(akResponse.EkPub)
-	if err != nil {
-		glog.Errorf("Error DecodePublic EK %v", err)
+		glog.Errorf("ERROR:  could  MarshalPKIXPublicKey: %v", err)
 		os.Exit(1)
 	}
-
-	ep, err := ekPub.Key()
-	if err != nil {
-		glog.Errorf("ekPub.Key() failed: %s", err)
-		os.Exit(1)
-	}
-	ekBytes, err := x509.MarshalPKIXPublicKey(ep)
-	if err != nil {
-		glog.Errorf("Unable to convert akPub: %v", err)
-		os.Exit(1)
-	}
-
-	ekPubPEM := pem.EncodeToMemory(
+	ekPubPEM = pem.EncodeToMemory(
 		&pem.Block{
 			Type:  "PUBLIC KEY",
-			Bytes: ekBytes,
+			Bytes: skBytes,
 		},
 	)
-	// this public key would be the same as the one we derived from GetEKCert()
-	glog.V(10).Infof("     Decoded EkPublic Key: \n%v", string(ekPubPEM))
 
-	ekh, keyName, err := tpm2.LoadExternal(rwc, ekPub, tpm2.Private{}, tpm2.HandleNull)
-	if err != nil {
-		glog.Errorf("Error loadingExternal EK %v", err)
-		os.Exit(1)
-	}
-	defer tpm2.FlushContext(rwc, ekh)
+	glog.V(10).Infof("     EKCert  Issuer %v", ekcert.Issuer)
+	glog.V(10).Infof("     EKCert  IssuingCertificateURL %v", fmt.Sprint(ekcert.IssuingCertificateURL))
 
-	tPub, err := tpm2.DecodePublic(akResponse.AkPub)
-	if err != nil {
-		glog.Errorf("Error DecodePublic AK %v", tPub)
-		os.Exit(1)
-	}
+	glog.V(40).Infof("    EkCert Public Key \n%s\n", ekPubPEM)
 
-	ap, err := tPub.Key()
+	// now try to verify the EKCert is legit using the CA's you expect woud've signed it
+	glog.V(10).Info("    Verifying EKCert")
+	ekRootPEM, err := os.ReadFile(*ekRootCA)
 	if err != nil {
-		glog.Errorf("akPub.Key() failed: %s", err)
-		os.Exit(1)
-	}
-	akBytes, err := x509.MarshalPKIXPublicKey(ap)
-	if err != nil {
-		glog.Errorf("Unable to convert akPub: %v", err)
+		glog.Errorf("failed to reading roots: ", err.Error())
 		os.Exit(1)
 	}
 
+	ekRoots := x509.NewCertPool()
+	ok := ekRoots.AppendCertsFromPEM([]byte(ekRootPEM))
+	if !ok {
+		glog.Errorf("failed append to roots ")
+		os.Exit(1)
+	}
+
+	var exts []asn1.ObjectIdentifier
+	for _, ext := range ekcert.UnhandledCriticalExtensions {
+		if ext.Equal(oidExtensionSubjectAltName) {
+			continue
+		}
+		exts = append(exts, ext)
+	}
+	ekcert.UnhandledCriticalExtensions = exts
+
+	//oid 2.23.133.8.1 tcg-kp-EKCertificate Identifies the certificate as an Endorsement Credential.
+	// try to see if the ekcert includes the recommended oid as the extension value
+	var tcgkpEKCertificate asn1.ObjectIdentifier = []int{2, 23, 133, 8, 1}
+	for _, ku := range ekcert.UnknownExtKeyUsage {
+		if ku.Equal(tcgkpEKCertificate) {
+			glog.V(10).Infof("     EKCert Includes tcg-kp-EKCertificate ExtendedKeyUsage %s", ku.String())
+		}
+	}
+
+	intermediatePEM, err := os.ReadFile(*ekIntermediateCA)
+	if err != nil {
+		glog.Errorf("failed to read intermediate CA: " + err.Error())
+		os.Exit(1)
+	}
+
+	intermediates := x509.NewCertPool()
+	ok = intermediates.AppendCertsFromPEM([]byte(intermediatePEM))
+	if !ok {
+		glog.Errorf("failed to append intermediates: ")
+		os.Exit(1)
+	}
+
+	opts := x509.VerifyOptions{
+		Roots:         ekRoots,
+		Intermediates: intermediates,
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsage(x509.ExtKeyUsageAny)},
+	}
+	if _, err := ekcert.Verify(opts); err != nil {
+		glog.Errorf("failed to verify certificate: " + err.Error())
+		os.Exit(1)
+	}
+
+	glog.V(10).Info("    EKCert Verified")
+
+	glog.V(5).Infof("     EKPub: \n%s\n", ekPubPEM)
+
+	spkiBlock, _ := pem.Decode(ekPubPEM)
+
+	ekPubKey, err := x509.ParsePKIXPublicKey(spkiBlock.Bytes)
+	if err != nil {
+		glog.Errorf("ERROR:  could  parsing ek public key %v", err)
+		os.Exit(1)
+	}
+
+	bblock, _ := pem.Decode(ekPubPEM)
+	if bblock == nil {
+		glog.Errorf("GetEK Failed,   Original Error is: %v", err)
+		os.Exit(1)
+	}
+
+	glog.V(5).Infof("=============== end GetEKCert ===============")
+
+	// now get the attestation key
+	glog.V(5).Infof("=============== start GetAK ===============")
+	akResponse, err := c.GetAK(ctx, &verifier.GetAKRequest{})
+	if err != nil {
+		glog.Errorf("GetAK Failed,  Original Error is: %v", err)
+		os.Exit(1)
+	}
+
+	serverAttestationParameter := &attest.AttestationParameters{}
+	reader := bytes.NewReader(akResponse.AttestationParameters)
+	err = json.NewDecoder(reader).Decode(serverAttestationParameter)
+	if err != nil {
+		glog.Errorf("Error encoding serverAttestationParamer %v", err)
+		os.Exit(1)
+	}
+
+	akp, err := attest.ParseAKPublic(attest.TPMVersion20, serverAttestationParameter.Public)
+	if err != nil {
+		glog.Errorf("Error Parsing AK %v", err)
+		os.Exit(1)
+	}
+
+	akpPub, err := x509.MarshalPKIXPublicKey(akp.Public)
+	if err != nil {
+		glog.Errorf("Error MarshalPKIXPublicKey ak %v", err)
+		os.Exit(1)
+	}
 	akPubPEM := pem.EncodeToMemory(
 		&pem.Block{
 			Type:  "PUBLIC KEY",
-			Bytes: akBytes,
-		},
-	)
-	glog.V(10).Infof("     Decoded AkPub: \n%v", string(akPubPEM))
-
-	if tPub.MatchesTemplate(client.AKTemplateRSA()) {
-		glog.V(10).Infof("     AK Default parameter match template")
-	} else {
-		glog.Errorf("AK does not have correct defaultParameters")
-		os.Exit(1)
-	}
-	h, keyName, err := tpm2.LoadExternal(rwc, tPub, tpm2.Private{}, tpm2.HandleNull)
-	if err != nil {
-		glog.Errorf("Error loadingExternal AK %v", err)
-		os.Exit(1)
-	}
-	defer tpm2.FlushContext(rwc, h)
-	glog.V(10).Infof("     Loaded AK KeyName %s", hex.EncodeToString(keyName))
-
-	glog.V(5).Infof("     MakeCredential Start")
-	b := make([]rune, 32)
-	for i := range b {
-		b[i] = letterRunes[mrnd.Intn(len(letterRunes))]
-	}
-	nonce := string(b)
-	glog.V(10).Infof("     Sending Nonce: %s", nonce)
-	credBlob, encryptedSecret0, err := tpm2.MakeCredential(rwc, ekh, []byte(nonce), keyName)
-	if err != nil {
-		glog.Errorf("MakeCredential failed: %v", err)
-		os.Exit(1)
-	}
-	glog.V(2).Infof("     <-- End makeCredential()")
-
-	glog.V(20).Infof("     EncryptedSecret: %s,", hex.EncodeToString(encryptedSecret0))
-	glog.V(20).Infof("     CredentialBlob: %v,", hex.EncodeToString(credBlob))
-
-	glog.V(5).Infof("=============== ActivateCredential ===============")
-	acReq := &verifier.ActivateCredentialRequest{
-		Uid:             *u,
-		CredBlob:        credBlob,
-		EncryptedSecret: encryptedSecret0,
-	}
-	acResponse, err := c.ActivateCredential(ctx, acReq)
-	if err != nil {
-		glog.Errorf("Error ActivateCredential: %v", err)
-		os.Exit(1)
-	}
-
-	glog.V(10).Infof("     Returned Secret: %s", string(acResponse.Secret))
-
-	if string(acResponse.Secret) != nonce {
-		glog.Errorf(fmt.Sprintf("Error Expected Nonce [%s]does not match provided secret: [%s]", nonce, string(acResponse.Secret)), err)
-		os.Exit(1)
-	}
-
-	glog.V(5).Infof("     AK Verification Complete")
-
-	cc := make([]rune, 32)
-	for i := range b {
-		cc[i] = letterRunes[mrnd.Intn(len(letterRunes))]
-	}
-	glog.V(10).Infof("     Sending Quote with Nonce: %s", string(cc))
-
-	pcrSelected, _, err := getPCRMap(tpmpb.HashAlgo_SHA256)
-	if err != nil {
-		glog.Errorf("Unable to find pcrs for  Quote %v", err)
-		os.Exit(1)
-	}
-	var pcrs []int32
-	for k := range pcrSelected {
-		pcrs = append(pcrs, int32(k))
-	}
-
-	if *useFullAttestation {
-		glog.V(5).Infof("=============== Attestation ===============")
-
-		aReq := &verifier.AttestRequest{
-			Uid:    *u,
-			Secret: string(cc),
-		}
-		aResponse, err := c.Attest(ctx, aReq)
-		if err != nil {
-			glog.Errorf("Error Quote: %v", err)
-			os.Exit(1)
-		}
-
-		attestationMsg := &attest.Attestation{}
-		err = proto.Unmarshal(aResponse.Attestation, attestationMsg)
-		if err != nil {
-			glog.Errorf("     Attestation failed:  Could no unmarshall attestation, %v", err)
-			os.Exit(1)
-		}
-
-		glog.V(2).Infof("     Verifying Attestation with AK Public Key:\n %v", string(akPubPEM))
-
-		ims, err := gotpmserver.VerifyAttestation(attestationMsg, gotpmserver.VerifyOpts{
-			Nonce:      []byte(string(cc)),
-			TrustedAKs: []crypto.PublicKey{ap},
-			AllowSHA1:  true,
-		})
-		if err != nil {
-			glog.Errorf("     Attestation failed:  failed to verify %v", err)
-			os.Exit(1)
-		}
-		for _, q := range attestationMsg.Quotes {
-			glog.V(5).Infof("Quotes Hash %s\n", q.Pcrs.Hash.String())
-		}
-		for _, evt := range ims.RawEvents {
-			if utf8string.NewString(string(evt.Data)).IsASCII() {
-				glog.V(2).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), string(evt.Data))
-			} else {
-				glog.V(2).Infof("      Event PCRIndex %d: Digest: %s  Data: %s", evt.PcrIndex, hex.EncodeToString(evt.Digest), hex.EncodeToString(evt.Data))
-			}
-		}
-		glog.V(2).Infoln("     Attestation verified")
-
-	} else {
-
-		glog.V(5).Infof("=============== Quote/Verify ===============")
-		qReq := &verifier.QuoteRequest{
-			Uid:    *u,
-			Pcrs:   pcrs,
-			Secret: string(cc),
-		}
-		qResponse, err := c.Quote(ctx, qReq)
-		if err != nil {
-			glog.Errorf("Error Quote: %v", err)
-			os.Exit(1)
-		}
-
-		glog.V(20).Infof("     Attestation: %s", hex.EncodeToString(qResponse.Attestation))
-		glog.V(20).Infof("     Signature: %s", hex.EncodeToString(qResponse.Signature))
-
-		attestation := qResponse.Attestation
-		signature := qResponse.Signature
-
-		att, err := tpm2.DecodeAttestationData(attestation)
-		if err != nil {
-			glog.Errorf("DecodeAttestationData(%v) failed: %v", attestation, err)
-			os.Exit(1)
-		}
-
-		glog.V(10).Infof("     Attestation ExtraData (nonce): %s ", string(att.ExtraData))
-		glog.V(10).Infof("     Attestation PCR#: %v ", att.AttestedQuoteInfo.PCRSelection.PCRs)
-		glog.V(10).Infof("     Attestation Hash: %v ", hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
-
-		if string(cc) != string(att.ExtraData) {
-			glog.Errorf("Nonce Value mismatch Got: (%s) Expected: (%v)", string(att.ExtraData), string(cc))
-		}
-
-		sigL := tpm2.SignatureRSA{
-			HashAlg:   tpm2.AlgSHA256,
-			Signature: signature,
-		}
-
-		_, pcrHash, err := getPCRMap(tpm.HashAlgo_SHA256)
-		if err != nil {
-			glog.Errorf("Error getting PCRMap: %v", err)
-			os.Exit(1)
-		}
-		glog.V(5).Infof("     sha256 of Expected PCR Value: --> %x", pcrHash)
-
-		if fmt.Sprintf("%x", pcrHash) != hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest) {
-			glog.Errorf("Unexpected PCR hash Value expected: %s  Got %s", fmt.Sprintf("%x", pcrHash), hex.EncodeToString(att.AttestedQuoteInfo.PCRDigest))
-			os.Exit(1)
-		}
-
-		glog.V(2).Infof("     Decoding PublicKey for AK ========")
-
-		// use the AK from the original attestation to verify the signature of the Attestation
-		// rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
-		hsh := crypto.SHA256.New()
-		hsh.Write(attestation)
-		if err := rsa.VerifyPKCS1v15(ap.(*rsa.PublicKey), crypto.SHA256, hsh.Sum(nil), sigL.Signature); err != nil {
-			glog.Errorf("VerifyPKCS1v15 failed: %v", err)
-		}
-
-		// Now compare the nonce that is embedded within the attestation.  This should match the one we sent in earlier.
-		if string(cc) != string(att.ExtraData) {
-			glog.Errorf("Unexpected secret Value expected: %v  Got %v", string(cc), string(att.ExtraData))
-			os.Exit(1)
-		}
-		glog.V(2).Infof("     Quote/Verify nonce Verified ")
-
-		if *readEventLog {
-			glog.V(2).Infof("     Reading EventLog")
-
-			attestationMsg := &attest.Attestation{}
-			err = proto.Unmarshal(qResponse.Attestation, attestationMsg)
-			if err != nil {
-				glog.Errorf("     Attestation failed:  Could no unmarshall attestation, %v", err)
-				os.Exit(1)
-			}
-
-			glog.V(2).Infof("     Verifying Attestation with AK Public Key:\n %v", string(akPubPEM))
-
-			ms, err := gotpmserver.VerifyAttestation(attestationMsg, gotpmserver.VerifyOpts{
-				Nonce:      []byte(string(cc)),
-				TrustedAKs: []crypto.PublicKey{ap},
-				AllowSHA1:  true,
-			})
-
-			if err != nil {
-				glog.Errorf("  Failed to parse EventLog: %v", err)
-				os.Exit(1)
-			}
-
-			for _, event := range ms.RawEvents {
-				glog.V(2).Infof("     Event Type %v\n", event.UntrustedType)
-				glog.V(2).Infof("     PCR Index %d\n", event.PcrIndex)
-
-				if utf8string.NewString(string(event.Data)).IsASCII() {
-					glog.V(2).Infof("     Event Data %s\n", string(event.Data))
-				} else {
-					glog.V(2).Infof("     Event Data %s\n", hex.EncodeToString(event.Data))
-				}
-			}
-			glog.V(2).Infof("     EventLog Verified ")
-
-			// TODO: verify Secureboot
-
-		}
-
-	}
-
-	glog.V(2).Infof("     <-- End verifyQuote()")
-
-	glog.V(5).Infof("=============== PushSecret ===============")
-
-	// Now issue a x509 cert thats associated with the AK.
-	//  this next step is just for demonstration and uses a CA authority the Verifier has access to.
-	//  Normally, this x509 is sent back to the attestor so that it'd have an x509 for the attested
-	//  key.
-	glog.V(2).Infof("     Generate Test Certificate for AK ")
-
-	var notBefore time.Time
-	notBefore = time.Now()
-
-	notAfter := notBefore.Add(time.Hour * 24)
-
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(2), 20)
-	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
-	if err != nil {
-		glog.Errorf("Failed to generate serial number: %v", err)
-		os.Exit(1)
-	}
-	glog.V(10).Infof("     Issuing certificate with serialNumber %d", serialNumber)
-
-	cn := "verify.esodemoapp2.com"
-
-	ca_pem, err = os.ReadFile(*caCertIssuer)
-	if err != nil {
-		glog.Errorf("failed to load root CA certificates  error=%v", err)
-		os.Exit(1)
-	}
-	block, _ := pem.Decode(ca_pem)
-	if block == nil {
-		glog.Errorf("Unable to decode %s %v", *caCertIssuer, err)
-		os.Exit(1)
-	}
-	ca, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		glog.Errorf("Unable to parse %s %v", *caCertIssuer, err)
-		os.Exit(1)
-	}
-
-	keyPEMBytes, err := os.ReadFile(*caKeyIssuer)
-	if err != nil {
-		glog.Errorf("Unable to read %s  %v", *caKeyIssuer, err)
-		os.Exit(1)
-	}
-	privPem, _ := pem.Decode(keyPEMBytes)
-	parsedKey, err := x509.ParsePKCS1PrivateKey(privPem.Bytes)
-	if err != nil {
-		glog.Errorf("Unable to parse %s %v", *caKeyIssuer, err)
-		os.Exit(1)
-	}
-
-	ct := &x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization:       []string{"Acme Co"},
-			OrganizationalUnit: []string{"Enterprise"},
-			Locality:           []string{"Mountain View"},
-			Province:           []string{"California"},
-			Country:            []string{"US"},
-			CommonName:         cn,
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		DNSNames:              []string{cn},
-		KeyUsage:              x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
-		BasicConstraintsValid: true,
-		IsCA:                  false,
-	}
-
-	cert_b, err := x509.CreateCertificate(rand.Reader, ct, ca, ap, parsedKey)
-	if err != nil {
-		glog.Errorf("Failed to createCertificate: %v", err)
-		os.Exit(1)
-	}
-
-	akCertPEM := pem.EncodeToMemory(
-		&pem.Block{
-			Type:  "CERTIFICATE",
-			Bytes: cert_b,
+			Bytes: akpPub,
 		},
 	)
 
-	glog.V(10).Infof("     X509 issued by Verifier for Ak: \n%v", string(akCertPEM))
+	glog.V(5).Infof("      ak public \n%s\n", akPubPEM)
+	glog.V(5).Infof("=============== end GetAK ===============")
 
-	glog.V(5).Infof("     Pushing %s", *importMode)
+	// do remote attestation usign the ek and ak
+	glog.V(5).Infof("=============== start Attest ===============")
 
-	// Note: we are binding the import to the the PCR's value.
-	// for AES:
-	//   A non-nil pcrs parameter adds a requirement that the TPM must have specific PCR values for Import() to succeed.
-	// for RSA:
-	//   A non-nil pcrs parameter adds a requirement that the TPM must have specific PCR values to use the signing key.
+	params := attest.ActivationParameters{
+		TPMVersion: attest.TPMVersion20,
+		EK:         ekPubKey,
+		AK:         *serverAttestationParameter,
+	}
+
+	secret, encryptedCredentials, err := params.Generate()
+	if err != nil {
+		glog.Errorf("Error generating make credential parameters %v", err)
+		os.Exit(1)
+	}
+	glog.Infof("      Outbound Secret: %s\n", base64.StdEncoding.EncodeToString(secret))
+
+	encryptedCredentialsBytes := new(bytes.Buffer)
+	err = json.NewEncoder(encryptedCredentialsBytes).Encode(encryptedCredentials)
+	if err != nil {
+		glog.Errorf("Error encoding encryptedCredentials %v", err)
+		os.Exit(1)
+	}
+
+	mcResponse, err := c.Attest(ctx, &verifier.AttestRequest{
+		EncryptedCredentials: encryptedCredentialsBytes.Bytes(),
+	})
+	if err != nil {
+		glog.Errorf("GetAK Failed,  Original Error is: %v", err)
+		os.Exit(1)
+	}
+	glog.V(5).Infof("      Inbound Secret: %s\n", base64.StdEncoding.EncodeToString(mcResponse.Secret))
+
+	if base64.StdEncoding.EncodeToString(mcResponse.Secret) == base64.StdEncoding.EncodeToString(secret) {
+		glog.V(5).Infof("      inbound/outbound Secrets Match; accepting AK")
+	} else {
+		glog.Error("attestation secrets do not match; exiting")
+		os.Exit(1)
+	}
+	glog.V(5).Infof("=============== end Attest ===============")
+
+	// run a quote-verify operation
+	glog.V(5).Infof("=============== start Quote/Verify ===============")
+
+	nonce := []byte(uuid.New().String())
+	quoteResponse, err := c.Quote(ctx, &verifier.QuoteRequest{
+		Nonce: nonce,
+	})
+	if err != nil {
+		glog.Errorf("Quote Failed,  Original Error is: %v", err)
+		os.Exit(1)
+	}
+
+	// create pcr map for go-tpm-tools
 	pcrMap, _, err := getPCRMap(tpm.HashAlgo_SHA256)
 	if err != nil {
 		glog.Errorf("  Could not get PCRMap: %s", err)
 		os.Exit(1)
 	}
-	vpcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: pcrMap}
+	//vpcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: pcrMap}
 
-	var preq *verifier.PushSecretRequest
-	if *importMode == "AES" {
-		importBlob, err := gotpmserver.CreateImportBlob(ep, []byte(*aes256Key), vpcrs)
-		if err != nil {
-			glog.Errorf("Unable to CreateImportBlob : %v", err)
-			os.Exit(1)
-		}
-		sealedOutput, err := proto.Marshal(importBlob)
-		if err != nil {
-			glog.Errorf("Unable to marshall ImportBlob: ", err)
-			os.Exit(1)
-		}
-
-		// Print out the hash of the AES key.
-		//  If the attestor was able to extract this key, the PushSecret.Verification
-		//  value will be the same hash (eg, both the verifier and attestor has the same key)
-		hasher := sha256.New()
-		hasher.Write([]byte(*aes256Key))
-		glog.V(10).Infof("     Hash of AES Key:  %s", base64.RawStdEncoding.EncodeToString(hasher.Sum(nil)))
-
-		preq = &verifier.PushSecretRequest{
-			Uid:        *u,
-			SecretType: verifier.SecretType_AES,
-			ImportBlob: sealedOutput,
-		}
-	} else if *importMode == "RSA" {
-
-		certPEM, err := os.ReadFile(*exportedRSACert)
-		if err != nil {
-			glog.Errorf("Could not find public certificate %v", err)
-			os.Exit(1)
-		}
-		block, _ := pem.Decode([]byte(certPEM))
-		if block == nil {
-			glog.Errorf("failed to parse certificate PEM")
-			os.Exit(1)
-		}
-		cert, err := x509.ParseCertificate(block.Bytes)
-		if err != nil {
-			glog.Errorf("failed to parse certificate: " + err.Error())
-			os.Exit(1)
-		}
-		glog.V(5).Infof("     Loaded x509 %s", cert.Issuer)
-
-		privateKeyPEM, err := os.ReadFile(*exportedRSAKey)
-		if err != nil {
-			glog.Errorf("Could not find private Key %v", err)
-			os.Exit(1)
-		}
-
-		block, _ = pem.Decode(privateKeyPEM)
-		priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
-		if err != nil {
-			glog.Errorf("failed to parse private Key: " + err.Error())
-			os.Exit(1)
-		}
-
-		// Generate a test signature using this RSA key.
-		//  If the attestor was able to import this RSA key, the PushSecret.Verification
-		//  value will include the same signature (eg, both the verifier and attestor has the same key)
-		glog.V(10).Infof("     Data to sign: %s", *u)
-		dataToSign := []byte(*u)
-		digest := sha256.Sum256(dataToSign)
-		signature, err := rsa.SignPKCS1v15(rand.Reader, priv, crypto.SHA256, digest[:])
-		if err != nil {
-			glog.Errorf("Error from signing: %s\n", err)
-			os.Exit(1)
-		}
-
-		glog.V(10).Infof("     Test signature data:  %s", base64.RawStdEncoding.EncodeToString(signature))
-		glog.V(2).Infof("     <-- End generateCertificate()")
-
-		importBlob, err := gotpmserver.CreateSigningKeyImportBlob(ep, priv, vpcrs)
-		if err != nil {
-			glog.Errorf("Unable to CreateImportBlob : %v", err)
-			os.Exit(1)
-		}
-		sealedOutput, err := proto.Marshal(importBlob)
-		if err != nil {
-			glog.Errorf("Unable to marshall ImportBlob: ", err)
-			os.Exit(1)
-		}
-
-		preq = &verifier.PushSecretRequest{
-			Uid:        *u,
-			SecretType: verifier.SecretType_RSA,
-			ImportBlob: sealedOutput,
-		}
-	}
-
-	presp, err := c.PushSecret(ctx, preq)
+	serverPlatformAttestationParameter := &attest.PlatformParameters{}
+	err = json.NewDecoder(bytes.NewReader(quoteResponse.PlatformAttestation)).Decode(serverPlatformAttestationParameter)
 	if err != nil {
-		glog.Errorf("Error Pushing Secret: %v", err)
+		glog.Errorf("Quote Failed: json decoding quote response: %v", err)
 		os.Exit(1)
 	}
-	glog.V(5).Infof("     Verification %s", base64.RawStdEncoding.EncodeToString(presp.Verification))
 
-	// Ask the remote system to generate an unrestricted RSA Key, certify it and return
-	//  its public portion.  Once attested, any signature generated by the remote system
-	//  can be verified locally.
-	glog.V(5).Infof("=============== PullRSAKey ===============")
-
-	psReq := &verifier.PullRSAKeyRequest{
-		Uid:  *u,
-		Pcrs: pcrs,
-	}
-	psResponse, err := c.PullRSAKey(ctx, psReq)
+	pub, err := attest.ParseAKPublic(attest.TPMVersion20, serverAttestationParameter.Public)
 	if err != nil {
-		glog.Errorf("Error PullRSAKey: %v", err)
+		glog.Errorf("Quote Failed ParseAKPublic: %v", err)
 		os.Exit(1)
 	}
 
-	glog.V(20).Infof("     SigningKey Attestation %s\n", base64.StdEncoding.EncodeToString(psResponse.Attestation))
-	glog.V(20).Infof("     SigningKey Attestation Signature %s\n", base64.StdEncoding.EncodeToString(psResponse.AttestationSignature))
-
-	glog.V(20).Infof("     Read and Decode (attestion)")
-	att, err := tpm2.DecodeAttestationData(psResponse.Attestation)
+	// compare the ak provided earlier during attestation with the one bound to the quote; they must be the same
+	qakBytes, err := x509.MarshalPKIXPublicKey(pub.Public)
 	if err != nil {
-		glog.Errorf("DecodeAttestationData failed: %v", err)
+		glog.Errorf("Error %v", err)
 		os.Exit(1)
 	}
-	glog.V(20).Infof("     Attestation AttestedCertifyInfo.Name.Digest.Value: %s", hex.EncodeToString(att.AttestedCertifyInfo.Name.Digest.Value))
-
-	// Verify signature of Attestation by using the PEM Public key for AK
-	rsaPub := *ap.(*rsa.PublicKey)
-	//rsaPub := rsa.PublicKey{E: int(tPub.RSAParameters.Exponent()), N: tPub.RSAParameters.Modulus()}
-	ahsh := crypto.SHA256.New()
-	ahsh.Write(psResponse.Attestation)
-
-	if err := rsa.VerifyPKCS1v15(&rsaPub, crypto.SHA256, ahsh.Sum(nil), psResponse.AttestationSignature); err != nil {
-		glog.Errorf("VerifyPKCS1v15 failed: %v", err)
-		os.Exit(1)
-	}
-	glog.V(10).Infof("     Attestation of Unrestricted Signing Key Verified")
-
-	// now verify that the public key provided is the same as the one that was attested
-	// also verify that the key template matches what we expect for an unrestricted key
-	uPub, err := tpm2.DecodePublic(psResponse.TpmPublicKey)
-	if err != nil {
-		glog.Errorf("Error Decode Unrestricted key Public %v", err)
-		os.Exit(1)
-	}
-
-	up, err := uPub.Key()
-	if err != nil {
-		glog.Errorf("ukPub.Key() failed: %s", err)
-		os.Exit(1)
-	}
-	fkey, ok := up.(*rsa.PublicKey)
-	if !ok {
-		glog.Errorf("Unable to extract public key from CSR %v", err)
-		os.Exit(1)
-	}
-	if uPub.MatchesTemplate(unrestrictedKeyParams) {
-		glog.V(10).Infof("     Unrestricted key parameter matches template")
-	} else {
-		glog.Errorf("uK does not have correct template parameters")
-		os.Exit(1)
-	}
-
-	ukBytes, err := x509.MarshalPKIXPublicKey(up)
-	if err != nil {
-		glog.Errorf("Unable to convert ukPub: %v", err)
-		os.Exit(1)
-	}
-
-	ukPubPEM := pem.EncodeToMemory(
+	qakPubPEM := pem.EncodeToMemory(
 		&pem.Block{
 			Type:  "PUBLIC KEY",
-			Bytes: ukBytes,
+			Bytes: qakBytes,
 		},
 	)
 
-	glog.V(10).Infof("     uakPub PEM \n%s", string(ukPubPEM))
+	glog.V(5).Infof("      quote-attested public \n%s\n", qakPubPEM)
 
-	// verify the test signature for the unrestricted key.  For convenience, the
-	// test signature's raw data that the attestor signed is the UID sent
-
-	glog.V(10).Infof("     SigningKey Test Signature %s\n", base64.StdEncoding.EncodeToString(psResponse.TestSignature))
-	glog.V(10).Infof("     Data to verify signature with: %s", *u)
-	uhsh := crypto.SHA256.New()
-	uhsh.Write([]byte(*u))
-
-	if err := rsa.VerifyPKCS1v15(fkey, crypto.SHA256, uhsh.Sum(nil), psResponse.TestSignature); err != nil {
-		glog.Errorf("VerifyPKCS1v15 failed: %v", err)
+	if base64.StdEncoding.EncodeToString(qakPubPEM) != base64.StdEncoding.EncodeToString(akPubPEM) {
+		glog.Errorf("Attested key does not match value in quote")
 		os.Exit(1)
 	}
-	glog.V(10).Infof("     Test Signature Verified")
 
-	params := tpm2.Public{
-		Type:    tpm2.AlgRSA,
-		NameAlg: tpm2.AlgSHA256,
-		Attributes: tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin |
-			tpm2.FlagUserWithAuth | tpm2.FlagSign,
-		AuthPolicy: []byte{},
-		RSAParameters: &tpm2.RSAParams{
-			Sign: &tpm2.SigScheme{
-				Alg:  tpm2.AlgRSASSA,
-				Hash: tpm2.AlgSHA256,
-			},
-			KeyBits:    2048,
-			ModulusRaw: fkey.N.Bytes(),
-		},
+	for _, quote := range serverPlatformAttestationParameter.Quotes {
+		if err := pub.Verify(quote, serverPlatformAttestationParameter.PCRs, nonce); err != nil {
+			glog.Errorf("Quote Failed Verify: %v", err)
+			os.Exit(1)
+		}
 	}
-	ok, err = att.AttestedCertifyInfo.Name.MatchesPublic(params)
+
+	for _, p := range serverPlatformAttestationParameter.PCRs {
+		glog.V(20).Infof("     PCR: %d, verified: %t value: %s", p.Index, p.QuoteVerified(), hex.EncodeToString((p.Digest)))
+		if p.DigestAlg == crypto.SHA256 {
+			v, ok := pcrMap[uint32(p.Index)]
+			if ok {
+				if hex.EncodeToString(v) != hex.EncodeToString(p.Digest) {
+					glog.Errorf("Quote Failed Verify for index: %d", p.Index)
+					os.Exit(1)
+				}
+			}
+		}
+	}
+
+	glog.V(5).Infof("     quotes verified")
+	el, err := attest.ParseEventLog(serverPlatformAttestationParameter.EventLog)
 	if err != nil {
-		glog.Errorf("     AttestedCertifyInfo.MatchesPublic(%v) failed: %v", att, err)
+		glog.Errorf("Quote Parsing EventLog Failed: %v", err)
 		os.Exit(1)
 	}
-	glog.V(10).Infof("     Unrestricted RSA Public key parameters matches AttestedCertifyInfo  %v", ok)
 
-	// Same as with AK.  Now that we have an unrestricted Key on the remote TPM, issue an x509 for it
-	//  for use later on (eg, send this pack in another gRPC call back to the attestor).  The attestor
-	//  can use this x509 to setup mTLS (if so, set ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},)
+	for _, e := range el.Events(attest.HashSHA256) {
+		glog.V(60).Infof("Event Index: %d", e.Index)
+		glog.V(60).Infof("   Event Type: %s", e.Type)
+		glog.V(60).Infof("   Event: %s", string(e.Data))
+		// determine if SEV is enabled on GCE:
+		//  see https://gist.github.com/salrashid123/0c7a4a6f7465cff19d05ac50d238cd57
+		// if e.Index == 0 && e.Type.String() == "EV_NONHOST_INFO" {
+		// 	sevStatus, err := server.ParseGCENonHostInfo(e.Data)
+		// 	if err != nil {
+		// 		glog.Errorf("Error parsing SEV Status: %v", err)
+		// 		os.Exit(1)
+		// 	}
+		// 	glog.V(60).Infof("     EV SevStatus: %s\n", sevStatus.String())
+		// }
+	}
 
-	notBefore = time.Now()
-
-	notAfter = notBefore.Add(time.Hour * 24)
-
-	serialNumberLimit = new(big.Int).Lsh(big.NewInt(2), 20)
-	serialNumber, err = rand.Int(rand.Reader, serialNumberLimit)
+	sb, err := attest.ParseSecurebootState(el.Events(attest.HashSHA1))
 	if err != nil {
-		glog.Errorf("Failed to generate serial number: %v", err)
+		glog.Errorf("Quote Parsing EventLog Failed: %v", err)
 		os.Exit(1)
 	}
-	glog.V(10).Infof("     Issuing certificate with serialNumber %d", serialNumber)
 
-	cn = "mtls,server.anotherdomain.com"
+	glog.V(5).Infof("     secureBoot State enabled: [%t]", sb.Enabled)
 
-	ct = &x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization:       []string{"Acme Co"},
-			OrganizationalUnit: []string{"Enterprise"},
-			Locality:           []string{"Mountain View"},
-			Province:           []string{"California"},
-			Country:            []string{"US"},
-			CommonName:         cn,
-		},
-		NotBefore:             notBefore,
-		NotAfter:              notAfter,
-		DNSNames:              []string{cn},
-		KeyUsage:              x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
-		BasicConstraintsValid: true,
-		IsCA:                  false,
+	if _, err := el.Verify(serverPlatformAttestationParameter.PCRs); err != nil {
+		glog.Errorf("Quote Verify Failed: %v", err)
+		os.Exit(1)
 	}
+	glog.V(5).Infof("=============== end Quote/Verify ===============")
 
-	cert_b, err = x509.CreateCertificate(rand.Reader, ct, ca, up, parsedKey)
+	// now ask the server for the EC TLS key
+	glog.V(5).Infof("=============== start NewKey ===============")
+
+	kid := uuid.New().String()
+	newKeyResponse, err := c.GetKey(ctx, &verifier.GetAttestedKeyRequest{
+		Kid: kid,
+	})
 	if err != nil {
-		glog.Errorf("Failed to createCertificate: %v", err)
+		glog.Errorf("newKey Failed,  Original Error is: %v", err)
 		os.Exit(1)
 	}
 
-	ukCertPEM := pem.EncodeToMemory(
+	cr := pem.EncodeToMemory(&pem.Block{Type: "Public Key", Bytes: newKeyResponse.Key})
+	glog.V(2).Infof("        PublicKey ========\n%s\n", cr)
+
+	// verify the tls key is certified by the AK
+	keyCertificationParameter := &attest.CertificationParameters{}
+	err = json.NewDecoder(bytes.NewReader(newKeyResponse.KeyCertification)).Decode(keyCertificationParameter)
+	if err != nil {
+		glog.Errorf("Key Certification  %v", err)
+		os.Exit(1)
+	}
+
+	err = keyCertificationParameter.Verify(attest.VerifyOpts{
+		Public: akp.Public,
+		Hash:   crypto.SHA256,
+	})
+	if err != nil {
+		glog.Errorf("Key Verification error %v", err)
+		os.Exit(1)
+	}
+
+	decodedTPMNTPublic, err := tpm2.DecodePublic(keyCertificationParameter.Public)
+	if err != nil {
+		glog.Errorf("error parsing TPM public key structure: %v", err)
+		os.Exit(1)
+	}
+
+	glog.V(20).Infof("     Key AuthPolicy [%s]", hex.EncodeToString(decodedTPMNTPublic.AuthPolicy))
+
+	// Verify the TPM key Attributes
+	// https://github.com/google/go-attestation/blob/master/attest/tpm.go#L147
+	//   tpm2.FlagSignerDefault ^ tpm2.FlagRestricted
+	// where
+	// https://pkg.go.dev/github.com/google/go-tpm/legacy/tpm2#KeyProp
+	// FlagSignerDefault = FlagSign | FlagRestricted | FlagFixedTPM | FlagFixedParent | FlagSensitiveDataOrigin | FlagUserWithAuth
+
+	tlsKeyProps := decodedTPMNTPublic.Attributes
+	glog.V(20).Infof("     Key TPM Properties mask: %d", tlsKeyProps)
+
+	expectedAttributeMask := tpm2.FlagSign | tpm2.FlagRestricted | tpm2.FlagFixedTPM | tpm2.FlagFixedParent | tpm2.FlagSensitiveDataOrigin | tpm2.FlagUserWithAuth ^ tpm2.FlagRestricted
+	glog.V(20).Infof("     Key Expected Properties mask %d", expectedAttributeMask)
+
+	if expectedAttributeMask != tlsKeyProps {
+		glog.Errorf("error Key attribute mismatch, expected [%d], got [%d]", expectedAttributeMask, tlsKeyProps)
+		os.Exit(1)
+	}
+
+	// extract the PEM key
+	tlsPubKey, err := decodedTPMNTPublic.Key()
+	if err != nil {
+		glog.Errorf("error parsing getting public key for TLS Key: %v", err)
+		os.Exit(1)
+	}
+	tlsECCPub, ok := tlsPubKey.(*ecdsa.PublicKey)
+	if !ok {
+		glog.Errorf("error converting tls public key to ec key: %v", err)
+		os.Exit(1)
+	}
+
+	certifyPubbytes, err := x509.MarshalPKIXPublicKey(tlsECCPub)
+	if err != nil {
+		glog.Errorf("ERROR:  Failed to marshall certificate publcikey: %s", err)
+		os.Exit(1)
+	}
+	certifyPEM := pem.EncodeToMemory(
 		&pem.Block{
-			Type:  "CERTIFICATE",
-			Bytes: cert_b,
+			Type:  "PUBLIC KEY",
+			Bytes: certifyPubbytes,
 		},
 	)
 
-	glog.V(10).Infof("     X509 issued by Verifier for unrestricted Key: \n%v", string(ukCertPEM))
+	glog.V(5).Infof("     key verified \n%s\n", certifyPEM)
+	glog.V(5).Infof("=============== end NewKey ===============")
 
-	glog.V(5).Infof("     Pulled Signing Key  complete %v", psResponse.Uid)
 }
 
 func getPCRMap(algo tpm.HashAlgo) (map[uint32][]byte, []byte, error) {
