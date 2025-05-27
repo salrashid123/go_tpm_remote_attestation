@@ -335,6 +335,7 @@ func main() {
 
 	glog.V(10).Infof("     EKCert  Issuer %v", ekcert.Issuer)
 	glog.V(10).Infof("     EKCert  IssuingCertificateURL %v", fmt.Sprint(ekcert.IssuingCertificateURL))
+	glog.V(10).Infof("     EKCert  SerialNumber %v", fmt.Sprint(ekcert.SerialNumber))
 
 	glog.V(40).Infof("    EkCert Public Key \n%s\n", ekPubPEM)
 
@@ -587,9 +588,9 @@ func main() {
 		// }
 	}
 
-	sb, err := attest.ParseSecurebootState(el.Events(attest.HashSHA1))
+	sb, err := attest.ParseSecurebootState(el.Events(attest.HashSHA256))
 	if err != nil {
-		glog.Errorf("Quote Parsing EventLog Failed: %v", err)
+		glog.Errorf("Quote Parsing ParseSecurebootState Failed: %v", err)
 		os.Exit(1)
 	}
 

@@ -64,6 +64,8 @@ Begin Quote/Verify
 16. (optional) Verifier requests certified ECC key from Verifier
 17. (optional) Verifier confirms ECC key was certified by AK 
 
+18. (really optional) Initiate TLS with Attested ECC Key ([TPM based TLS using Attested Keys](https://github.com/salrashid123/tls_ak))
+
 ---
 
 also see
@@ -73,9 +75,369 @@ also see
  - [go-attestation](https://github.com/google/go-attestation)
 
 
+#### Setup Local TPM
+
+If you want to test locally with a real TPM, you need to acquire your TPM's issuer and intermediate root certificates.
+
+For my laptop, the PCR value and issuers was `certs/ECCert.pem` 
+
+To get the EKCert, install `tpm2_tools` first and then:
+
+```bash
+## public key
+# tpm2_createek -c /tmp/ek.ctx -G rsa -u /tmp/ek.pub
+# tpm2_readpublic -c /tmp/ek.ctx  -o certs/ECCPub.pem -f PEM
+
+## x509
+tpm2_getekcertificate -X -o /tmp/ECcert.bin
+openssl x509 -in /tmp/ECcert.bin -inform DER -out certs/ECCert.pem
+```
+
+The EKCert was in the form:
+
+```bash
+$ openssl x509 -in certs/ECCert.pem -inform PEM -noout -text 
+
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number:
+            7e:36:61:65:3e:7b:5a:81:74:3d:03:f1:1a:92:56:ec:ff:be:04:81
+        Signature Algorithm: sha384WithRSAEncryption
+        Issuer: C=CH, O=STMicroelectronics NV, CN=STSAFE TPM RSA Intermediate CA 10
+        Validity
+            Not Before: Apr 16 10:33:45 2023 GMT
+            Not After : Dec 31 23:59:59 9999 GMT
+        Subject: 
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+                    00:d2:
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Authority Key Identifier: 
+                65:70:62:A7:10:56:91:6F:8C:7F:79:8A:92:DD:E6:D8:1D:0A:98:DA
+            X509v3 Subject Alternative Name: critical
+                DirName:/tcg-at-tpmManufacturer=id:53544D20/tcg-at-tpmModel=ST33KTPM2X/tcg-at-tpmVersion=id:00090100
+            X509v3 Subject Directory Attributes: 
+                TPM Specification:
+    0:d=0  hl=2 l=  12 cons: SEQUENCE          
+    2:d=1  hl=2 l=   3 prim:  UTF8STRING        :2.0
+    7:d=1  hl=2 l=   1 prim:  INTEGER           :00
+   10:d=1  hl=2 l=   2 prim:  INTEGER           :9F
+
+
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+            X509v3 Extended Key Usage: 
+                Endorsement Key Certificate
+            X509v3 Key Usage: critical
+                Key Encipherment
+            Authority Information Access: 
+                CA Issuers - URI:http://sw-center.st.com/STSAFE/stsafetpmrsaint10.crt
+    Signature Algorithm: sha384WithRSAEncryption
+    Signature Value:
+        a3:62:a4:f9:2
+```
+
+The next step is to acquire the certification trust chain.  Note that for me the `CAIssuer` is `URI:http://sw-center.st.com/STSAFE/stsafetpmrsaint10.crt` (yours maybe different)
+
+So to get the chains, first get the intermediate
+
+```bash
+wget http://sw-center.st.com/STSAFE/stsafetpmrsaint10.crt
+openssl x509 -in stsafetpmrsaint10.crt -inform DER -noout -text 
+```
+
+Which prints out 
+
+```bash
+openssl x509 -in stsafetpmrsaint10.crt -inform DER -out certs/stmtpmekint10.pem
+
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 1073741840 (0x40000010)
+        Signature Algorithm: sha384WithRSAEncryption
+        Issuer: C=CH, O=STMicroelectronics NV, CN=STSAFE RSA Root CA 02
+        Validity
+            Not Before: Jan 20 00:00:00 2022 GMT
+            Not After : Jan  1 00:00:00 2042 GMT
+        Subject: C=CH, O=STMicroelectronics NV, CN=STSAFE TPM RSA Intermediate CA 10
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (4096 bit)
+                Modulus:
+                    00:cb:b5:
+                Exponent: 65537 (0x10001)
+        X509v3 extensions:
+            X509v3 Subject Key Identifier: 
+                65:70:62:A7:10:56:91:6F:8C:7F:79:8A:92:DD:E6:D8:1D:0A:98:DA
+            X509v3 Authority Key Identifier: 
+                7C:C2:8D:BE:6E:59:D8:4A:54:03:46:9B:13:08:00:D2:F8:F0:6D:27
+            X509v3 Certificate Policies: critical
+                Policy: X509v3 Any Policy
+                  CPS: http://sw-center.st.com/STSAFE/
+            X509v3 Key Usage: critical
+                Certificate Sign, CRL Sign
+            X509v3 Basic Constraints: critical
+                CA:TRUE, pathlen:0
+            Authority Information Access: 
+                CA Issuers - URI:http://sw-center.st.com/STSAFE/STSAFERsaRootCA02.crt
+            X509v3 CRL Distribution Points: 
+                Full Name:
+                  URI:http://sw-center.st.com/STSAFE/STSAFERsaRootCA02.crl
+
+    Signature Algorithm: sha384WithRSAEncryption
+    Signature Value:
+        80:4e:30:4e:14:71:22:39
+```
+
+Now get the root by reading the parsed intermediate  `URI:http://sw-center.st.com/STSAFE/STSAFERsaRootCA02.crt`
+
+```bash
+wget http://sw-center.st.com/STSAFE/STSAFERsaRootCA02.crt
+openssl x509 -in STSAFERsaRootCA02.crt -inform DER -noout -text
+openssl x509 -in STSAFERsaRootCA02.crt -inform DER -out certs/stmtpmekroot.pem
+```
+
+Now read the PCR's on the Attestor (which in this case is the same laptop as the verifier):
+
+```bash
+sudo tpm2_pcrread  sha1:0+sha256:0,7
+  sha1:
+  sha256:
+    0 : 0x7BB4353897632FD086982175A027DAFCC33F61ADBAB4EBFC6D13927B97A8C084
+    7 : 0x46D45493DC751AF8C46996EEDAF69D7D4012D46CA8D75BBB141D23103361E59E
+```
+
+Note, your system must generate a [tpm2_eventlog](https://github.com/tpm2-software/tpm2-tools/blob/master/man/tpm2_eventlog.1.md) since this is used during quote/verification steps.
+
+To verify that its there, run
+
+```bash
+sudo tpm2_eventlog /sys/kernel/security/tpm0/binary_bios_measurements
+```
+
+### Attestor
+
+Now run the Attestor:
+
+```bash
+sudo go run src/grpc_attestor.go --grpcport :50051  --v=10 -alsologtostderr
+```
+
+```log
+I0515 05:57:52.291592  208717 grpc_attestor.go:291] Getting EKCert
+I0515 05:57:52.309236  208717 grpc_attestor.go:311] ECCert with available Issuer: CN=STSAFE TPM RSA Intermediate CA 10,O=STMicroelectronics NV,C=CH
+I0515 05:57:53.851893  208717 grpc_attestor.go:407] Generated ECC Public 
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHt/0kwFfF6LXGyK4ktCTH/Aw/h6Q
+hw24Zb37gjQVwAscYNgwrHqF3xcM8jpk21rwkDz27bN+tntmXXVDBJlqPw==
+-----END PUBLIC KEY-----
+I0515 05:57:53.852899  208717 grpc_attestor.go:432] Starting gRPC server on port :50051
+I0515 05:58:04.151182  208717 grpc_attestor.go:126] ======= GetPlatformCert ========
+I0515 05:58:04.151397  208717 grpc_attestor.go:144]      Returning GetPlatformCert ========
+I0515 05:58:04.153708  208717 grpc_attestor.go:151] ======= GetEK ========
+I0515 05:58:04.157826  208717 grpc_attestor.go:163] ======= GetAK ========
+I0515 05:58:04.582365  208717 grpc_attestor.go:186] ======= Attest ========
+I0515 05:58:06.959677  208717 grpc_attestor.go:220] ======= Quote ========
+I0515 05:58:12.920138  208717 grpc_attestor.go:257] ======= GetTLSKey ========
+```
+
+### Verifier
+
+Run Verifier
+
+```bash
+export ATTESTOR_ADDRESS=127.0.0.1
+go run src/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
+       --ekintermediateCA=certs/stmtpmekint10.pem --ekrootCA=certs/stmtpmekroot.pem \
+       --expectedPCRMapSHA256=0:7bb4353897632fd086982175a027dafcc33f61adbab4ebfc6d13927b97a8c084  \
+       --v=40 -alsologtostderr
+```
+
+
+```log
+I0515 05:58:04.142669  208902 grpc_verifier.go:90] =============== GetPlatformCert ===============
+I0515 05:58:04.151909  208902 grpc_verifier.go:97] =============== GetPlatformCert Returned from remote ===============
+I0515 05:58:04.152292  208902 grpc_verifier.go:117]      PlatformCertificate Issuer: CN=www.intel.com,OU=TrustedSupplyChain,O=Intel Corporation,L=Santa Clara,ST=California,C=US
+I0515 05:58:04.152368  208902 grpc_verifier.go:118]      PlatformCertificate Version: 2
+I0515 05:58:04.152387  208902 grpc_verifier.go:120]      PlatformCertificate CredentialSpecification: 
+I0515 05:58:04.152406  208902 grpc_verifier.go:121]      PlatformCertificate PlatformManufacturer: Intel
+I0515 05:58:04.152422  208902 grpc_verifier.go:122]      PlatformCertificate PlatformModel: S2600KP
+I0515 05:58:04.152440  208902 grpc_verifier.go:123]      PlatformCertificate PlatformVersion: H76962-350
+I0515 05:58:04.152457  208902 grpc_verifier.go:124]      PlatformCertificate PropertiesURI: 
+I0515 05:58:04.152476  208902 grpc_verifier.go:139]      PlatformCertificate Holder.Issuer: CN=STMicro
+I0515 05:58:04.152502  208902 grpc_verifier.go:140]      PlatformCertificate Holder.Serial: 449600017855339869538679649152375580078880538087
+I0515 05:58:04.152535  208902 grpc_verifier.go:141]      PlatformCertificate Holder.Issuer.CommonName: STMicro
+I0515 05:58:04.152560  208902 grpc_verifier.go:146]      PlatformCertificate TBBSecurityAssertions.Iso9000URI: URL to iso9000 certificate
+I0515 05:58:04.152585  208902 grpc_verifier.go:147]      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileOid: 
+I0515 05:58:04.152615  208902 grpc_verifier.go:148]      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileURI: 
+I0515 05:58:04.152643  208902 grpc_verifier.go:149]      PlatformCertificate TBBSecurityAssertions.CcInfo.TargetOid: 
+I0515 05:58:04.152670  208902 grpc_verifier.go:150]      PlatformCertificate TBBSecurityAssertions.CcInfo.TargetURI: 
+I0515 05:58:04.152697  208902 grpc_verifier.go:151]      PlatformCertificate TBBSecurityAssertions.CcInfo.Version: CC Version
+I0515 05:58:04.152726  208902 grpc_verifier.go:153]      PlatformCertificate TCGPlatformSpecification.Version: {1 2 1}
+I0515 05:58:04.152759  208902 grpc_verifier.go:154]      PlatformCertificate TCGPlatformSpecification.Version.MajorVersion: 1
+I0515 05:58:04.152789  208902 grpc_verifier.go:155]      PlatformCertificate TCGPlatformSpecification.Version.MinorVersion: 2
+I0515 05:58:04.152818  208902 grpc_verifier.go:156]      PlatformCertificate TCGPlatformSpecification.Version.Revision: 1
+I0515 05:58:04.152848  208902 grpc_verifier.go:158]      PlatformCertificate UserNotice.UserNotice.ExplicitText: TCPA Trusted Platform Endorsement
+I0515 05:58:04.152879  208902 grpc_verifier.go:159]      PlatformCertificate UserNotice.UserNotice.Organization: Credential Type Label
+I0515 05:58:04.152909  208902 grpc_verifier.go:160]      PlatformCertificate UserNotice.UserNotice.NoticeNumbers: []
+I0515 05:58:04.153110  208902 grpc_verifier.go:167]  Verified Platform cert signed by privacyCA
+I0515 05:58:04.153146  208902 grpc_verifier.go:172]  Platform Cert's Holder SerialNumber 4ec0c316cbdf7f039e97a14145468b0320633de7
+I0515 05:58:04.153180  208902 grpc_verifier.go:183] =============== start GetEK ===============
+I0515 05:58:04.154069  208902 grpc_verifier.go:197]         AuthType, ServerName tls, attestor.domain.com
+I0515 05:58:04.154146  208902 grpc_verifier.go:208]         EKM my_nonce: 95d967570a407703b85d426858d9dd342a4668e33debb53b160aa5032eabf173
+I0515 05:58:04.154323  208902 grpc_verifier.go:263]      TPM Manufacturer id:53544D20
+I0515 05:58:04.154429  208902 grpc_verifier.go:266]      TPM Model ST33KTPM2X
+I0515 05:58:04.154528  208902 grpc_verifier.go:270]      TPM Version id:00090100
+I0515 05:58:04.154636  208902 grpc_verifier.go:303]      TPM Family 2.0
+I0515 05:58:04.154753  208902 grpc_verifier.go:304]      TPM Level 0
+I0515 05:58:04.154845  208902 grpc_verifier.go:305]      TPM Revision 159
+I0515 05:58:04.154953  208902 grpc_verifier.go:320]         EKCertificate ========
+-----BEGIN CERTIFICATE-----
+MIIFDzCCAvegAwIBAgIUfjZhZT57WoF0PQPxGpJW7P++BIEwDQYJKoZIhvcNAQEM
+BQAwWTELMAkGA1UEBhMCQ0gxHjAcBgNVBAoTFVNUTWljcm9lbGVjdHJvbmljcyBO
+VjEqMCgGA1UEAxMhU1RTQUZFIFRQTSBSU0EgSW50ZXJtZWRpYXRlIENBIDEwMCAX
+DTIzMDQxNjEwMzM0NVoYDzk5OTkxMjMxMjM1OTU5WjAAMIIBIjANBgkqhkiG9w0B
+AQEFAAOCAQ8AMIIBCgKCAQEA0shjU+4tGz+FRFoe4SVxNtZA7hGxA1MeC891SLmn
+OMiXGZGgBJGPv+USVLY2OJFln4X94vvNE1Rh06HFG9FoPBA//coeFavi7cjV9GUh
+3beY8wX6ergOMTxl38xbiBN6LKYuqwQ51wuMrOB5Q0n8XIJwjCfnSWGCAo16FadU
+xteEixOuWbHW+If7T/j3FsHzD+QCbCYrQ1AzrHCHNsiwMAyKXdIncJnNaKi8qLDl
+D4IXT2RbjijSoAFWO086Li5gwtVVoMULN4B4d83309EI11LvCiNCWGAJZ7pxTME7
++WJMurXcJec19c9M4YrjEAEggxfxKc+Bktv1ibCCeOegVwIDAQABo4IBJDCCASAw
+HwYDVR0jBBgwFoAUZXBipxBWkW+Mf3mKkt3m2B0KmNowVwYDVR0RAQH/BE0wS6RJ
+MEcxFjAUBgVngQUCAQwLaWQ6NTM1NDREMjAxFTATBgVngQUCAgwKU1QzM0tUUE0y
+WDEWMBQGBWeBBQIDDAtpZDowMDA5MDEwMDAiBgNVHQkEGzAZMBcGBWeBBQIQMQ4w
+DAwDMi4wAgEAAgIAnzAMBgNVHRMBAf8EAjAAMBAGA1UdJQQJMAcGBWeBBQgBMA4G
+A1UdDwEB/wQEAwIFIDBQBggrBgEFBQcBAQREMEIwQAYIKwYBBQUHMAKGNGh0dHA6
+Ly9zdy1jZW50ZXIuc3QuY29tL1NUU0FGRS9zdHNhZmV0cG1yc2FpbnQxMC5jcnQw
+DQYJKoZIhvcNAQEMBQADggIBAKNipPkkgRUMAyTJh8xWRAmOP2put6d/DEuVsYRn
+hvsVwJPUYc2Ki1hm8fy8OCnRAcChwQDj0tgcyAjol1qusSG5Z+pkIwdet4WLcYiE
+0uf/EWMz4xvsmIDDIpn38flbAM+5XjsVczGC8/WM2DFxSllmmD5BpZDm0tBDnwCU
+3bpBNoeUZ/gGoYNdDxWPnwqc5Zy1+AheaigQzGUPFKRU2xMuBkOTmdJgY357dvLZ
+vVrJUWGSJq8Ee/bRgj/UFFPABLFQgV8S8x7HnMxmwUUwgHC3F94wEs5/mo/VQXbU
+uJ2TlKhT3Dy/3ssKjNgVOnIOb7G54yjg2CzR8ncI9oz0QGJm4P243Zv+iBSsKTXb
+2di1CxWuuE7s23ajExBnTKTfnERfeHbtiT8MUqre02kDHX8ql/xrM0fOq02+JODZ
+U0DnsZI3wXDEvjRy8X+GyiDGU+wnpgycSNzoSAWvvIRxRdqcaZ4QJh9diABX41CE
+teI4QdS32b7LejPcbJH566NhlPReZDFgssIEGjdYYLaGFZdya3YEqgZMfyRfVL16
+93DBivvYwgtyqQj+aKAhAGLJTQEXqdQh662hMPZ5bBQS8FZ8MncS6CodLYvsXJUw
+qYloxK9lcNDk0rkIibqzSUL1+lPbpQwE2xV+LQZbNIyj2hQ6XTYmwrsT+C8Fp/vU
+Cfz7
+-----END CERTIFICATE-----
+
+I0515 05:58:04.155080  208902 grpc_verifier.go:336]      EKCert  Issuer CN=STSAFE TPM RSA Intermediate CA 10,O=STMicroelectronics NV,C=CH
+I0515 05:58:04.155153  208902 grpc_verifier.go:337]      EKCert  IssuingCertificateURL [http://sw-center.st.com/STSAFE/stsafetpmrsaint10.crt]
+I0515 05:58:04.155211  208902 grpc_verifier.go:338]      EKCert  SerialNumber 720545561707831497387264474846090629232862299265
+I0515 05:58:04.155258  208902 grpc_verifier.go:340]     EkCert Public Key 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0shjU+4tGz+FRFoe4SVx
+NtZA7hGxA1MeC891SLmnOMiXGZGgBJGPv+USVLY2OJFln4X94vvNE1Rh06HFG9Fo
+PBA//coeFavi7cjV9GUh3beY8wX6ergOMTxl38xbiBN6LKYuqwQ51wuMrOB5Q0n8
+XIJwjCfnSWGCAo16FadUxteEixOuWbHW+If7T/j3FsHzD+QCbCYrQ1AzrHCHNsiw
+MAyKXdIncJnNaKi8qLDlD4IXT2RbjijSoAFWO086Li5gwtVVoMULN4B4d83309EI
+11LvCiNCWGAJZ7pxTME7+WJMurXcJec19c9M4YrjEAEggxfxKc+Bktv1ibCCeOeg
+VwIDAQAB
+-----END PUBLIC KEY-----
+
+I0515 05:58:04.155319  208902 grpc_verifier.go:343]     Verifying EKCert
+I0515 05:58:04.155622  208902 grpc_verifier.go:371]      EKCert Includes tcg-kp-EKCertificate ExtendedKeyUsage 2.23.133.8.1
+I0515 05:58:04.157209  208902 grpc_verifier.go:398]     EKCert Verified
+I0515 05:58:04.157259  208902 grpc_verifier.go:400]      EKPub: 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0shjU+4tGz+FRFoe4SVx
+NtZA7hGxA1MeC891SLmnOMiXGZGgBJGPv+USVLY2OJFln4X94vvNE1Rh06HFG9Fo
+PBA//coeFavi7cjV9GUh3beY8wX6ergOMTxl38xbiBN6LKYuqwQ51wuMrOB5Q0n8
+XIJwjCfnSWGCAo16FadUxteEixOuWbHW+If7T/j3FsHzD+QCbCYrQ1AzrHCHNsiw
+MAyKXdIncJnNaKi8qLDlD4IXT2RbjijSoAFWO086Li5gwtVVoMULN4B4d83309EI
+11LvCiNCWGAJZ7pxTME7+WJMurXcJec19c9M4YrjEAEggxfxKc+Bktv1ibCCeOeg
+VwIDAQAB
+-----END PUBLIC KEY-----
+
+I0515 05:58:04.157356  208902 grpc_verifier.go:416] =============== end GetEKCert ===============
+I0515 05:58:04.157410  208902 grpc_verifier.go:419] =============== start GetAK ===============
+I0515 05:58:04.580982  208902 grpc_verifier.go:452]       ak public 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwLebuMYQBYc6JFZdlhtE
+J81b5FSF28GRHNOC2X272QuFQQgRhBtZMU03i4cXBOAV55HFf8M7q1G17jAJIF0q
+HtDnJNWmNLLodHo2wR2jHUhkHAbQH+jbv589wb4OPi00Sq0n6yKR8AiQ2P8U7yEa
+hpS7S7BhluwIEBrAYce35MK6ZqUbnnmck3jsfMtYXcwjNu2gGfMHxakjoEjzBeFp
++FqZbDVq5W2JM6jK+z3N/sKMu3r+6/y75sK6kVe9nZlemdGLkh+g1phVOcbdMlwA
+3MVo5jryYXVjqoG1QRNoYbrI+L0fzUZqiZld7ELwS163Fxpw7zlFTYu+I3jRD+aC
+1QIDAQAB
+-----END PUBLIC KEY-----
+
+I0515 05:58:04.581114  208902 grpc_verifier.go:453] =============== end GetAK ===============
+I0515 05:58:04.581177  208902 grpc_verifier.go:456] =============== start Attest ===============
+I0515 05:58:04.581741  208902 grpc_verifier.go:469]       Outbound Secret: WTahtmK83gZTIY49c/m1mWwRhJMhADG7lxoGn7gB204=
+I0515 05:58:06.958635  208902 grpc_verifier.go:485]       Inbound Secret: WTahtmK83gZTIY49c/m1mWwRhJMhADG7lxoGn7gB204=
+I0515 05:58:06.958754  208902 grpc_verifier.go:488]       inbound/outbound Secrets Match; accepting AK
+I0515 05:58:06.958885  208902 grpc_verifier.go:493] =============== end Attest ===============
+I0515 05:58:06.959004  208902 grpc_verifier.go:496] =============== start Quote/Verify ===============
+I0515 05:58:12.917979  208902 grpc_verifier.go:541]       quote-attested public 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwLebuMYQBYc6JFZdlhtE
+J81b5FSF28GRHNOC2X272QuFQQgRhBtZMU03i4cXBOAV55HFf8M7q1G17jAJIF0q
+HtDnJNWmNLLodHo2wR2jHUhkHAbQH+jbv589wb4OPi00Sq0n6yKR8AiQ2P8U7yEa
+hpS7S7BhluwIEBrAYce35MK6ZqUbnnmck3jsfMtYXcwjNu2gGfMHxakjoEjzBeFp
++FqZbDVq5W2JM6jK+z3N/sKMu3r+6/y75sK6kVe9nZlemdGLkh+g1phVOcbdMlwA
+3MVo5jryYXVjqoG1QRNoYbrI+L0fzUZqiZld7ELwS163Fxpw7zlFTYu+I3jRD+aC
+1QIDAQAB
+-----END PUBLIC KEY-----
+
+I0515 05:58:12.918234  208902 grpc_verifier.go:556]      PCR: 0, verified: true value: 7bb4353897632fd086982175a027dafcc33f61adbab4ebfc6d13927b97a8c084
+I0515 05:58:12.918314  208902 grpc_verifier.go:556]      PCR: 1, verified: true value: 0e2c30270bbf1e52967a5ebedc6cdffb7f5166c70fb5fbda021ab5db4f87ca80
+I0515 05:58:12.918323  208902 grpc_verifier.go:556]      PCR: 2, verified: true value: f8650efffd171c5d05d0aface51ef1ab216e25b7660faa6d6b9d1731b7c2f748
+I0515 05:58:12.918330  208902 grpc_verifier.go:556]      PCR: 3, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
+I0515 05:58:12.918337  208902 grpc_verifier.go:556]      PCR: 4, verified: true value: 061ba5c6dd464ee6f9bbb6040070a9f0fc9e571f02e3b25d903cde8a881d05eb
+I0515 05:58:12.918344  208902 grpc_verifier.go:556]      PCR: 5, verified: true value: 07ffb98f19e294b075eeac8405a8121ee3be0aceb7a5c3dfa4c204a0e7f492f8
+I0515 05:58:12.918351  208902 grpc_verifier.go:556]      PCR: 6, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
+I0515 05:58:12.918357  208902 grpc_verifier.go:556]      PCR: 7, verified: true value: 46d45493dc751af8c46996eedaf69d7d4012d46ca8d75bbb141d23103361e59e
+I0515 05:58:12.918363  208902 grpc_verifier.go:556]      PCR: 8, verified: true value: 10e6796c8f61d4b7ec0e13234f2940c8ef7406a328dbadaeced68b8b892dbc4f
+I0515 05:58:12.918369  208902 grpc_verifier.go:556]      PCR: 9, verified: true value: 2717bb4bd752179da9956be4ee2f841ba0da2e6dc59474b46868170612299db0
+I0515 05:58:12.918376  208902 grpc_verifier.go:556]      PCR: 10, verified: true value: 578d11d830b0f822bcc2703f5144229e00ca3c9a3528dfde8dd195b16d9ad16d
+I0515 05:58:12.918387  208902 grpc_verifier.go:556]      PCR: 11, verified: true value: c6b83488982b0ddbb8e815630c6ea02415981a4229f81d938a764ef11089d4df
+I0515 05:58:12.918395  208902 grpc_verifier.go:556]      PCR: 12, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0515 05:58:12.918401  208902 grpc_verifier.go:556]      PCR: 13, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0515 05:58:12.918407  208902 grpc_verifier.go:556]      PCR: 14, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0515 05:58:12.918420  208902 grpc_verifier.go:556]      PCR: 15, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0515 05:58:12.918428  208902 grpc_verifier.go:556]      PCR: 16, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0515 05:58:12.918434  208902 grpc_verifier.go:556]      PCR: 17, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0515 05:58:12.918440  208902 grpc_verifier.go:556]      PCR: 18, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0515 05:58:12.918446  208902 grpc_verifier.go:556]      PCR: 19, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0515 05:58:12.918454  208902 grpc_verifier.go:556]      PCR: 20, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0515 05:58:12.918461  208902 grpc_verifier.go:556]      PCR: 21, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0515 05:58:12.918469  208902 grpc_verifier.go:556]      PCR: 22, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0515 05:58:12.918475  208902 grpc_verifier.go:556]      PCR: 23, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0515 05:58:12.918483  208902 grpc_verifier.go:568]      quotes verified
+I0515 05:58:12.919386  208902 grpc_verifier.go:597]      secureBoot State enabled: [true]
+I0515 05:58:12.919548  208902 grpc_verifier.go:603] =============== end Quote/Verify ===============
+I0515 05:58:12.919626  208902 grpc_verifier.go:606] =============== start NewKey ===============
+I0515 05:58:13.326590  208902 grpc_verifier.go:618]         PublicKey ========
+-----BEGIN Public Key-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHt/0kwFfF6LXGyK4ktCTH/Aw/h6Q
+hw24Zb37gjQVwAscYNgwrHqF3xcM8jpk21rwkDz27bN+tntmXXVDBJlqPw==
+-----END Public Key-----
+
+I0515 05:58:13.327043  208902 grpc_verifier.go:643]      Key AuthPolicy []
+I0515 05:58:13.327129  208902 grpc_verifier.go:653]      Key TPM Properties mask: 262258
+I0515 05:58:13.327270  208902 grpc_verifier.go:656]      Key Expected Properties mask 262258
+I0515 05:58:13.327383  208902 grpc_verifier.go:687]      key verified 
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHt/0kwFfF6LXGyK4ktCTH/Aw/h6Q
+hw24Zb37gjQVwAscYNgwrHqF3xcM8jpk21rwkDz27bN+tntmXXVDBJlqPw==
+-----END PUBLIC KEY-----
+
+I0515 05:58:13.327463  208902 grpc_verifier.go:688] =============== end NewKey ===============
+```
+
+---
+
 ## Setup on GCE
 
-We will use a GCP Shielded VM for these tests 
+If you want to instead test with GCP VM:
 
 First create a VM
 
@@ -125,25 +487,22 @@ $ tpm2_pcrread -o pcrs sha1:0+sha256:0,7
 ```log
 $ go run src/grpc_attestor.go --grpcport :50051  --v=10 -alsologtostderr
 
-I0119 03:15:14.571472    4626 grpc_attestor.go:293] Getting EKCert
-I0119 03:15:14.587224    4626 grpc_attestor.go:313] ECCert with available Issuer: CN=EK/AK CA Intermediate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
-I0119 03:15:14.857007    4626 grpc_attestor.go:409] Generated ECC Public 
+I0511 00:04:30.432145    4402 grpc_attestor.go:291] Getting EKCert
+I0511 00:04:30.447129    4402 grpc_attestor.go:311] ECCert with available Issuer: CN=EK/AK CA Intermediate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
+I0511 00:04:30.863962    4402 grpc_attestor.go:407] Generated ECC Public 
 -----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9yKgPRWKB9Chjnkjy46ivtPOQG5R
-p7THPIQ3lRox15lHpS/FUqthJKHUrCVOYYxBYJF0+Ebogb2GJrYJ+HTHKQ==
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEpkUDmEEkQ5wQnyJLS4eAhHjanuF/
+27WvMnWziBn2wR39sxmVG2XvIlIjlSR/pvTLAy23umuUmwoIGd2UdZcu/g==
 -----END PUBLIC KEY-----
-I0119 03:15:14.857698    4626 grpc_attestor.go:434] Starting gRPC server on port :50051
+I0511 00:04:30.864605    4402 grpc_attestor.go:432] Starting gRPC server on port :50051
+I0511 00:05:29.704283    4402 grpc_attestor.go:126] ======= GetPlatformCert ========
+I0511 00:05:29.704376    4402 grpc_attestor.go:144]      Returning GetPlatformCert ========
+I0511 00:05:30.540157    4402 grpc_attestor.go:151] ======= GetEK ========
+I0511 00:05:31.641160    4402 grpc_attestor.go:163] ======= GetAK ========
+I0511 00:05:32.022458    4402 grpc_attestor.go:186] ======= Attest ========
+I0511 00:05:32.843147    4402 grpc_attestor.go:220] ======= Quote ========
+I0511 00:05:35.966199    4402 grpc_attestor.go:257] ======= GetTLSKey ========
 
-
-
-I0119 03:15:25.390763    4626 grpc_attestor.go:126] ======= GetPlatformCert ========
-I0119 03:15:25.390795    4626 grpc_attestor.go:127]      client provided uid: 
-I0119 03:15:25.390856    4626 grpc_attestor.go:145]      Returning GetPlatformCert ========
-I0119 03:15:25.430128    4626 grpc_attestor.go:153] ======= GetEK ========
-I0119 03:15:25.469365    4626 grpc_attestor.go:165] ======= GetAK ========
-I0119 03:15:25.567951    4626 grpc_attestor.go:188] ======= Attest ========
-I0119 03:15:25.853384    4626 grpc_attestor.go:222] ======= Quote ========
-I0119 03:15:26.227629    4626 grpc_attestor.go:259] ======= GetTLSKey ========
 ```
 
 ### Verifier
@@ -159,8 +518,9 @@ gcloud compute instances get-shielded-identity attestor \
 
 openssl x509 -inform pem -text -in certs/ekcert.pem
 ### gives a 
-            # Authority Information Access: 
-            #     CA Issuers - URI:http://privateca-content-65d1688e-0000-2203-850e-30fd381456f8.storage.googleapis.com/810af313406ad3e2079b/ca.crt
+#            Authority Information Access: 
+#                CA Issuers - URI:http://privateca-content-65d53b14-0000-212a-a633-883d24f57bb8.storage.googleapis.com/0c3e79eb0898d02ebb0a/ca.crt
+
 
 ## get the intermediate from the ek
 # Issuer: C=US, ST=California, L=Mountain View, O=Google LLC, OU=Google Cloud, CN=EK/AK CA Intermediate
@@ -181,165 +541,8 @@ export ATTESTOR_ADDRESS=34.121.64.117
 go run src/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
        --ekintermediateCA=certs/ek_intermediate.pem  --ekrootCA=certs/ek_root.pem  --expectedPCRMapSHA256=0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85 \
         --v=10 -alsologtostderr
-
-
-I0118 22:15:24.548210  621636 grpc_verifier.go:90] =============== GetPlatformCert ===============
-I0118 22:15:24.698309  621636 grpc_verifier.go:97] =============== GetPlatformCert Returned from remote ===============
-I0118 22:15:24.698360  621636 grpc_verifier.go:98]      client provided uid: 
-I0118 22:15:24.698974  621636 grpc_verifier.go:129]      PlatformCertificate Issuer: Not Specified
-I0118 22:15:24.699137  621636 grpc_verifier.go:136]  Verified Platform cert signed by privacyCA
-I0118 22:15:24.699170  621636 grpc_verifier.go:141]  Platform Cert's Holder SerialNumber 1b001fe40bf96774751a72e9f5de5333d6b62
-I0118 22:15:24.699195  621636 grpc_verifier.go:152] =============== start GetEK ===============
-I0118 22:15:24.740614  621636 grpc_verifier.go:283]      EKCert  GCE InstanceID 2003763118985041850
-I0118 22:15:24.740684  621636 grpc_verifier.go:284]      EKCert  GCE InstanceName attestor
-I0118 22:15:24.740724  621636 grpc_verifier.go:285]      EKCert  GCE ProjectId core-eso
-I0118 22:15:24.740796  621636 grpc_verifier.go:289]         EKCertificate ========
------BEGIN CERTIFICATE-----
-MIIF3DCCA8SgAwIBAgITDZ/7tOQJpK9gHOfYMSe0c/w9qTANBgkqhkiG9w0BAQsF
-ADCBhjELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWExFjAUBgNVBAcT
-DU1vdW50YWluIFZpZXcxEzARBgNVBAoTCkdvb2dsZSBMTEMxFTATBgNVBAsTDEdv
-b2dsZSBDbG91ZDEeMBwGA1UEAxMVRUsvQUsgQ0EgSW50ZXJtZWRpYXRlMCAXDTI1
-MDExOTAyNTQyNloYDzIwNTUwMTEyMDI1NDI1WjBpMRYwFAYDVQQHEw11cy1jZW50
-cmFsMS1hMR4wHAYDVQQKExVHb29nbGUgQ29tcHV0ZSBFbmdpbmUxETAPBgNVBAsT
-CGNvcmUtZXNvMRwwGgYDVQQDExMyMDAzNzYzMTE4OTg1MDQxODUwMIIBIjANBgkq
-hkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApl1i3sLXqyjOjxNo+pqpgzkEDVzVm2Td
-Nfz2fYUjqENVJ630csOjBJ9Jn/XEYqjR7STAP9TouxYEWqFoPaQTD1iXLRU7eBGA
-i6QCXyhZcPlNymOJAtcUcsBl882T8DXtpPDfJjspGWQDgjmAPK/79UQMZGssN27W
-OKDujxZZsgAmqNFQt5IUffP0QF1JTW7BP4SSwdggwH9FW3KfkJ7Wl8ON06CjFMFn
-OjlfIb8VnaEBYjGZyB5CSvBU+jvWJhLgqXzaEQep6azOeYRMsDGwVuBdM2Ulkyo8
-PGaap0LvA9t4j3wtFWeZtb1Kmi+2P/svONX09+l07sWyXqTGzNzevwIDAQABo4IB
-WzCCAVcwDgYDVR0PAQH/BAQDAgUgMAwGA1UdEwEB/wQCMAAwHQYDVR0OBBYEFK89
-SclI0RZ4b6W6a6fSejIN9g1iMB8GA1UdIwQYMBaAFA8hnVbhqcCJxWzaI8DE8TKw
-Sol6MIGNBggrBgEFBQcBAQSBgDB+MHwGCCsGAQUFBzAChnBodHRwOi8vcHJpdmF0
-ZWNhLWNvbnRlbnQtNjVkMTY4OGUtMDAwMC0yMjAzLTg1MGUtMzBmZDM4MTQ1NmY4
-LnN0b3JhZ2UuZ29vZ2xlYXBpcy5jb20vODEwYWYzMTM0MDZhZDNlMjA3OWIvY2Eu
-Y3J0MGcGCisGAQQB1nkCARUEWTBXDA11cy1jZW50cmFsMS1hAgYA569zXpwMCGNv
-cmUtZXNvAggbzsvwuSHXugwIYXR0ZXN0b3KgIDAeoAMCAQChAwEB/6IDAQH/owMB
-AQCkAwEBAKUDAQEAMA0GCSqGSIb3DQEBCwUAA4ICAQCetb98rvc0MrC4MbdF7UUb
-o5OAo/nXQnHwXvzTXzIgV4g8aMcdw0MyaoLApKJf37Q0nku9qNcP/fMAPLYJWnqO
-2bhPfVHXG4dYvIg+zluFvECWkZJrgvgTNZgmNPJYGWtPYd8fcucJUFfMo5DV22IR
-W7NmfzRPXjp9GjJeXQjKyx0xJtWb3Fbvvjh84ANFX8CoqU5BRzfwz+9CYVWdiNXM
-ITuf9v4Y2/vb+WAP2yXEuYjgj1a2yNezrKRy+qDksm4i+0AnRRvnQS72CBVWRnAU
-5RcX2lHPOjp0M6VeWL4iNZXyRJOL9ycvIl7FVhBl7Bv2oUg7IQxFT2tw68oF2shl
-06UN4U27ZCf1PWNZX+qTLBVmPxqla8+Rq8n0qqsraOgnjD9F7OU98ghquIPfP3zh
-JtyeE1TFlm0g+fTO6fopWXFdYXrQFagpYvPy0PtXg2vYhtoRndBflp2giGPb1evS
-1pcjJUr76kXovng9TMzgH/3MyNHgUphvI+gTFje3Tng2K9aFip7vqPvhaXDB3Dkz
-1VgjdXyV+DSOyb3sKxOhItozktU1Z5o1lezjUeY9dAFV3Bonme/a8X4Q718yNP5Q
-kM4M6NKWJOpvgm17VDyNUAniCU/Xqrk8njkYk6C7n8D1BbzTanwAry4vKFxUy0vQ
-Ld6Gu3BJL7eEhWkWIGf8GQ==
------END CERTIFICATE-----
-
-I0118 22:15:24.740901  621636 grpc_verifier.go:305]      EKCert  Issuer CN=EK/AK CA Intermediate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
-I0118 22:15:24.741000  621636 grpc_verifier.go:306]      EKCert  IssuingCertificateURL [http://privateca-content-65d1688e-0000-2203-850e-30fd381456f8.storage.googleapis.com/810af313406ad3e2079b/ca.crt]
-I0118 22:15:24.741044  621636 grpc_verifier.go:311]     Verifying EKCert
-I0118 22:15:24.743577  621636 grpc_verifier.go:366]     EKCert Verified
-I0118 22:15:24.743630  621636 grpc_verifier.go:368]      EKPub: 
------BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApl1i3sLXqyjOjxNo+pqp
-gzkEDVzVm2TdNfz2fYUjqENVJ630csOjBJ9Jn/XEYqjR7STAP9TouxYEWqFoPaQT
-D1iXLRU7eBGAi6QCXyhZcPlNymOJAtcUcsBl882T8DXtpPDfJjspGWQDgjmAPK/7
-9UQMZGssN27WOKDujxZZsgAmqNFQt5IUffP0QF1JTW7BP4SSwdggwH9FW3KfkJ7W
-l8ON06CjFMFnOjlfIb8VnaEBYjGZyB5CSvBU+jvWJhLgqXzaEQep6azOeYRMsDGw
-VuBdM2Ulkyo8PGaap0LvA9t4j3wtFWeZtb1Kmi+2P/svONX09+l07sWyXqTGzNze
-vwIDAQAB
------END PUBLIC KEY-----
-
-I0118 22:15:24.743713  621636 grpc_verifier.go:384] =============== end GetEKCert ===============
-I0118 22:15:24.743761  621636 grpc_verifier.go:387] =============== start GetAK ===============
-I0118 22:15:24.840372  621636 grpc_verifier.go:420]       ak public 
------BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAstrZU393Zuewk8wsYbw1
-H8k00A2WBkn6VUMHghIPQyn+EN/ts/f5fKk0ZNkGJQb2POhRieSMKUUG+HmKFpBL
-k1udZs3oESx5oIVbeXlFnp5+POa0S4eCgPTuRoJohrBmgDOK9P8COIYLTRzv8bdy
-Jr2iDIG+ZQbMqNsci4ItDnJRnPdJenN85ahghn0B6nTKJpwH1RuNBqXeu1Y03TuD
-9LECjzL0mWnNJ0othJd8JjuW9nr1CU1roD5hmLxqJth7KKJAj1ZO/+3uYJZds4cS
-Dop48Pblb3MCgaS3BMTxnbTi+4ts05s0APu9+nYwzrie8QISFerZ9rNFJdbFjPjo
-owIDAQAB
------END PUBLIC KEY-----
-
-I0118 22:15:24.840462  621636 grpc_verifier.go:421] =============== end GetAK ===============
-I0118 22:15:24.840528  621636 grpc_verifier.go:424] =============== start Attest ===============
-I0118 22:15:24.840908  621636 grpc_verifier.go:437]       Outbound Secret: MpcYIFtsz7nDz4nYvmJTbyaEoEsUN/ecYrVSoMFMC44=
-I0118 22:15:25.129612  621636 grpc_verifier.go:453]       Inbound Secret: MpcYIFtsz7nDz4nYvmJTbyaEoEsUN/ecYrVSoMFMC44=
-I0118 22:15:25.129699  621636 grpc_verifier.go:456]       inbound/outbound Secrets Match; accepting AK
-I0118 22:15:25.129753  621636 grpc_verifier.go:461] =============== end Attest ===============
-I0118 22:15:25.129808  621636 grpc_verifier.go:464] =============== start Quote/Verify ===============
-I0118 22:15:25.495091  621636 grpc_verifier.go:509]       quote-attested public 
------BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAstrZU393Zuewk8wsYbw1
-H8k00A2WBkn6VUMHghIPQyn+EN/ts/f5fKk0ZNkGJQb2POhRieSMKUUG+HmKFpBL
-k1udZs3oESx5oIVbeXlFnp5+POa0S4eCgPTuRoJohrBmgDOK9P8COIYLTRzv8bdy
-Jr2iDIG+ZQbMqNsci4ItDnJRnPdJenN85ahghn0B6nTKJpwH1RuNBqXeu1Y03TuD
-9LECjzL0mWnNJ0othJd8JjuW9nr1CU1roD5hmLxqJth7KKJAj1ZO/+3uYJZds4cS
-Dop48Pblb3MCgaS3BMTxnbTi+4ts05s0APu9+nYwzrie8QISFerZ9rNFJdbFjPjo
-owIDAQAB
------END PUBLIC KEY-----
-
-I0118 22:15:25.495271  621636 grpc_verifier.go:536]      quotes verified
-I0118 22:15:25.495715  621636 grpc_verifier.go:565]      secureBoot State enabled: [true]
-I0118 22:15:25.495910  621636 grpc_verifier.go:571] =============== end Quote/Verify ===============
-I0118 22:15:25.495945  621636 grpc_verifier.go:574] =============== start NewKey ===============
-I0118 22:15:25.592241  621636 grpc_verifier.go:586]         PublicKey ========
------BEGIN Public Key-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9yKgPRWKB9Chjnkjy46ivtPOQG5R
-p7THPIQ3lRox15lHpS/FUqthJKHUrCVOYYxBYJF0+Ebogb2GJrYJ+HTHKQ==
------END Public Key-----
-
-I0118 22:15:25.592449  621636 grpc_verifier.go:655]      key verified 
------BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE9yKgPRWKB9Chjnkjy46ivtPOQG5R
-p7THPIQ3lRox15lHpS/FUqthJKHUrCVOYYxBYJF0+Ebogb2GJrYJ+HTHKQ==
------END PUBLIC KEY-----
-
-I0118 22:15:25.592494  621636 grpc_verifier.go:656] =============== end NewKey ===============        
 ```
 
-
-#### Local TPM
-
-If you want to test locally, you need to acquire your TPM's issuer and intermediate root certificates.
-
-For my laptop, the PCR value and issuers was `certs/ECCert.pem` 
-
-
-EKCert:
-
-```
-Certificate:
-    Data:
-        Version: 3 (0x2)
-        Serial Number:
-            24:eb:bd:b3:08:6f:8a:ab:e5:d6:91:d5:55:f9:d0:14:e7:5f:29:bb
-        Signature Algorithm: sha256WithRSAEncryption
-        Issuer: C=CH, O=STMicroelectronics NV, CN=STM TPM EK Intermediate CA 06
-        X509v3 extensions:
-            X509v3 Authority Key Identifier: 
-                FB:17:D7:0D:73:48:70:E9:19:C4:E8:E6:03:97:5E:66:4E:0E:43:DE
-            X509v3 Subject Alternative Name: critical
-                DirName:/2.23.133.2.1=id:53544D20/2.23.133.2.2=ST33HTPHAHD8/2.23.133.2.3=id:00010102
-```
-
-With PCRs:
-
-```bash
-$ sudo tpm2_pcrread -o pcrs sha1:0+sha256:0,7
-[sudo] password for srashid: 
-  sha1:
-    0 : 0x5FAB55B431F59B753BBD0C3885C85201099BF5DD
-  sha256:
-    0 : 0x3C5B53C48B7A21E554FBB14678C67DAFD792151CD3BDC6017E35F1B4A41FF412
-    7 : 0xAE2CE658A648D02A7F587BF36BFBAEE41DF3E3F241DAD2385C411D9B38D3904A
-
-
-## run attestor
-go run src/grpc_attestor.go --grpcport :50051  --v=10 -alsologtostderr
-
-
-## run verifier
-export ATTESTOR_ADDRESS=127.0.0.1
-go run src/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
-       --ekintermediateCA=certs/stmtpmek_combined.pem  --ekrootCA=certs/gstpmroot.pem  --expectedPCRMapSHA256=0:3c5b53c48b7a21e554fbb14678c67dafd792151cd3bdc6017e35f1b4a41ff412     --v=10 -alsologtostderr
-```
 
 ---
 
