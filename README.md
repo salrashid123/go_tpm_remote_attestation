@@ -7,6 +7,14 @@ This repo contains a sample `gRPC` client server application that uses a Trusted
 * Sealed and PCR bound Transfer of RSA or AES keys.
 * Parse TPM EventLog
 
+* You can use this standalone to setup a gRPC client/server for remote attestation.
+
+There are *TWO* branches to this repo: 
+
+* `push` (this branch):  In this mode, the attestor is the server and the verifier makes an rpc call to the attestor
+* `pull`:  In this mode, the attestor is the client initiator that makes an rpc call to the verifier
+
+
 Attestation:
 
 ( Images taken from [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html) )
@@ -23,14 +31,6 @@ EventLog
 ![images/diag3.png](images/diag3.png)
 
 >>> **NOTE** the code and procedure outlined here is **NOT** supported by google.
-
-
-You can use this standalone to setup a gRPC client/server for remote attestation.
-
-There are *TWO* branches to this repo: 
-
-* `push` (this branch):  In this mode, the attestor is the server and the verifier makes an rpc call to the attestor
-* `pull`:  In this mode, the attestor is the client initiator that makes an rpc call to the verifier
 
 There are two parts:
 
