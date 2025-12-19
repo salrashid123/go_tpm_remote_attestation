@@ -27,6 +27,11 @@ EventLog
 
 You can use this standalone to setup a gRPC client/server for remote attestation.
 
+There are *TWO* branches to this repo: 
+
+* `push` (this branch):  In this mode, the attestor is the server and the verifier makes an rpc call to the attestor
+* `pull`:  In this mode, the attestor is the client initiator that makes an rpc call to the verifier
+
 There are two parts:
 
 * `attestor`:  a `gRPC` server which accepts connections from a verifier, performs remote attestation, quote/verify and then transmits an ECC public key back to the verifier which is certified to exist on that TPM
