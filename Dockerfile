@@ -19,8 +19,8 @@ RUN go install github.com/golang/protobuf/protoc-gen-go@latest
 
 RUN protoc --go_out=. --go_opt=paths=source_relative --go-grpc_opt=require_unimplemented_servers=false  --descriptor_set_out=src/verifier/verifier.proto.pb --go-grpc_out=. --go-grpc_opt=paths=source_relative src/verifier/verifier.proto
 
-RUN export GOBIN=/app/bin && go install src/grpc_attestor.go
-RUN export GOBIN=/app/bin && go install src/grpc_verifier.go
+RUN export GOBIN=/app/bin && go install src/client/grpc_attestor.go
+RUN export GOBIN=/app/bin && go install src/server/grpc_verifier.go
 
 
 FROM gcr.io/distroless/base
@@ -30,6 +30,7 @@ COPY --from=build /app/certs/attestor_crt.pem /certs/attestor.crt
 COPY --from=build /app/certs/attestor_key.pem /certs/attestor.key
 COPY --from=build /app/certs/platform_cert.der /certs/platform_cert.der
 COPY --from=build /app/certs/CA_crt.pem /certs/root-ca.crt
+COPY --from=build /app/certs/CA_crt.pem /certs/root-ca.key
 COPY --from=build /app/bin /
 
 

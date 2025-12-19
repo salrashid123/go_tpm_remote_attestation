@@ -5,61 +5,82 @@ package verifier;
 option go_package = "github.com/salrashid123/go_tpm_remote_attestation/verifier";
 
 service Verifier {
-  rpc GetPlatformCert (GetPlatformCertRequest) returns (GetPlatformCertResponse) { }  
-  rpc GetEK (GetEKRequest) returns (GetEKResponse) { }
-  rpc GetAK (GetAKRequest) returns (GetAKResponse) { }
-  rpc Attest (AttestRequest) returns (AttestResponse) { }
-  rpc Quote (QuoteRequest) returns (QuoteResponse) { } 
-  rpc GetKey (GetAttestedKeyRequest) returns (GetAttestedKeyResponse) { }   
+  rpc OfferPlatformCert (OfferPlatformCertRequest) returns (OfferPlatformCertResponse) { }
+  rpc OfferEK (OfferEKRequest) returns (OfferEKResponse) { }
+  rpc OfferAK (OfferAKRequest) returns (OfferAKResponse) { }      
+  rpc GetMakeCredential (GetMakeCredentialRequest) returns (GetMakeCredentialResponse) { }
+  rpc SetActivateCredential (SetActivateCredentialRequest) returns (SetActivateCredentialResponse) { }  
+  rpc OfferQuote (OfferQuoteRequest) returns (OfferQuoteResponse) { }
+  rpc SetQuote (SetQuoteRequest) returns (SetQuoteResponse) { }   
+  rpc SetAttestedKey (SetAttestedKeyRequest) returns (SetAttestedKeyResponse) { }
+  rpc GetCertificate (GetCertificateRequest) returns (GetCertificateResponse) { }        
 }
 
-message GetPlatformCertRequest {}
-
-message GetPlatformCertResponse {
-  bytes platformCert = 1;
+message OfferPlatformCertRequest {
+  string uid = 1;  
+  bytes platformCert = 2;  
 }
 
-message GetEKRequest {}
+message OfferPlatformCertResponse {}
 
-message GetEKResponse {
-  bytes ekPub = 1;
-  bytes ekCert = 2;
+message OfferEKRequest {
+  string uid = 1;  
+  bytes ekCert = 2;  
 }
 
-message GetAKRequest {}
+message OfferEKResponse {}
 
-message GetAKResponse {
-  bytes attestation_parameters = 1;
+message OfferAKRequest {
+  string uid = 1;  
+  bytes attestation_parameters = 2;  
 }
 
-message AttestRequest {
-  bytes encryptedCredentials = 1;
+message OfferAKResponse {}
+
+message GetMakeCredentialRequest {
+  string uid = 1;  
 }
 
-message AttestResponse {
-  bytes secret = 1;
+message GetMakeCredentialResponse {
+    bytes encrypted_credentials = 1;  
 }
 
-message QuoteRequest {
+message SetActivateCredentialRequest {
+  string uid = 1;
+  bytes secret = 2;  
+}
+
+message SetActivateCredentialResponse {}
+
+message OfferQuoteRequest {
+  string uid = 1;
+}
+
+message OfferQuoteResponse {
   bytes nonce = 1;
 }
 
-message QuoteResponse {
-  bytes platformAttestation = 1;
+message SetQuoteRequest {
+  string uid = 1;
+  bytes platform_attestation = 2;
 }
 
-enum KeyType {
-  TLS = 0;
-  Signature = 1;
-  Encryption = 2;
-  AES = 3;
-}  
-message GetAttestedKeyRequest {
-  string kid = 1;
-  KeyType key_type = 2;
+message SetQuoteResponse {}
+
+
+message SetAttestedKeyRequest {
+  string uid = 1;
+  bytes key = 2;
+  bytes keyCertification = 3;
 }
 
-message GetAttestedKeyResponse {
-  bytes key = 1;
-  bytes keyCertification = 2;
+message SetAttestedKeyResponse {}
+
+message GetCertificateRequest {
+  string uid = 1;
+  bytes csr = 2;
+}
+
+message GetCertificateResponse {
+  bytes certificate = 1;
 }
