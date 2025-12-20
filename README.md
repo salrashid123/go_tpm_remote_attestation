@@ -31,44 +31,33 @@ On startup:
 1. Attestor contacts the Verifier
 2. Attestor sends the Platform Certificate
 3. Verifier checks the platform certificate specifications and verifies it with a demo platform CA
-
 4. Attestor sends EKCert (EK)
 5. Verifier checks Issuer and Signature of EKCert with CAs
 6. Verifier optionally compares EK SerialNumber with PlatformCert
-
-Remote Attestation 
-
-(MakeCredential)
-7. Attestor sends AKPublic (AK)
+7. (start `MakeCredential`) Attestor sends AKPublic (AK)
 8. Verifier uses EK and AK to generate (secret,encryptedCredential) via MakeCredential
 9. Verifier returnes encryptedCredential to Attestor
-
-(ActivateCredential)
-10. Attestor uses TPM to decode encryptedCredential and acquire secret
+10. (start `ActivateCredential`)Attestor uses TPM to decode encryptedCredential and acquire secret
 11. Attestor transmit secret to Verifier
 12. Verifer compares secrets and accepts AK
-
-Quote/Verify
-
-13. Attestor Quote initiation request to Verifer 
+13. (start `Quote/Verify`) Attestor Quote initiation request to Verifer 
 14. Verifer generates random nonce
 15. Verifer returns nonce to Attestor
 16. Attestor generates Quote over PCR values, nonce and uses AK to sign
 17. Attestor generates EventLog 
 18. Attestor returns Quote and EventLog to Verifier 
-19. Verifier checks signature of the Attestation is by the AK and the PCR values from the Quote and the nonce values match.  Verifier replays the eventLog to confirm derived PCR value.
-
-(optional) Issue New ECC x509
-
-20. Attestor genrate newKey on TPM 
-21. Attestor uses AK to certify newKey
-22. Attestor transmits newKey and certification data to Verifer
-23. Verifer confirms newKey is on the TPM and was certified by AK
-24. Attestor uses newKey to generate a CSR
-25. Attestor sends CSR to Verifier
-26. Verifer confirms CSR's public key is certified newKey
-27. Verifer signes csr and issues x509
-28. Verifer returns x509 to Attestor
+19. Verifier checks signature of the Attestation is by the AK and the
+    PCR values from the Quote and the nonce values match.
+    Verifier replays the eventLog to confirm derived PCR value.
+21. (optiona Issue New ECC x509) Attestor genrate newKey on TPM 
+22. Attestor uses AK to certify newKey
+23. Attestor transmits newKey and certification data to Verifer
+24. Verifer confirms newKey is on the TPM and was certified by AK
+25. Attestor uses newKey to generate a CSR
+26. Attestor sends CSR to Verifier
+27. Verifer confirms CSR's public key is certified newKey
+28. Verifer signes csr and issues x509
+29. Verifer returns x509 to Attestor
 
 ![images/pull.png](images/pull.png)
 
