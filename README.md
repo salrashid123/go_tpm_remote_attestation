@@ -11,8 +11,8 @@ This repo contains a sample `gRPC` client server application that uses a Trusted
 
 There are *TWO* branches to this repo: 
 
-* `push` (this branch):  In this mode, the attestor is the server and the verifier makes an rpc call to the attestor
-* `pull`:  In this mode, the attestor is the client initiator that makes an rpc call to the verifier
+* [push](https://github.com/salrashid123/go_tpm_remote_attestation/tree/push) (this branch):  In this mode, the attestor is the server and the verifier makes an rpc call to the attestor
+* [pull](https://github.com/salrashid123/go_tpm_remote_attestation/tree/pull):  In this mode, the attestor is the client initiator that makes an rpc call to the verifier
 
 
 Attestation:
@@ -230,7 +230,7 @@ sudo tpm2_eventlog /sys/kernel/security/tpm0/binary_bios_measurements
 Now run the Attestor:
 
 ```bash
-sudo go run src/grpc_attestor.go --grpcport :50051  --v=10 -alsologtostderr
+sudo go run src/server/grpc_attestor.go --grpcport :50051  --v=10 -alsologtostderr
 ```
 
 ```log
@@ -257,7 +257,7 @@ Run Verifier
 
 ```bash
 export ATTESTOR_ADDRESS=127.0.0.1
-go run src/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
+go run src/client/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
        --ekintermediateCA=certs/stmtpmekint10.pem --ekrootCA=certs/stmtpmekroot.pem \
        --expectedPCRMapSHA256=0:7bb4353897632fd086982175a027dafcc33f61adbab4ebfc6d13927b97a8c084  \
        --v=40 -alsologtostderr
@@ -543,7 +543,7 @@ Now run the verifier:
 ```log
 export ATTESTOR_ADDRESS=34.121.64.117 
 
-go run src/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
+go run src/client/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
        --ekintermediateCA=certs/ek_intermediate.pem  --ekrootCA=certs/ek_root.pem  --expectedPCRMapSHA256=0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85 \
         --v=10 -alsologtostderr
 ```
