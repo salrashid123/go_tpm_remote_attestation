@@ -14,8 +14,8 @@ You can use this standalone to setup a gRPC client/server for remote attestation
 
 There are *TWO* branches to this repo: 
 
-* `pull` (this branch):  In this mode, the attestor is the client initiator that makes an rpc call to the verifier
-* `push`:  In this mode, the attestor is the server and the verifier makes an rpc call to the attestor
+* [pull](https://github.com/salrashid123/go_tpm_remote_attestation/tree/pull) (this branch):  In this mode, the attestor is the client initiator that makes an rpc call to the verifier
+* [push](https://github.com/salrashid123/go_tpm_remote_attestation/tree/push):  In this mode, the attestor is the server and the verifier makes an rpc call to the attestor
 
 
 There are two parts:

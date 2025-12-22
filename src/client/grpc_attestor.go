@@ -9,7 +9,6 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"io"
@@ -246,7 +245,7 @@ func main() {
 		glog.Errorf("ERROR:  error activating Credential  AK %v", err)
 		os.Exit(1)
 	}
-	glog.V(5).Infof("EncryptedCredentials Secret %s", hex.EncodeToString(secret))
+	glog.V(5).Infof("EncryptedCredentials Secret %s", base64.StdEncoding.EncodeToString(secret))
 
 	glog.V(5).Infof("=============== SetActivateCredential ===============")
 
@@ -423,7 +422,7 @@ func main() {
 
 	issuedcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ccr.Certificate})
 
-	glog.V(5).Infof("Isued Certificate: \n%s\n", string(issuedcrtPEM))
+	glog.V(5).Infof("Issued Certificate: \n%s\n", string(issuedcrtPEM))
 
 	glog.V(5).Infof("GetCertificate complete \n")
 
