@@ -63,10 +63,13 @@ type db struct {
 }
 
 var (
-	grpcPort             = flag.String("grpcPort", ":50051", "port of gRPC server")
-	rootCert             = flag.String("rootCert", "certs/root-ca.crt", "tls Certificate")
-	signingCert          = flag.String("signingCert", "certs/root-ca.crt", "tls Certificate")
-	signingKey           = flag.String("signingKey", "certs/root-ca.key", "tls Certificate")
+	grpcPort    = flag.String("grpcPort", ":50051", "port of gRPC server")
+	rootCert    = flag.String("rootCert", "certs/root-ca.crt", "tls Certificate")
+	signingCert = flag.String("signingCert", "certs/root-ca.crt", "tls Certificate")
+	signingKey  = flag.String("signingKey", "certs/root-ca.key", "tls Certificate")
+
+	platformCACert = flag.String("platformCACert", "certs/platform-ca.crt", "tls Certificate")
+
 	tlsCert              = flag.String("tlsCert", "certs/verify_crt.pem", "tls Certificate")
 	tlsKey               = flag.String("tlsKey", "certs/verify_key.pem", "tls Key")
 	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
@@ -141,17 +144,29 @@ func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatfo
 
 	if len(in.PlatformCert) > 0 {
 
-		// TODO, read platfromCA from file once instead of every request.
-		rootDER, err := os.ReadFile(*platformCA)
+		// load the DER certificate, this is for validation of the static platform cert
+		// rootDER, err := os.ReadFile(*platformCA)
+		// if err != nil {
+		// 	glog.Errorf(fmt.Sprintf("Error Reading Root platform cert %v", err))
+		// 	return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error Reading Root platform cert %v", err)
+		// }
+		// platformRoot, err := x509.ParseCertificate(rootDER)
+		// if err != nil {
+		// 	glog.Errorf(fmt.Sprintf("Error failed to parse certificate %v", err))
+		// 	return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error failed to parse certificate  %v", err)
+		// }
+
+		// for the dynamic platform cert
+		rootPEM, err := os.ReadFile(*platformCACert)
 		if err != nil {
-			glog.Errorf("Error  Reading Root platform cert [%s] %v", in.Uid, err)
+			glog.Errorf(fmt.Sprintf("Error Reading Root platform cert", err))
 			return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error Reading Root platform cert %v", err)
 		}
-
-		platformRoot, err := x509.ParseCertificate(rootDER)
+		pubBlock, _ := pem.Decode(rootPEM)
+		platformRoot, err := x509.ParseCertificate(pubBlock.Bytes)
 		if err != nil {
-			glog.Errorf("Error  failed to parse certificate [%s] %v", in.Uid, err)
-			return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error failed to parse certificate %v", err)
+			glog.Errorf(fmt.Sprintf("Error failed to parse certificate %v", err))
+			return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error Reading Root platform cert %v", err)
 		}
 
 		ac, err := attributecert.ParseAttributeCertificate(in.PlatformCert)
@@ -210,7 +225,7 @@ func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatfo
 			glog.Errorf("Error failed to verify  attribute certificate [%s]  %v", in.Uid, err)
 			return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error  failed to verify  attribute certificate  %v", err)
 		}
-		glog.V(20).Infof(" Verified Platform cert signed by privacyCA")
+		glog.V(20).Infof("     Verified Platform cert signed by privacyCA")
 
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -413,6 +428,12 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 	defer s.mu.Unlock()
 
 	if val, ok := attestationKeys[in.Uid]; ok {
+
+		// you'll want to compare the platform holder's serial number to match the EK
+		if fmt.Sprintf("%s", val.PlatformCert.Holder.Serial) != fmt.Sprintf("%s", ekcert.SerialNumber) {
+			glog.Errorf("Platform Certificates holder serial number does not match EK Certificate serial number expected AttributeCert serial [%v]     EK serial [%v]", val.PlatformCert.Holder.Serial, ekcert.SerialNumber)
+			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "Platform Certificates holder serial number does not match EK Certificate serial number [%s]", in.Uid)
+		}
 		if val.PlatformCert != nil {
 			// do some validation of the platform cert and EK here
 		}
@@ -455,7 +476,7 @@ func (s *server) OfferAK(ctx context.Context, in *verifier.OfferAKRequest) (*ver
 		return &verifier.OfferAKResponse{}, status.Errorf(codes.Internal, "Error encoding serverAttestationParameter  %v", err)
 	}
 
-	akp, err := attest.ParseAKPublic(attest.TPMVersion20, serverAttestationParameter.Public)
+	akp, err := attest.ParseAKPublic(serverAttestationParameter.Public)
 	if err != nil {
 		glog.Errorf("Error Parsing AK [%s] %v", in.Uid, err)
 		return &verifier.OfferAKResponse{}, status.Errorf(codes.Internal, "Error Parsing AK %v", err)
@@ -508,9 +529,8 @@ func (s *server) GetMakeCredential(ctx context.Context, in *verifier.GetMakeCred
 	val := attestationKeys[in.Uid]
 
 	params := attest.ActivationParameters{
-		TPMVersion: attest.TPMVersion20,
-		EK:         val.EKCert.PublicKey,
-		AK:         *val.AttestationParameters,
+		EK: val.EKCert.PublicKey,
+		AK: *val.AttestationParameters,
 	}
 
 	secret, encryptedCredentials, err := params.Generate()
@@ -639,7 +659,7 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Quote Failed: json decoding quote response: %v", err)
 	}
 
-	pub, err := attest.ParseAKPublic(attest.TPMVersion20, serverPlatformAttestationParameter.Public)
+	pub, err := attest.ParseAKPublic(serverPlatformAttestationParameter.Public)
 	if err != nil {
 		glog.Errorf("Quote Failed ParseAKPublic:  [%s] %v", in.Uid, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Quote Failed ParseAKPublic: %v", err)

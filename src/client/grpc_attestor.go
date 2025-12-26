@@ -8,20 +8,19 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"io"
-	"slices"
+	"time"
 
 	"flag"
 	"fmt"
-	"net"
 	"os"
 
 	"github.com/golang/glog"
 	"github.com/google/go-attestation/attest"
-	"github.com/google/go-tpm/tpmutil"
+	"github.com/google/go-attestation/attributecert"
 	"github.com/google/uuid"
 	"github.com/salrashid123/go_tpm_registrar/verifier"
 	"google.golang.org/grpc"
@@ -35,8 +34,10 @@ var (
 	grpcServerName   = flag.String("grpcservername", "verify.domain.com", "SNI for grpc server")
 	tlsCert          = flag.String("tlsCert", "certs/root-ca.crt", "tls Certificate")
 	eventLogPath     = flag.String("eventLogPath", "/sys/kernel/security/tpm0/binary_bios_measurements", "Path to the eventlog")
-	tpmDevice        = flag.String("tpmDevice", "/dev/tpmrm0", "TPMPath")
 	platformCertFile = flag.String("platformCertFile", "certs/platform_cert.der", "Platform Certificate File")
+
+	platformCACert = flag.String("platformCACert", "certs/platform-ca.crt", "tls Certificate")
+	platformCAKey  = flag.String("platformCAKey", "certs/platform-ca.key", "tls Key")
 
 	tpm               *attest.TPM
 	ek                *attest.EK
@@ -48,16 +49,6 @@ var (
 )
 
 const ()
-
-var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
-
-func openTPM(path string) (io.ReadWriteCloser, error) {
-	if slices.Contains(TPMDEVICES, path) {
-		return tpmutil.OpenTPM(path)
-	} else {
-		return net.Dial("tcp", path)
-	}
-}
 
 func main() {
 	flag.Set("logtostderr", "true")
@@ -97,30 +88,9 @@ func main() {
 
 	uid := uuid.New().String()
 
-	c := verifier.NewVerifierClient(conn)
-	glog.V(5).Infof("=============== OfferPlatformCert ===============")
+	// first get the ek so we can stuff it into the platform cert
 
-	platformCert, err := os.ReadFile(*platformCertFile)
-	if err != nil {
-		glog.Errorf("ERROR: Unable to load parse platform certificate %v", err)
-		os.Exit(1)
-	}
-
-	_, err = c.OfferPlatformCert(ctx, &verifier.OfferPlatformCertRequest{
-		Uid:          uid,
-		PlatformCert: platformCert,
-	})
-	if err != nil {
-		glog.Errorf("error sending platformcert: %v", err)
-		os.Exit(1)
-	}
-	glog.V(5).Infof("Verified Platform Cert\n")
-
-	glog.V(5).Infof("=============== OfferEK ===============")
-
-	config := &attest.OpenConfig{
-		TPMVersion: attest.TPMVersion20,
-	}
+	config := &attest.OpenConfig{}
 	tpm, err = attest.OpenTPM(config)
 	if err != nil {
 		glog.Errorf("error opening TPM %v", err)
@@ -162,6 +132,95 @@ func main() {
 	if ek.Certificate != nil {
 		ekCert = ek.Certificate
 	}
+
+	c := verifier.NewVerifierClient(conn)
+	glog.V(5).Infof("=============== OfferPlatformCert ===============")
+
+	// Now get the platformcert
+	//  this step should be done by the platform issuer and their CA prior to any remote attestation protocol
+	//   there are two options here:  1) either use a static platform cert, or issue one dynamically just as a demo
+
+	// STATIC
+	// // I just statically generated the platform cert on another sheildedVM with a different EKCert/TPM
+	// //  i did that since i don't know how to generate and issue a platformcert in golang
+	// //  but i do know how to issue one win JAVA
+	// //  so, what i did created a new attribute cert on a different vm but used the same trusted CA to sign it.
+	// //  the verifer will check the signature but will pretend the EKCert the attestor has has the same static serial number
+	// // https://github.com/salrashid123/attribute_certificate
+	// // https://en.wikipedia.org/wiki/Authorization_certificate
+	// // https://github.com/openssl/openssl/issues/14648
+	// // 2.1.5 Assertions Made by a Platform Certificate >  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
+
+	// // for now just accept it w/o verifying its claims and move on
+
+	// platformCert, err := os.ReadFile(*platformCertFile)
+	// if err != nil {
+	// 	glog.Errorf("ERROR: Unable to load parse platform certificate %v", err)
+	// 	os.Exit(1)
+	// }
+
+	// Dynamic
+	// //  the following generates the platform CA and injects the EK's issuer and serial number into it
+	// //   this step should be done before any of the remote attestation protocol begins and should not be part
+	// //   of this protocol.  The only reason i'm doing it here is to make it an end-to-end example.
+
+	platformCACertBytes, err := os.ReadFile(*platformCACert)
+	if err != nil {
+		glog.Errorf("ERROR: Unable to load paltform CA %v", err)
+		os.Exit(1)
+	}
+	platformCAKeyBytes, err := os.ReadFile(*platformCAKey)
+	if err != nil {
+		glog.Errorf("ERROR: Unable to load paltform CA Key %v", err)
+		os.Exit(1)
+	}
+
+	pubBlock, _ := pem.Decode(platformCACertBytes)
+	ccacrt, err := x509.ParseCertificate(pubBlock.Bytes)
+	if err != nil {
+		glog.Errorf("error parsing client ca certificate %v", err)
+		os.Exit(1)
+	}
+
+	privBlock, _ := pem.Decode(platformCAKeyBytes)
+	ccakey, err := x509.ParsePKCS8PrivateKey(privBlock.Bytes)
+	if err != nil {
+		glog.Errorf("error decoding client ca certificate ca key:  %v", err)
+		os.Exit(1)
+	}
+	var notBefore time.Time
+	notBefore = time.Now()
+	notAfter := notBefore.Add(time.Hour * 24 * 365)
+
+	// h := &attributecert.Certholder{
+	// 	Issuer: ek.Certificate.Issuer,
+	// 	Serial: ek.Certificate.SerialNumber,
+	// }
+
+	rdns := ek.Certificate.Issuer.ToRDNSequence()
+	derBytes, err := asn1.Marshal(rdns)
+	if err != nil {
+		glog.Errorf("ERROR:Failed to marshal RDNSequence to DER: %v", err)
+		os.Exit(1)
+	}
+
+	platformCert, err := attributecert.CreateAttributeCertificate(derBytes, ek.Certificate.SerialNumber, notBefore, notAfter, ccacrt, ccakey)
+	if err != nil {
+		glog.Errorf("ERROR:Failed to marshal RDNSequence to DER: %v", err)
+		os.Exit(1)
+	}
+
+	_, err = c.OfferPlatformCert(ctx, &verifier.OfferPlatformCertRequest{
+		Uid:          uid,
+		PlatformCert: platformCert,
+	})
+	if err != nil {
+		glog.Errorf("error sending platformcert: %v", err)
+		os.Exit(1)
+	}
+	glog.V(5).Infof("Verified Platform Cert\n")
+
+	glog.V(5).Infof("=============== OfferEK ===============")
 
 	_, err = c.OfferEK(ctx, &verifier.OfferEKRequest{
 		Uid:    uid,
