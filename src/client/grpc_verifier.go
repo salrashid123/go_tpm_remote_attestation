@@ -48,6 +48,7 @@ var (
 	grpcServerName       = flag.String("grpcservername", "attestor.domain.com", "SNI for grpc server")
 	tlsCert              = flag.String("tlsCert", "certs/root-ca.crt", "tls Certificate")
 	platformCA           = flag.String("platformCA", "certs/IntelSigningKey_20April2017.cer", "Platform CA")
+	platformCACert       = flag.String("platformCACert", "certs/platform-ca.crt", "tls Certificate")
 	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
 	ekRootCA             = flag.String("ekrootCA", "certs/ek_root.pem", "EK rootsCA")
 	ekIntermediateCA     = flag.String("ekintermediateCA", "certs/ek_intermediate.pem", "EK intermediate CA")
@@ -96,13 +97,26 @@ func main() {
 	if len(platformCertResponse.PlatformCert) > 0 {
 		glog.V(5).Infof("=============== GetPlatformCert Returned from remote ===============")
 
-		rootDER, err := os.ReadFile(*platformCA)
+		// load the DER certificate, this is for validation of the static platform cert
+		// rootDER, err := os.ReadFile(*platformCA)
+		// if err != nil {
+		// 	glog.Errorf(fmt.Sprintf("Error Reading Root platform cert %v", err))
+		// 	os.Exit(1)
+		// }
+		// platformRoot, err := x509.ParseCertificate(rootDER)
+		// if err != nil {
+		// 	glog.Errorf(fmt.Sprintf("Error failed to parse certificate %v", err))
+		// 	os.Exit(1)
+		// }
+
+		// for the dynamic platform cert
+		rootPEM, err := os.ReadFile(*platformCACert)
 		if err != nil {
-			glog.Errorf(fmt.Sprintf("Error Reading Root platform cert", err))
+			glog.Errorf(fmt.Sprintf("Error Reading Root platform cert %v", err))
 			os.Exit(1)
 		}
-
-		platformRoot, err := x509.ParseCertificate(rootDER)
+		pubBlock, _ := pem.Decode(rootPEM)
+		platformRoot, err := x509.ParseCertificate(pubBlock.Bytes)
 		if err != nil {
 			glog.Errorf(fmt.Sprintf("Error failed to parse certificate %v", err))
 			os.Exit(1)
@@ -161,14 +175,13 @@ func main() {
 
 		err = ac.CheckSignatureFrom(platformRoot)
 		if err != nil {
-			glog.Errorf(fmt.Sprintf("Error [%s] failed to verify  attribute certificate  %v", err))
+			glog.Errorf(fmt.Sprintf("Error failed to verify  attribute certificate  %v", err))
 			os.Exit(1)
 		}
 		glog.V(20).Infof(" Verified Platform cert signed by privacyCA")
 
-		// todo, save the serial number here...we need to compare the serail number seen here againt the EKCert (which we don't have at the point; i know
-		// i can just change the protomessage to send it unilaterally...btw, the EKCert is sent in the makeCredential call just...so maybe save the serialnumber from
-		// here
+		// todo, save the serial number here...we need to compare the serail number seen here againt the EKCert (which we don't have at the point; thats done in
+		// the next step
 		glog.V(20).Infof(" Platform Cert's Holder SerialNumber %s\n", fmt.Sprintf("%x", ac.Holder.Serial))
 
 		// if _, err := cert.Verify(opts); err != nil {
@@ -229,6 +242,9 @@ func main() {
 		glog.Errorf("ERROR:   ParseCertificate: %v", err)
 		os.Exit(1)
 	}
+
+	// TODO compare the platform cert's holder serial# to the ekcert's serial number
+	glog.V(20).Infof("     EKCert serial number should match platform Platform Cert's Holder SerialNumber %s\n", fmt.Sprintf("%x", ekcert.SerialNumber))
 
 	// optionally parse SAN.DirName, eg:
 	// pg 24,26: https://trustedcomputinggroup.org/wp-content/uploads/TCG_IWG_Credential_Profile_EK_V2.1_R13.pdf
@@ -431,7 +447,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	akp, err := attest.ParseAKPublic(attest.TPMVersion20, serverAttestationParameter.Public)
+	akp, err := attest.ParseAKPublic(serverAttestationParameter.Public)
 	if err != nil {
 		glog.Errorf("Error Parsing AK %v", err)
 		os.Exit(1)
@@ -456,9 +472,8 @@ func main() {
 	glog.V(5).Infof("=============== start Attest ===============")
 
 	params := attest.ActivationParameters{
-		TPMVersion: attest.TPMVersion20,
-		EK:         ekPubKey,
-		AK:         *serverAttestationParameter,
+		EK: ekPubKey,
+		AK: *serverAttestationParameter,
 	}
 
 	secret, encryptedCredentials, err := params.Generate()
@@ -519,7 +534,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	pub, err := attest.ParseAKPublic(attest.TPMVersion20, serverAttestationParameter.Public)
+	pub, err := attest.ParseAKPublic(serverAttestationParameter.Public)
 	if err != nil {
 		glog.Errorf("Quote Failed ParseAKPublic: %v", err)
 		os.Exit(1)

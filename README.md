@@ -84,6 +84,8 @@ also see
 
 If you want to test locally with a real TPM, you need to acquire your TPM's issuer and intermediate root certificates.
 
+Alternatively, if you have access to crate two Google Cloud VMs that setup is easier and described below
+
 For my laptop, the PCR value and issuers was `certs/ECCert.pem` 
 
 To get the EKCert, install `tpm2_tools` first and then:
@@ -545,7 +547,229 @@ export ATTESTOR_ADDRESS=34.121.64.117
 
 go run src/client/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
        --ekintermediateCA=certs/ek_intermediate.pem  --ekrootCA=certs/ek_root.pem  --expectedPCRMapSHA256=0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85 \
-        --v=10 -alsologtostderr
+        --v=50 -alsologtostderr
+
+
+I1225 13:01:21.315748   38053 grpc_verifier.go:91] =============== GetPlatformCert ===============
+I1225 13:01:21.322304   38053 grpc_verifier.go:98] =============== GetPlatformCert Returned from remote ===============
+I1225 13:01:21.322516   38053 grpc_verifier.go:131]      PlatformCertificate Issuer: CN=Platform Root CA,OU=Enterprise,O=Google,C=US
+I1225 13:01:21.322556   38053 grpc_verifier.go:132]      PlatformCertificate Version: 2
+I1225 13:01:21.322568   38053 grpc_verifier.go:134]      PlatformCertificate CredentialSpecification: 
+I1225 13:01:21.322582   38053 grpc_verifier.go:135]      PlatformCertificate PlatformManufacturer: 
+I1225 13:01:21.322595   38053 grpc_verifier.go:136]      PlatformCertificate PlatformModel: 
+I1225 13:01:21.322612   38053 grpc_verifier.go:137]      PlatformCertificate PlatformVersion: 
+I1225 13:01:21.322628   38053 grpc_verifier.go:138]      PlatformCertificate PropertiesURI: 
+I1225 13:01:21.322641   38053 grpc_verifier.go:153]      PlatformCertificate Holder.Issuer: CN=EK/AK CA Intermediate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
+I1225 13:01:21.322667   38053 grpc_verifier.go:154]      PlatformCertificate Holder.Serial: 3611588439953970456259285110145793871903745659
+I1225 13:01:21.322694   38053 grpc_verifier.go:155]      PlatformCertificate Holder.Issuer.CommonName: EK/AK CA Intermediate
+I1225 13:01:21.322715   38053 grpc_verifier.go:160]      PlatformCertificate TBBSecurityAssertions.Iso9000URI: 
+I1225 13:01:21.322737   38053 grpc_verifier.go:161]      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileOid: 
+I1225 13:01:21.322761   38053 grpc_verifier.go:162]      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileURI: 
+I1225 13:01:21.322791   38053 grpc_verifier.go:163]      PlatformCertificate TBBSecurityAssertions.CcInfo.TargetOid: 
+I1225 13:01:21.322815   38053 grpc_verifier.go:164]      PlatformCertificate TBBSecurityAssertions.CcInfo.TargetURI: 
+I1225 13:01:21.322836   38053 grpc_verifier.go:165]      PlatformCertificate TBBSecurityAssertions.CcInfo.Version: 
+I1225 13:01:21.322861   38053 grpc_verifier.go:167]      PlatformCertificate TCGPlatformSpecification.Version: {0 0 0}
+I1225 13:01:21.322888   38053 grpc_verifier.go:168]      PlatformCertificate TCGPlatformSpecification.Version.MajorVersion: 0
+I1225 13:01:21.322910   38053 grpc_verifier.go:169]      PlatformCertificate TCGPlatformSpecification.Version.MinorVersion: 0
+I1225 13:01:21.322937   38053 grpc_verifier.go:170]      PlatformCertificate TCGPlatformSpecification.Version.Revision: 0
+I1225 13:01:21.322966   38053 grpc_verifier.go:172]      PlatformCertificate UserNotice.UserNotice.ExplicitText: 
+I1225 13:01:21.322989   38053 grpc_verifier.go:173]      PlatformCertificate UserNotice.UserNotice.Organization: 
+I1225 13:01:21.323019   38053 grpc_verifier.go:174]      PlatformCertificate UserNotice.UserNotice.NoticeNumbers: []
+I1225 13:01:21.323101   38053 grpc_verifier.go:181]  Verified Platform cert signed by privacyCA
+I1225 13:01:21.323151   38053 grpc_verifier.go:186]  Platform Cert's Holder SerialNumber a1f300858b036f9572ad5cac758e637158667b
+I1225 13:01:21.323182   38053 grpc_verifier.go:197] =============== start GetEK ===============
+I1225 13:01:21.323742   38053 grpc_verifier.go:211]         AuthType, ServerName tls, attestor.domain.com
+I1225 13:01:21.323777   38053 grpc_verifier.go:222]         EKM my_nonce: 4b32e031991f192ac9f09a037f867d8980af3aaf8a093c5a7e6a6e5fb7baf820
+I1225 13:01:21.323879   38053 grpc_verifier.go:248]      EKCert serial number should match platform Platform Cert's Holder SerialNumber a1f300858b036f9572ad5cac758e637158667b
+I1225 13:01:21.323909   38053 grpc_verifier.go:331]      EKCert  GCE InstanceID 7971457955842118306
+I1225 13:01:21.323927   38053 grpc_verifier.go:332]      EKCert  GCE InstanceName attestor
+I1225 13:01:21.323943   38053 grpc_verifier.go:333]      EKCert  GCE ProjectId srashid-test2
+I1225 13:01:21.323976   38053 grpc_verifier.go:337]         EKCertificate ========
+-----BEGIN CERTIFICATE-----
+MIIF5zCCA8+gAwIBAgIUAKHzAIWLA2+Vcq1crHWOY3FYZnswDQYJKoZIhvcNAQEL
+BQAwgYYxCzAJBgNVBAYTAlVTMRMwEQYDVQQIEwpDYWxpZm9ybmlhMRYwFAYDVQQH
+Ew1Nb3VudGFpbiBWaWV3MRMwEQYDVQQKEwpHb29nbGUgTExDMRUwEwYDVQQLEwxH
+b29nbGUgQ2xvdWQxHjAcBgNVBAMTFUVLL0FLIENBIEludGVybWVkaWF0ZTAgFw0y
+NTEyMTgxMTU4MTdaGA8yMDU1MTIxMTExNTgxNlowbjEWMBQGA1UEBxMNdXMtY2Vu
+dHJhbDEtYTEeMBwGA1UEChMVR29vZ2xlIENvbXB1dGUgRW5naW5lMRYwFAYDVQQL
+Ew1zcmFzaGlkLXRlc3QyMRwwGgYDVQQDExM3OTcxNDU3OTU1ODQyMTE4MzA2MIIB
+IjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyed2APaDud1sGVqyh1D8Ssg/
+diCMkHnoy3GoMO/h+XUIiEACgy0TBVtprssAgUDozc1FMYx4RicMqlp5X5aiGFoE
+k9xOLAre8kwSGQ3HjD5WoM7kMG5IaXr/qcMX5vB99cUZlKEBfs8Exa1pf8hnbbYX
+dI1dHpCGgrRicnMx4JQR3e3uGgyrgYVAQRRJ2J8sgMaUe+ObDj2J1gvUvbDmiX+P
+j14GkqjvftaaRymIB0u5akEhTiSGAoSnAo3u67Rl9b/IsFEXWFUqA78TBZ4sCAiL
+OpuTs1UZ4D3rA3frFC5IMYD83zuPtrrFLO2+DKiNl3tZIPybJzQgC5MH9AVxWwID
+AQABo4IBYDCCAVwwDgYDVR0PAQH/BAQDAgUgMAwGA1UdEwEB/wQCMAAwHQYDVR0O
+BBYEFKdsHBDPRfgdQY82q/URy049L4hKMB8GA1UdIwQYMBaAFA8hnVbhqcCJxWza
+I8DE8TKwSol6MIGNBggrBgEFBQcBAQSBgDB+MHwGCCsGAQUFBzAChnBodHRwOi8v
+cHJpdmF0ZWNhLWNvbnRlbnQtNjVkMTY4OGUtMDAwMC0yMjAzLTg1MGUtMzBmZDM4
+MTQ1NmY4LnN0b3JhZ2UuZ29vZ2xlYXBpcy5jb20vODEwYWYzMTM0MDZhZDNlMjA3
+OWIvY2EuY3J0MGwGCisGAQQB1nkCARUEXjBcDA11cy1jZW50cmFsMS1hAgYApOlF
+n+AMDXNyYXNoaWQtdGVzdDICCG6gTsa37lKiDAhhdHRlc3RvcqAgMB6gAwIBAKED
+AQH/ogMBAf+jAwEBAKQDAQEApQMBAQAwDQYJKoZIhvcNAQELBQADggIBABrCILJa
+FWgY8S4AA/8npdEuHMTZdEu/ts77OBQ3WCnTB8MDgkRbmKGKReZ9mI4GL+LuyJWq
+Lf2Uh9bQ0dxvS/SZY/BYAoEABdBcZf082N7cPm9BX46abjbuiYOwZaFg9Y1Oudfw
+E97ty74TLb96hrLYThIHuqgdOKKHfDPbTi55E6YeFv/Y1ZHmJqgE/kLKW+FwgoS5
+5SRZWPXaniiCiHH414oSjMhrHnLlHTExtyGQhXg76ukHvrUnBHKEvJnffmo44GWU
+QFCQOCrmsIIHSDta+C9EEN6SHEp0gIhorRiIzE1DMzipApffc6xeXYAxuetM18PN
+OCgPg5aUzAizICnzQAL2oVjIRmsYBPalsWnPAy8N1/QwSSgauf7Os8Iwbg0i+hjP
+T/m6VAeZF+aL95Kgblcid/LmwtuQzr0bD4SyP3kx9ZjZ79K+fC6i8sRwmyMccmSo
+6ObVj2RRyJVhKxgbG9uprQhlsEnIVwBLsksi5+dCMcuPyf4HQxrR4DKXNEyABQZg
+KFx9f+ZSfUztUf/F3NHsFnFeTAmpkBFhGMXN1F4CmuuWwqMrkVK14Ge0zVB7+fFm
+NtN9soont2fHW+a6tFKjjEAq9qI+JVr0ptqccGgeMrFpfIy7+72kLXY0K68VJLn6
+KFpbri1K/wxQAJHo/4YfCe0qoKscctMl2BRx
+-----END CERTIFICATE-----
+
+I1225 13:01:21.324051   38053 grpc_verifier.go:353]      EKCert  Issuer CN=EK/AK CA Intermediate,OU=Google Cloud,O=Google LLC,L=Mountain View,ST=California,C=US
+I1225 13:01:21.324086   38053 grpc_verifier.go:354]      EKCert  IssuingCertificateURL [http://privateca-content-65d1688e-0000-2203-850e-30fd381456f8.storage.googleapis.com/810af313406ad3e2079b/ca.crt]
+I1225 13:01:21.324109   38053 grpc_verifier.go:355]      EKCert  SerialNumber 3611588439953970456259285110145793871903745659
+I1225 13:01:21.324145   38053 grpc_verifier.go:357]     EkCert Public Key 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyed2APaDud1sGVqyh1D8
+Ssg/diCMkHnoy3GoMO/h+XUIiEACgy0TBVtprssAgUDozc1FMYx4RicMqlp5X5ai
+GFoEk9xOLAre8kwSGQ3HjD5WoM7kMG5IaXr/qcMX5vB99cUZlKEBfs8Exa1pf8hn
+bbYXdI1dHpCGgrRicnMx4JQR3e3uGgyrgYVAQRRJ2J8sgMaUe+ObDj2J1gvUvbDm
+iX+Pj14GkqjvftaaRymIB0u5akEhTiSGAoSnAo3u67Rl9b/IsFEXWFUqA78TBZ4s
+CAiLOpuTs1UZ4D3rA3frFC5IMYD83zuPtrrFLO2+DKiNl3tZIPybJzQgC5MH9AVx
+WwIDAQAB
+-----END PUBLIC KEY-----
+
+I1225 13:01:21.324180   38053 grpc_verifier.go:360]     Verifying EKCert
+I1225 13:01:21.325417   38053 grpc_verifier.go:415]     EKCert Verified
+I1225 13:01:21.325455   38053 grpc_verifier.go:417]      EKPub: 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyed2APaDud1sGVqyh1D8
+Ssg/diCMkHnoy3GoMO/h+XUIiEACgy0TBVtprssAgUDozc1FMYx4RicMqlp5X5ai
+GFoEk9xOLAre8kwSGQ3HjD5WoM7kMG5IaXr/qcMX5vB99cUZlKEBfs8Exa1pf8hn
+bbYXdI1dHpCGgrRicnMx4JQR3e3uGgyrgYVAQRRJ2J8sgMaUe+ObDj2J1gvUvbDm
+iX+Pj14GkqjvftaaRymIB0u5akEhTiSGAoSnAo3u67Rl9b/IsFEXWFUqA78TBZ4s
+CAiLOpuTs1UZ4D3rA3frFC5IMYD83zuPtrrFLO2+DKiNl3tZIPybJzQgC5MH9AVx
+WwIDAQAB
+-----END PUBLIC KEY-----
+
+I1225 13:01:21.325612   38053 grpc_verifier.go:433] =============== end GetEKCert ===============
+I1225 13:01:21.325659   38053 grpc_verifier.go:436] =============== start GetAK ===============
+I1225 13:01:21.387897   38053 grpc_verifier.go:469]       ak public 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqR+aNEzNxO2C98RfgsLY
+3cgSKuQHkINxT7N5r/hCAWx9bfgiHReV6MCcCmKqOu/y49Cl/WfbO/wx+5g30G7V
+6TAvAaChhoxEX+WcL1UN2ZoRLprHSJcj+liP0hUVypQBWg00RGv55MvA0iKEU/Qq
+eBUKfEl5kBk4jGgQQOA+fvbpykDUm2ZXItYKnVuH+22eZZmweh+kRKraBDi+fDis
+pNhto+d0VXDAMxKYMqr5HQZAzBpCRkWAGTIn2pQ1ULSR0q8eVZ33plA6ZrUxPQAN
+I5INLn5Ftz5zg2VQ9hT6XBhalXXi07hpuHTPJ7u3ax0NpOTraUDqJbDeryoWxv+t
+5wIDAQAB
+-----END PUBLIC KEY-----
+
+I1225 13:01:21.388007   38053 grpc_verifier.go:470] =============== end GetAK ===============
+I1225 13:01:21.388094   38053 grpc_verifier.go:473] =============== start Attest ===============
+I1225 13:01:21.388470   38053 grpc_verifier.go:485]       Outbound Secret: vct5Ccz+qH5oHC395JpFFSobfANxTcKR/DvJE2fIp24=
+I1225 13:01:21.590394   38053 grpc_verifier.go:501]       Inbound Secret: vct5Ccz+qH5oHC395JpFFSobfANxTcKR/DvJE2fIp24=
+I1225 13:01:21.590542   38053 grpc_verifier.go:504]       inbound/outbound Secrets Match; accepting AK
+I1225 13:01:21.590609   38053 grpc_verifier.go:509] =============== end Attest ===============
+I1225 13:01:21.590666   38053 grpc_verifier.go:512] =============== start Quote/Verify ===============
+I1225 13:01:21.996496   38053 grpc_verifier.go:557]       quote-attested public 
+-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqR+aNEzNxO2C98RfgsLY
+3cgSKuQHkINxT7N5r/hCAWx9bfgiHReV6MCcCmKqOu/y49Cl/WfbO/wx+5g30G7V
+6TAvAaChhoxEX+WcL1UN2ZoRLprHSJcj+liP0hUVypQBWg00RGv55MvA0iKEU/Qq
+eBUKfEl5kBk4jGgQQOA+fvbpykDUm2ZXItYKnVuH+22eZZmweh+kRKraBDi+fDis
+pNhto+d0VXDAMxKYMqr5HQZAzBpCRkWAGTIn2pQ1ULSR0q8eVZ33plA6ZrUxPQAN
+I5INLn5Ftz5zg2VQ9hT6XBhalXXi07hpuHTPJ7u3ax0NpOTraUDqJbDeryoWxv+t
+5wIDAQAB
+-----END PUBLIC KEY-----
+
+I1225 13:01:21.996857   38053 grpc_verifier.go:572]      PCR: 0, verified: true value: 2aab58e23ea5120d70a3ebce56bd0e6d5e3035b7
+I1225 13:01:21.996937   38053 grpc_verifier.go:572]      PCR: 1, verified: true value: bd130e032b6a08e3a560742f85ab6ec06187ca59
+I1225 13:01:21.996957   38053 grpc_verifier.go:572]      PCR: 2, verified: true value: b2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
+I1225 13:01:21.996972   38053 grpc_verifier.go:572]      PCR: 3, verified: true value: b2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
+I1225 13:01:21.996990   38053 grpc_verifier.go:572]      PCR: 4, verified: true value: 2bb79b803727f951c9e94b1d397dd1fdb313613b
+I1225 13:01:21.997001   38053 grpc_verifier.go:572]      PCR: 5, verified: true value: 21d0cb9381826d50a52a5bd7529b26b79cf33ce8
+I1225 13:01:21.997007   38053 grpc_verifier.go:572]      PCR: 6, verified: true value: b2a83b0ebf2f8374299a5b2bdfc31ea955ad7236
+I1225 13:01:21.997013   38053 grpc_verifier.go:572]      PCR: 7, verified: true value: f85407dacbab76af05dafa4ff33d0e8712a90222
+I1225 13:01:21.997019   38053 grpc_verifier.go:572]      PCR: 8, verified: true value: 52f1ab36cee5b33c1214938c7e4e50b6b4d1292d
+I1225 13:01:21.997023   38053 grpc_verifier.go:572]      PCR: 9, verified: true value: 39cce3f2ed3ea8c58a4fa4fa3bbf96c6595c17e5
+I1225 13:01:21.997029   38053 grpc_verifier.go:572]      PCR: 10, verified: true value: b16c0d2bc5634594126825f15429c4334715740d
+I1225 13:01:21.997045   38053 grpc_verifier.go:572]      PCR: 11, verified: true value: 0000000000000000000000000000000000000000
+I1225 13:01:21.997053   38053 grpc_verifier.go:572]      PCR: 12, verified: true value: 0000000000000000000000000000000000000000
+I1225 13:01:21.997058   38053 grpc_verifier.go:572]      PCR: 13, verified: true value: 0000000000000000000000000000000000000000
+I1225 13:01:21.997063   38053 grpc_verifier.go:572]      PCR: 14, verified: true value: a482a15e112717d6a915b989a0ea6140a507e3e6
+I1225 13:01:21.997068   38053 grpc_verifier.go:572]      PCR: 15, verified: true value: 0000000000000000000000000000000000000000
+I1225 13:01:21.997073   38053 grpc_verifier.go:572]      PCR: 16, verified: true value: 0000000000000000000000000000000000000000
+I1225 13:01:21.997078   38053 grpc_verifier.go:572]      PCR: 17, verified: true value: ffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997083   38053 grpc_verifier.go:572]      PCR: 18, verified: true value: ffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997096   38053 grpc_verifier.go:572]      PCR: 19, verified: true value: ffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997102   38053 grpc_verifier.go:572]      PCR: 20, verified: true value: ffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997107   38053 grpc_verifier.go:572]      PCR: 21, verified: true value: ffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997112   38053 grpc_verifier.go:572]      PCR: 22, verified: true value: ffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997122   38053 grpc_verifier.go:572]      PCR: 23, verified: true value: 0000000000000000000000000000000000000000
+I1225 13:01:21.997132   38053 grpc_verifier.go:572]      PCR: 0, verified: true value: a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85
+I1225 13:01:21.997138   38053 grpc_verifier.go:572]      PCR: 1, verified: true value: c463da3e0c59a48f6a6ebcdbff4beadb648500b8d6efaa49b87d6a000d23c3ec
+I1225 13:01:21.997145   38053 grpc_verifier.go:572]      PCR: 2, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
+I1225 13:01:21.997157   38053 grpc_verifier.go:572]      PCR: 3, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
+I1225 13:01:21.997162   38053 grpc_verifier.go:572]      PCR: 4, verified: true value: a823fe03561e2cd9f2481ca450cbe637ef93551bda02935299d419c1bb5ccae1
+I1225 13:01:21.997172   38053 grpc_verifier.go:572]      PCR: 5, verified: true value: 8f772fe8ba0f52cfd8c0717a5d7167c507009af500525704e8211bf00d0fb4e3
+I1225 13:01:21.997177   38053 grpc_verifier.go:572]      PCR: 6, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
+I1225 13:01:21.997187   38053 grpc_verifier.go:572]      PCR: 7, verified: true value: 59ce152eb723a82c172b04dc3628c799f2ce322c328d75f30e1a9f01233cb4bb
+I1225 13:01:21.997192   38053 grpc_verifier.go:572]      PCR: 8, verified: true value: 8fcfd00746a287d050231a22855499f33ceaeb0afab032fafcf5ef48796024fd
+I1225 13:01:21.997202   38053 grpc_verifier.go:572]      PCR: 9, verified: true value: 73827fab9ea3aebc47a74649e35fd5a7fdab54b4149e3a772fcbf3329da04949
+I1225 13:01:21.997207   38053 grpc_verifier.go:572]      PCR: 10, verified: true value: da4b74370b7970b13c8372420272d73a810ed9f201c2a609dc1f18badb57651d
+I1225 13:01:21.997214   38053 grpc_verifier.go:572]      PCR: 11, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997219   38053 grpc_verifier.go:572]      PCR: 12, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997228   38053 grpc_verifier.go:572]      PCR: 13, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997236   38053 grpc_verifier.go:572]      PCR: 14, verified: true value: 306f9d8b94f17d93dc6e7cf8f5c79d652eb4c6c4d13de2dddc24af416e13ecaf
+I1225 13:01:21.997244   38053 grpc_verifier.go:572]      PCR: 15, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997249   38053 grpc_verifier.go:572]      PCR: 16, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997258   38053 grpc_verifier.go:572]      PCR: 17, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997264   38053 grpc_verifier.go:572]      PCR: 18, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997271   38053 grpc_verifier.go:572]      PCR: 19, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997283   38053 grpc_verifier.go:572]      PCR: 20, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997288   38053 grpc_verifier.go:572]      PCR: 21, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997293   38053 grpc_verifier.go:572]      PCR: 22, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997301   38053 grpc_verifier.go:572]      PCR: 23, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997307   38053 grpc_verifier.go:572]      PCR: 0, verified: true value: 46384721a6cbbb845096ccf31553e49e0ee2f5f7a488e0d98ca676aaab6ebbb30888a5424d90d9eccbf59f461db8da35
+I1225 13:01:21.997312   38053 grpc_verifier.go:572]      PCR: 1, verified: true value: a4520d955c3839d5a9ad753794cf1a125d84d3856d845ca9bf0950451dfc5db2f22e1a206002af1be64f154cd3cf74e6
+I1225 13:01:21.997330   38053 grpc_verifier.go:572]      PCR: 2, verified: true value: 518923b0f955d08da077c96aaba522b9decede61c599cea6c41889cfbea4ae4d50529d96fe4d1afdafb65e7f95bf23c4
+I1225 13:01:21.997336   38053 grpc_verifier.go:572]      PCR: 3, verified: true value: 518923b0f955d08da077c96aaba522b9decede61c599cea6c41889cfbea4ae4d50529d96fe4d1afdafb65e7f95bf23c4
+I1225 13:01:21.997342   38053 grpc_verifier.go:572]      PCR: 4, verified: true value: 81d23b6b7dcbb8fd4df6d3bd7bcdff230de47d1de4e1bd41ae85854518f80ca9b6e8653d45d567f98b05aa5b3af397fe
+I1225 13:01:21.997347   38053 grpc_verifier.go:572]      PCR: 5, verified: true value: d16e6072e84bead5b1c524c87f07c778893883fa446f28470eec7a454aabcf32b167c35af73076398e38e1498b73f772
+I1225 13:01:21.997352   38053 grpc_verifier.go:572]      PCR: 6, verified: true value: 518923b0f955d08da077c96aaba522b9decede61c599cea6c41889cfbea4ae4d50529d96fe4d1afdafb65e7f95bf23c4
+I1225 13:01:21.997357   38053 grpc_verifier.go:572]      PCR: 7, verified: true value: 0153800a9b64131320ca65dc410ac503ec49de0121b0fcb51b55e33f8833d4994067ec2b94193b65ab49f759bc5b41dd
+I1225 13:01:21.997363   38053 grpc_verifier.go:572]      PCR: 8, verified: true value: 2e69e332006cb6591d2abe90d602b18392e6a4b67af49bc4d25f513699172a64571484756b68e3b7bac8b862c9ce9332
+I1225 13:01:21.997373   38053 grpc_verifier.go:572]      PCR: 9, verified: true value: 65fccce4428b54c08c8a4d44e68e6db32638edfb02512b99a26bdf04096028d1cdfdc5671774dff8d2c7bc731d7364a9
+I1225 13:01:21.997378   38053 grpc_verifier.go:572]      PCR: 10, verified: true value: 2cf9998f128407522e691d4bb129946e85938f23a8288a1a1e5d785c0889f51ca8d560da5f6394721038668101b17bff
+I1225 13:01:21.997388   38053 grpc_verifier.go:572]      PCR: 11, verified: true value: 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997393   38053 grpc_verifier.go:572]      PCR: 12, verified: true value: 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997398   38053 grpc_verifier.go:572]      PCR: 13, verified: true value: 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997404   38053 grpc_verifier.go:572]      PCR: 14, verified: true value: 937437d07298010015f4598395c9f8dc202ef36e0be3897bba89874bf612b5da092beadfe37f79714a60193819e384ad
+I1225 13:01:21.997415   38053 grpc_verifier.go:572]      PCR: 15, verified: true value: 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997420   38053 grpc_verifier.go:572]      PCR: 16, verified: true value: 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997429   38053 grpc_verifier.go:572]      PCR: 17, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997440   38053 grpc_verifier.go:572]      PCR: 18, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997445   38053 grpc_verifier.go:572]      PCR: 19, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997452   38053 grpc_verifier.go:572]      PCR: 20, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997458   38053 grpc_verifier.go:572]      PCR: 21, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997463   38053 grpc_verifier.go:572]      PCR: 22, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I1225 13:01:21.997468   38053 grpc_verifier.go:572]      PCR: 23, verified: true value: 000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+I1225 13:01:21.997474   38053 grpc_verifier.go:584]      quotes verified
+I1225 13:01:21.998685   38053 grpc_verifier.go:613]      secureBoot State enabled: [true]
+I1225 13:01:22.000495   38053 grpc_verifier.go:619] =============== end Quote/Verify ===============
+I1225 13:01:22.000593   38053 grpc_verifier.go:622] =============== start NewKey ===============
+I1225 13:01:22.058248   38053 grpc_verifier.go:634]         PublicKey ========
+-----BEGIN Public Key-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEBgpu3Zg+XpbkaTlb03jn7KgcE3Yb
+J6UI0PF/WFUjVCT878GYBWa+blnmF7gUxNrqjUdhKNcQzJUwpUSn1ExolA==
+-----END Public Key-----
+
+I1225 13:01:22.058631   38053 grpc_verifier.go:659]      Key AuthPolicy []
+I1225 13:01:22.058711   38053 grpc_verifier.go:669]      Key TPM Properties mask: 262258
+I1225 13:01:22.058833   38053 grpc_verifier.go:672]      Key Expected Properties mask 262258
+I1225 13:01:22.058974   38053 grpc_verifier.go:703]      key verified 
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEBgpu3Zg+XpbkaTlb03jn7KgcE3Yb
+J6UI0PF/WFUjVCT878GYBWa+blnmF7gUxNrqjUdhKNcQzJUwpUSn1ExolA==
+-----END PUBLIC KEY-----
+
+I1225 13:01:22.059092   38053 grpc_verifier.go:704] =============== end NewKey ===============
 ```
 
 
@@ -553,9 +777,11 @@ go run src/client/grpc_verifier.go --host=$ATTESTOR_ADDRESS:50051 \
 
 ### Platform Certificate
 
-The platform certificate used in this protocol is just a sample, static one I downloaded from the [go-attestation testdata](https://github.com/google/go-attestation/tree/master/attributecert/testdata).
+The platform certificate returned in this repo is just one generated dynamically by the attestor using a static 'platformCA' certificate and key.
 
-Specifically, [Intel_pc1.cer](https://github.com/google/go-attestation/blob/master/attributecert/testdata/Intel_pc1.cer) which is verified against [IntelSigningKey_20April2017.cer](https://github.com/google/go-attestation/blob/master/attributecert/testdata/IntelSigningKey_20April2017.cer)
+This is *not* what is normally supposed to happen:  the platform certificate would've been issued long ago separte from the remote attestation protocol by the platform Owner itself.
+
+For example, when the hardware device (actual system with the TPM),is setup, the TPM's EK certificate serial number is used as the platform certificate's holder filed:
 
 Ideally, the Platform Certificate contains a reference back to the TPM's EKCertificate [`pg 12: Assertions Made by a Platform Certificate`](https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf)
 
@@ -573,9 +799,22 @@ Ideally, the Platform Certificate contains a reference back to the TPM's EKCerti
 134 Owner. 
 ```
 
-However, the test platform certs here don't include this.
+However, just to make it easy, this repo furbishes the platformcertificate in two different ways:
 
-instead, i just used the serial number in the EKCert 
+1.  Statically
+
+    The platform certificate used in this protocol is just a sample, static one I downloaded from the [go-attestation testdata](https://github.com/google/go-attestation/tree/master/attributecert/testdata).
+
+    Specifically, [Intel_pc1.cer](https://github.com/google/go-attestation/blob/master/attributecert/testdata/Intel_pc1.cer) which is verified against [IntelSigningKey_20April2017.cer](https://github.com/google/go-attestation/blob/master/attributecert/testdata/IntelSigningKey_20April2017.cer)
+
+2. Dynamically
+
+   With this, the EK cert is read in from the TPM, then an attribute certificate is created and signed by a local CA.
+
+   Again, to emphasize, this is not what is supposed to happen but i'm just doing this to complete the flow.
+
+
+So, the EK cert and PlatfromCert is tied together by the serial number field:
 
 For example, if the EKCert is:
 
@@ -593,7 +832,7 @@ Certificate:
     Data:
         Version: 3 (0x2)
         Serial Number:
-            24:eb:bd:b3:08:6f:8a:ab:e5:d6:91:d5:55:f9:d0:14:e7:5f:29:bb
+            24:eb:bd:b3:08:6f:8a:ab:e5:d6:91:d5:55:f9:d0:14:e7:5f:29:bb  <<<<<<<<<<<<<<<<<<<<<<
         Signature Algorithm: sha256WithRSAEncryption
         Issuer: C=CH, O=STMicroelectronics NV, CN=STM TPM EK Intermediate CA 06
         Validity
@@ -659,7 +898,7 @@ Then the attribute Certificate may include the serial number as such
      PlatformCertificate PlatformVersion: H26998-402
      PlatformCertificate PropertiesURI: 
      PlatformCertificate Holder.Issuer: CN=STM TPM EK Intermediate CA 06
-     PlatformCertificate Holder.Serial: 24EBBDB3086F8AABE5D691D555F9D014E75F29BB
+     PlatformCertificate Holder.Serial: 24EBBDB3086F8AABE5D691D555F9D014E75F29BB            <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
      PlatformCertificate Holder.Issuer.CommonName: C=CH, O=STMicroelectronics NV, CN=STM TPM EK Intermediate CA 06
      PlatformCertificate TBBSecurityAssertions.Iso9000URI: 
      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileOid: 
