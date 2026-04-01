@@ -51,7 +51,7 @@ var (
 	platformCACert       = flag.String("platformCACert", "certs/platform-ca.crt", "tls Certificate")
 	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
 	ekRootCA             = flag.String("ekrootCA", "certs/ek_root.pem", "EK rootsCA")
-	ekIntermediateCA     = flag.String("ekintermediateCA", "certs/ek_intermediate.pem", "EK intermediate CA")
+	ekIntermediateCA     = flag.String("ekintermediateCA", "", "EK intermediate CA")
 )
 
 func main() {
@@ -93,6 +93,7 @@ func main() {
 	platformCertResponse, err := c.GetPlatformCert(ctx, req)
 	if err != nil {
 		glog.Errorf("Error GetPlatformCert: %v", err)
+		os.Exit(1)
 	}
 	if len(platformCertResponse.PlatformCert) > 0 {
 		glog.V(5).Infof("=============== GetPlatformCert Returned from remote ===============")
@@ -387,18 +388,20 @@ func main() {
 			glog.V(10).Infof("     EKCert Includes tcg-kp-EKCertificate ExtendedKeyUsage %s", ku.String())
 		}
 	}
-
-	intermediatePEM, err := os.ReadFile(*ekIntermediateCA)
-	if err != nil {
-		glog.Errorf("failed to read intermediate CA: " + err.Error())
-		os.Exit(1)
-	}
-
 	intermediates := x509.NewCertPool()
-	ok = intermediates.AppendCertsFromPEM([]byte(intermediatePEM))
-	if !ok {
-		glog.Errorf("failed to append intermediates: ")
-		os.Exit(1)
+
+	if *ekIntermediateCA != "" {
+		intermediatePEM, err := os.ReadFile(*ekIntermediateCA)
+		if err != nil {
+			glog.Errorf("failed to read intermediate CA: " + err.Error())
+			os.Exit(1)
+		}
+
+		ok = intermediates.AppendCertsFromPEM([]byte(intermediatePEM))
+		if !ok {
+			glog.Errorf("failed to append intermediates: ")
+			os.Exit(1)
+		}
 	}
 
 	opts := x509.VerifyOptions{

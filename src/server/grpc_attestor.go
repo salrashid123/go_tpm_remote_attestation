@@ -74,6 +74,15 @@ func openTPM(path string) (io.ReadWriteCloser, error) {
 	}
 }
 
+type linuxCmdChannel struct {
+	io.ReadWriteCloser
+}
+
+// MeasurementLog implements CommandChannelTPM20.
+func (cc *linuxCmdChannel) MeasurementLog() ([]byte, error) {
+	return os.ReadFile(*eventLogPath)
+}
+
 type server struct {
 	mu      sync.Mutex
 	running bool
@@ -283,7 +292,24 @@ func main() {
 	var err error
 	glog.V(2).Info("Getting EKCert")
 
-	config := &attest.OpenConfig{}
+	var config *attest.OpenConfig
+	if !slices.Contains(TPMDEVICES, *tpmDevice) {
+		glog.Info("Opening swtpm socket")
+		rwc, err := openTPM(*tpmDevice)
+		if err != nil {
+			glog.Errorf("can't open TPM %q: %v", *tpmDevice, err)
+			os.Exit(1)
+		}
+		defer func() {
+			rwc.Close()
+		}()
+
+		//rwr := transport.FromReadWriter(rwc)
+		config = &attest.OpenConfig{
+			CommandChannel: &linuxCmdChannel{rwc},
+		}
+	}
+
 	tpm, err = attest.OpenTPM(config)
 	if err != nil {
 		glog.Errorf("error opening TPM %v", err)
