@@ -74,7 +74,7 @@ var (
 	tlsKey               = flag.String("tlsKey", "certs/verify_key.pem", "tls Key")
 	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
 	ekRootCA             = flag.String("ekrootCA", "certs/ek_root.pem", "EK rootsCA")
-	ekIntermediateCA     = flag.String("ekintermediateCA", "certs/ek_intermediate.pem", "EK intermediate CA")
+	ekIntermediateCA     = flag.String("ekintermediateCA", "", "EK intermediate CA")
 	platformCA           = flag.String("platformCA", "certs/IntelSigningKey_20April2017.cer", "Platform CA")
 	attestationKeys      = make(map[string]db)
 )
@@ -399,17 +399,19 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 		}
 	}
 
-	intermediatePEM, err := os.ReadFile(*ekIntermediateCA)
-	if err != nil {
-		glog.Errorf("failed to read intermediate CA: [%s] %v", in.Uid, err.Error())
-		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to read intermediate CA: [%s] %v", in.Uid, err.Error())
-	}
-
 	intermediates := x509.NewCertPool()
-	ok = intermediates.AppendCertsFromPEM([]byte(intermediatePEM))
-	if !ok {
-		glog.Errorf("failed to update intermediate CA: [%s] ", in.Uid)
-		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to append intermediates: ")
+	if *ekIntermediateCA != "" {
+		intermediatePEM, err := os.ReadFile(*ekIntermediateCA)
+		if err != nil {
+			glog.Errorf("failed to read intermediate CA: [%s] %v", in.Uid, err.Error())
+			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to read intermediate CA: [%s] %v", in.Uid, err.Error())
+		}
+
+		ok = intermediates.AppendCertsFromPEM([]byte(intermediatePEM))
+		if !ok {
+			glog.Errorf("failed to update intermediate CA: [%s] ", in.Uid)
+			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to append intermediates: ")
+		}
 	}
 
 	opts := x509.VerifyOptions{

@@ -12,6 +12,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"io"
+	"net"
+	"slices"
 	"time"
 
 	"flag"
@@ -21,6 +24,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/google/go-attestation/attest"
 	"github.com/google/go-attestation/attributecert"
+	"github.com/google/go-tpm/tpmutil"
 	"github.com/google/uuid"
 	"github.com/salrashid123/go_tpm_registrar/verifier"
 	"google.golang.org/grpc"
@@ -35,6 +39,7 @@ var (
 	tlsCert          = flag.String("tlsCert", "certs/root-ca.crt", "tls Certificate")
 	eventLogPath     = flag.String("eventLogPath", "/sys/kernel/security/tpm0/binary_bios_measurements", "Path to the eventlog")
 	platformCertFile = flag.String("platformCertFile", "certs/platform_cert.der", "Platform Certificate File")
+	tpmPath          = flag.String("tpm-path", "127.0.0.1:2321", "Path to the TPM device (character device or a Unix socket).")
 
 	platformCACert = flag.String("platformCACert", "certs/platform-ca.crt", "tls Certificate")
 	platformCAKey  = flag.String("platformCAKey", "certs/platform-ca.key", "tls Key")
@@ -49,6 +54,25 @@ var (
 )
 
 const ()
+
+var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
+
+func OpenTPM(path string) (io.ReadWriteCloser, error) {
+	if slices.Contains(TPMDEVICES, path) {
+		return tpmutil.OpenTPM(path)
+	} else {
+		return net.Dial("tcp", path)
+	}
+}
+
+type linuxCmdChannel struct {
+	io.ReadWriteCloser
+}
+
+// MeasurementLog implements CommandChannelTPM20.
+func (cc *linuxCmdChannel) MeasurementLog() ([]byte, error) {
+	return os.ReadFile(*eventLogPath)
+}
 
 func main() {
 	flag.Set("logtostderr", "true")
@@ -90,7 +114,24 @@ func main() {
 
 	// first get the ek so we can stuff it into the platform cert
 
-	config := &attest.OpenConfig{}
+	var config *attest.OpenConfig
+	if !slices.Contains(TPMDEVICES, *tpmPath) {
+		glog.Info("Opening swtpm socket")
+		rwc, err := OpenTPM(*tpmPath)
+		if err != nil {
+			glog.Errorf("can't open TPM %q: %v", *tpmPath, err)
+			os.Exit(1)
+		}
+		defer func() {
+			rwc.Close()
+		}()
+
+		//rwr := transport.FromReadWriter(rwc)
+		config = &attest.OpenConfig{
+			CommandChannel: &linuxCmdChannel{rwc},
+		}
+	}
+
 	tpm, err = attest.OpenTPM(config)
 	if err != nil {
 		glog.Errorf("error opening TPM %v", err)
