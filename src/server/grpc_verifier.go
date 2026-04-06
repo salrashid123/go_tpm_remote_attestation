@@ -705,6 +705,10 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 	}
 
 	for _, p := range serverPlatformAttestationParameter.PCRs {
+		if !p.QuoteVerified() {
+			glog.Errorf("Quote Failed Verify:  [%s] for PCR [%d] %v", in.Uid, p.Index, err)
+			return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, " Quote Failed Verify: for PCR [%d] %v", p.Index, err)
+		}
 		glog.V(20).Infof("     PCR: %d, verified: %t value: %s", p.Index, p.QuoteVerified(), hex.EncodeToString((p.Digest)))
 		if p.DigestAlg == crypto.SHA256 {
 			v, ok := pcrMap[uint32(p.Index)]
