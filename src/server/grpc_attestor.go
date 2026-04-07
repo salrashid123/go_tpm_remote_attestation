@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
@@ -10,7 +11,9 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"io"
+	"os/signal"
 	"slices"
+	"syscall"
 	"time"
 
 	"flag"
@@ -32,6 +35,7 @@ import (
 	"github.com/google/go-tpm/tpmutil"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
@@ -50,6 +54,8 @@ var (
 	tpmDevice        = flag.String("tpmDevice", "/dev/tpmrm0", "TPMPath")
 	platformCertFile = flag.String("platformCertFile", "certs/platform_cert.der", "Platform Certificate File")
 
+	attestationKeys = make(map[string]db) // map which holds the EKM value for a session and the database of attestation state
+
 	tpm                *attest.TPM
 	ek                 *attest.EK
 	ekpubBytes         []byte
@@ -59,6 +65,19 @@ var (
 	issuedKeyderBytes  []byte
 	issuedPlatformCert []byte
 )
+
+type db struct {
+	//PlatformCert          *attributecert.AttributeCertificate // todo: read a platform cert and optionall return this to the verifier
+	EKCert                *x509.Certificate
+	AKPub                 crypto.PublicKey
+	AttestationParameters *attest.AttestationParameters
+	Attested              bool
+	Secret                []byte
+	IssuedKey             *ecdsa.PublicKey
+	IssuedCert            *x509.Certificate
+	Nonce                 []byte
+	AttestedKey           crypto.PublicKey
+}
 
 const ()
 
@@ -86,6 +105,11 @@ func (cc *linuxCmdChannel) MeasurementLog() ([]byte, error) {
 type server struct {
 	mu      sync.Mutex
 	running bool
+
+	// statusMap stores the serving status of the services this Server monitors.
+	statusMap map[string]healthpb.HealthCheckResponse_ServingStatus
+	// Embed the unimplemented server
+	verifier.UnimplementedVerifierServer
 }
 
 type contextKey string
@@ -96,6 +120,55 @@ type event struct {
 	PeerCertificates []*x509.Certificate
 	EKM              string
 	PeerIP           string
+}
+
+func (s *server) Check(ctx context.Context, in *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if in.Service == "" {
+		// return overall status
+		return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+	}
+
+	s.statusMap[verifier.Verifier_ServiceDesc.ServiceName] = healthpb.HealthCheckResponse_SERVING
+
+	status, ok := s.statusMap[in.Service]
+	if !ok {
+		return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_UNKNOWN}, grpc.Errorf(codes.NotFound, "unknown service")
+	}
+
+	// todo: optionally fill this in
+	attestationKeys[evt.EKM] = db{
+		EKCert: ekCert,
+	}
+
+	return &healthpb.HealthCheckResponse{Status: status}, nil
+}
+
+func (s *server) Watch(in *healthpb.HealthCheckRequest, srv healthpb.Health_WatchServer) error {
+	return status.Error(codes.Unimplemented, "Watch is not implemented")
+}
+
+func (s *server) List(ctx context.Context, in *healthpb.HealthListRequest) (*healthpb.HealthListResponse, error) {
+	r := make(map[string]*healthpb.HealthCheckResponse)
+
+	r[verifier.Verifier_ServiceDesc.ServiceName] = &healthpb.HealthCheckResponse{
+		Status: healthpb.HealthCheckResponse_SERVING,
+	}
+	return &healthpb.HealthListResponse{Statuses: r}, nil
+}
+
+// NewServer returns a new Server.
+func NewServer() *server {
+	return &server{
+		running:   true,
+		statusMap: make(map[string]healthpb.HealthCheckResponse_ServingStatus),
+	}
 }
 
 func authUnaryInterceptor(
@@ -142,6 +215,19 @@ func authUnaryInterceptor(
 
 func (s *server) GetPlatformCert(ctx context.Context, in *verifier.GetPlatformCertRequest) (*verifier.GetPlatformCertResponse, error) {
 	glog.V(2).Infof("======= GetPlatformCert ========")
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if _, ok := attestationKeys[evt.EKM]; ok {
+		if issuedPlatformCert == nil {
+			glog.Errorf("Error GetPlatformCert requires HealthCheck first [%s]", evt.EKM)
+			return &verifier.GetPlatformCertResponse{}, status.Errorf(codes.Internal, "Error  GetPlatformCert requires HealthCheck first")
+		}
+	} else {
+		glog.Errorf("Error  GetPlatformCert requires HealthCheck first  [%s]", evt.EKM)
+		return &verifier.GetPlatformCertResponse{}, status.Errorf(codes.Internal, "Error  GetPlatformCert requires HealthCheck first")
+	}
 
 	glog.V(2).Infof("     Returning GetPlatformCert ========")
 	return &verifier.GetPlatformCertResponse{
@@ -151,6 +237,19 @@ func (s *server) GetPlatformCert(ctx context.Context, in *verifier.GetPlatformCe
 
 func (s *server) GetEK(ctx context.Context, in *verifier.GetEKRequest) (*verifier.GetEKResponse, error) {
 	glog.V(2).Infof("======= GetEK ========")
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if _, ok := attestationKeys[evt.EKM]; ok {
+		if ekpubBytes == nil {
+			glog.Errorf("Error GetEK requires HealthCheck  first[%s]", evt.EKM)
+			return &verifier.GetEKResponse{}, status.Errorf(codes.Internal, "Error GetEK requires HealthCheck  first")
+		}
+	} else {
+		glog.Errorf("Error GGetEK requires HealthCheck  first[%s]", evt.EKM)
+		return &verifier.GetEKResponse{}, status.Errorf(codes.Internal, "Error GetEK requires HealthCheck  first")
+	}
 
 	return &verifier.GetEKResponse{
 		EkPub:  ekpubBytes,
@@ -163,6 +262,19 @@ func (s *server) GetAK(ctx context.Context, in *verifier.GetAKRequest) (*verifie
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	glog.V(2).Infof("======= GetAK ========")
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if _, ok := attestationKeys[evt.EKM]; ok {
+		if akbytes == nil {
+			glog.Errorf("Error GetAK requires HealthCheck, GetEK   first[%s]", evt.EKM)
+			return &verifier.GetAKResponse{}, status.Errorf(codes.Internal, "ErrorGetAK requires HealthCheck, GetEK    first")
+		}
+	} else {
+		glog.Errorf("Error GetAK requires HealthCheck, GetEK    first[%s]", evt.EKM)
+		return &verifier.GetAKResponse{}, status.Errorf(codes.Internal, "ErrorGetAK requires HealthCheck, GetEK   first")
+	}
 
 	ak, err := tpm.LoadAK(akbytes)
 	if err != nil {
@@ -187,9 +299,19 @@ func (s *server) Attest(ctx context.Context, in *verifier.AttestRequest) (*verif
 	defer s.mu.Unlock()
 	glog.V(2).Infof("======= Attest ========")
 
-	val := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", val.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", val.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if _, ok := attestationKeys[evt.EKM]; ok {
+		if akbytes == nil {
+			glog.Errorf("Error Attest requires HealthCheck, GetEK, GetAK   first[%s]", evt.EKM)
+			return &verifier.AttestResponse{}, status.Errorf(codes.Internal, "Error Attest requires HealthCheck, GetEK, GetAK   first")
+		}
+	} else {
+		glog.Errorf("Error Attest requires HealthCheck, GetEK, GetAK  first[%s]", evt.EKM)
+		return &verifier.AttestResponse{}, status.Errorf(codes.Internal, "Error Attest requires HealthCheck, GetEK, GetAK   first")
+	}
 
 	ak, err := tpm.LoadAK(akbytes)
 	if err != nil {
@@ -219,6 +341,21 @@ func (s *server) Attest(ctx context.Context, in *verifier.AttestRequest) (*verif
 func (s *server) Quote(ctx context.Context, in *verifier.QuoteRequest) (*verifier.QuoteResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if _, ok := attestationKeys[evt.EKM]; ok {
+		if akbytes == nil {
+			glog.Errorf("Error Quote requires HealthCheck, GetEK, GetAK   first[%s]", evt.EKM)
+			return &verifier.QuoteResponse{}, status.Errorf(codes.Internal, "Error Quote requires HealthCheck, GetEK, GetAK   first")
+		}
+	} else {
+		glog.Errorf("Error Attest requires HealthCheck, GetEK, GetAK  first[%s]", evt.EKM)
+		return &verifier.QuoteResponse{}, status.Errorf(codes.Internal, "Error Quote requires HealthCheck, GetEK, GetAK   first")
+	}
+
 	glog.V(2).Infof("======= Quote ========")
 
 	ak, err := tpm.LoadAK(akbytes)
@@ -258,6 +395,20 @@ func (s *server) GetKey(ctx context.Context, in *verifier.GetAttestedKeyRequest)
 	defer s.mu.Unlock()
 	glog.V(2).Infof("======= GetTLSKey ========")
 
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if _, ok := attestationKeys[evt.EKM]; ok {
+		if nkBytes == nil {
+			glog.Errorf("Error GetKey requires HealthCheck, GetEK, GetAK   first[%s]", evt.EKM)
+			return &verifier.GetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Error GetKey requires HealthCheck, GetEK, GetAK   first")
+		}
+	} else {
+		glog.Errorf("Error GetKey requires HealthCheck, GetEK, GetAK  first[%s]", evt.EKM)
+		return &verifier.GetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Error GetKey requires HealthCheck, GetEK, GetAK   first")
+	}
+
 	nk, err := tpm.LoadKey(nkBytes)
 	if err != nil {
 		glog.Errorf("ERROR:  could not load tls key%v", err)
@@ -279,6 +430,10 @@ func (s *server) GetKey(ctx context.Context, in *verifier.GetAttestedKeyRequest)
 }
 
 func main() {
+	os.Exit(run()) // since defer func() needs to get called first
+}
+
+func run() int {
 	flag.Set("logtostderr", "true")
 	flag.Set("stderrthreshold", "INFO")
 	flag.Parse()
@@ -286,7 +441,7 @@ func main() {
 	if *grpcport == "" {
 		fmt.Fprintln(os.Stderr, "missing -grpcport flag (:50051)")
 		flag.Usage()
-		os.Exit(2)
+		return 0
 	}
 
 	var err error
@@ -298,7 +453,7 @@ func main() {
 		rwc, err := openTPM(*tpmDevice)
 		if err != nil {
 			glog.Errorf("can't open TPM %q: %v", *tpmDevice, err)
-			os.Exit(1)
+			return 1
 		}
 		defer func() {
 			rwc.Close()
@@ -313,14 +468,14 @@ func main() {
 	tpm, err = attest.OpenTPM(config)
 	if err != nil {
 		glog.Errorf("error opening TPM %v", err)
-		os.Exit(1)
+		return 1
 	}
 	defer tpm.Close()
 
 	eks, err := tpm.EKs()
 	if err != nil {
 		glog.Errorf("error getting EK %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	for _, e := range eks {
@@ -331,7 +486,7 @@ func main() {
 
 	if len(eks) == 0 {
 		glog.Error("error no EK found")
-		os.Exit(1)
+		return 1
 	}
 
 	// use the  ek at 0 for now...
@@ -339,13 +494,13 @@ func main() {
 
 	if ek.Public == nil {
 		glog.Error("error no Public not found")
-		os.Exit(1)
+		return 1
 	}
 
 	ekpubBytes, err = x509.MarshalPKIXPublicKey(ek.Public)
 	if err != nil {
 		glog.Errorf("ERROR:  could  marshall public key %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	if ek.Certificate != nil {
@@ -382,26 +537,26 @@ func main() {
 	platformCACertBytes, err := os.ReadFile(*platformCACert)
 	if err != nil {
 		glog.Errorf("ERROR: Unable to load paltform CA %v", err)
-		os.Exit(1)
+		return 1
 	}
 	platformCAKeyBytes, err := os.ReadFile(*platformCAKey)
 	if err != nil {
 		glog.Errorf("ERROR: Unable to load paltform CA Key %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	pubBlock, _ := pem.Decode(platformCACertBytes)
 	ccacrt, err := x509.ParseCertificate(pubBlock.Bytes)
 	if err != nil {
 		glog.Errorf("error parsing client ca certificate %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	privBlock, _ := pem.Decode(platformCAKeyBytes)
 	ccakey, err := x509.ParsePKCS8PrivateKey(privBlock.Bytes)
 	if err != nil {
 		glog.Errorf("error decoding client ca certificate ca key:  %v", err)
-		os.Exit(1)
+		return 1
 	}
 	var notBefore time.Time
 	notBefore = time.Now()
@@ -416,13 +571,13 @@ func main() {
 	derBytes, err := asn1.Marshal(rdns)
 	if err != nil {
 		glog.Errorf("ERROR:Failed to marshal RDNSequence to DER: %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	as, err := attributecert.CreateAttributeCertificate(derBytes, ek.Certificate.SerialNumber, notBefore, notAfter, ccacrt, ccakey)
 	if err != nil {
 		glog.Errorf("ERROR:Failed to marshal RDNSequence to DER: %v", err)
-		os.Exit(1)
+		return 1
 	}
 	issuedPlatformCert = as
 
@@ -439,13 +594,13 @@ func main() {
 	ak, err := tpm.NewAK(akConfig)
 	if err != nil {
 		glog.Errorf("ERROR:  could not get AK %v", err)
-		os.Exit(1)
+		return 1
 	}
-
+	defer ak.Close(tpm)
 	akbytes, err = ak.Marshal()
 	if err != nil {
 		glog.Errorf("ERROR:  could marshall AK %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	// now crate the TLS EC key on the TPM
@@ -464,30 +619,31 @@ func main() {
 	nk, err := tpm.NewKey(ak, kConfig)
 	if err != nil {
 		glog.Errorf("ERROR:  error creating key  %v", err)
-		os.Exit(1)
+		return 1
 	}
 	err = ak.Close(tpm)
 	if err != nil {
 		glog.Errorf("ERROR:  error closing ak  %v", err)
-		os.Exit(1)
+		return 1
 	}
+	defer nk.Close()
 
 	nkBytes, err = nk.Marshal()
 	if err != nil {
 		glog.Errorf("ERROR:  could not marshall newkey %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	pubKey, ok := nk.Public().(*ecdsa.PublicKey)
 	if !ok {
 		glog.Errorf("Could not assert the public key to ec public key")
-		os.Exit(1)
+		return 1
 	}
 
 	issuedKeyderBytes, err = x509.MarshalPKIXPublicKey(pubKey)
 	if err != nil {
 		glog.Errorf("Could not MarshalPKIXPublicKey ec public key")
-		os.Exit(1)
+		return 1
 	}
 	pubkeyPem := pem.EncodeToMemory(
 		&pem.Block{
@@ -501,7 +657,7 @@ func main() {
 	defaultCerts, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
 	if err != nil {
 		glog.Errorf("failed to create default certs: %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	tlsConfig := &tls.Config{
@@ -511,7 +667,7 @@ func main() {
 	lis, err := net.Listen("tcp", *grpcport)
 	if err != nil {
 		glog.Errorf("failed to listen: %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	sopts := []grpc.ServerOption{grpc.MaxConcurrentStreams(10)}
@@ -519,8 +675,21 @@ func main() {
 	sopts = append(sopts, grpc.Creds(ce), grpc.UnaryInterceptor(authUnaryInterceptor))
 	s := grpc.NewServer(sopts...)
 
-	verifier.RegisterVerifierServer(s, &server{})
+	srv := NewServer()
+	verifier.RegisterVerifierServer(s, srv)
+	healthpb.RegisterHealthServer(s, srv)
 
 	glog.V(2).Infof("Starting gRPC server on port %v", *grpcport)
-	s.Serve(lis)
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		if err := s.Serve(lis); err != nil {
+			glog.Errorf("Error in listenlisten: %s\n", err)
+			return
+		}
+	}()
+	<-done
+	return 0
 }
