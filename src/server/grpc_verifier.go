@@ -43,6 +43,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 )
@@ -76,11 +77,16 @@ var (
 	ekRootCA             = flag.String("ekrootCA", "certs/ek_root.pem", "EK rootsCA")
 	ekIntermediateCA     = flag.String("ekintermediateCA", "", "EK intermediate CA")
 	platformCA           = flag.String("platformCA", "certs/IntelSigningKey_20April2017.cer", "Platform CA")
-	attestationKeys      = make(map[string]db)
+	attestationKeys      = make(map[string]db) // map which holds the EKM value for a session and the database of attestation state
 )
 
 type server struct {
 	mu sync.Mutex // lock value to guard concurrent updates to attestationKeys[] map
+
+	// statusMap stores the serving status of the services this Server monitors.
+	statusMap map[string]healthpb.HealthCheckResponse_ServingStatus
+	// Embed the unimplemented server
+	verifier.UnimplementedVerifierServer
 }
 
 type contextKey string
@@ -119,12 +125,12 @@ func authUnaryInterceptor(
 		glog.Errorf("ERROR:  Could get remote TLS")
 		return nil, status.Errorf(codes.PermissionDenied, "ERROR: could not get remote TLS")
 	}
-	ekm, err := tlsInfo.State.ExportKeyingMaterial("my_nonce", nil, 32)
+	ekm, err := tlsInfo.State.ExportKeyingMaterial("EXPORTER-my_label", []byte("mycontext"), 32)
 	if err != nil {
 		glog.Errorf("ERROR:  Could getting EKM %v", err)
 		return nil, status.Errorf(codes.PermissionDenied, "ERROR: error getting EKM")
 	}
-	glog.V(60).Infof("     EKM my_nonce: %s\n", hex.EncodeToString(ekm))
+	glog.V(10).Infof("     EKM: %s\n", hex.EncodeToString(ekm))
 
 	event := &event{
 		EKM:    hex.EncodeToString(ekm),
@@ -135,12 +141,43 @@ func authUnaryInterceptor(
 	return handler(newCtx, req)
 }
 
+func (s *server) Check(ctx context.Context, in *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if in.Service == "" {
+		// return overall status
+		return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+	}
+
+	s.statusMap[verifier.Verifier_ServiceDesc.ServiceName] = healthpb.HealthCheckResponse_SERVING
+
+	status, ok := s.statusMap[in.Service]
+	if !ok {
+		return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_UNKNOWN}, grpc.Errorf(codes.NotFound, "unknown service")
+	}
+	return &healthpb.HealthCheckResponse{Status: status}, nil
+}
+
+func (s *server) Watch(in *healthpb.HealthCheckRequest, srv healthpb.Health_WatchServer) error {
+	return status.Error(codes.Unimplemented, "Watch is not implemented")
+}
+
+func (s *server) List(ctx context.Context, in *healthpb.HealthListRequest) (*healthpb.HealthListResponse, error) {
+	r := make(map[string]*healthpb.HealthCheckResponse)
+
+	r[verifier.Verifier_ServiceDesc.ServiceName] = &healthpb.HealthCheckResponse{
+		Status: healthpb.HealthCheckResponse_SERVING,
+	}
+	return &healthpb.HealthListResponse{Statuses: r}, nil
+}
+
 func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatformCertRequest) (*verifier.OfferPlatformCertResponse, error) {
 	glog.V(2).Infof("======= OfferPlatformCert ========")
 
-	val := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", val.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", val.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	if len(in.PlatformCert) > 0 {
 
@@ -171,7 +208,7 @@ func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatfo
 
 		ac, err := attributecert.ParseAttributeCertificate(in.PlatformCert)
 		if err != nil {
-			glog.Errorf("Error  failed to parse  attribute certificate [%s]  %v", in.Uid, err)
+			glog.Errorf("Error  failed to parse  attribute certificate [%s]  %v", evt.EKM, err)
 			return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error  failed to parse  attribute certificate  %v", err)
 		}
 
@@ -222,7 +259,7 @@ func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatfo
 
 		err = ac.CheckSignatureFrom(platformRoot)
 		if err != nil {
-			glog.Errorf("Error failed to verify  attribute certificate [%s]  %v", in.Uid, err)
+			glog.Errorf("Error failed to verify  attribute certificate [%s]  %v", evt.EKM, err)
 			return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error  failed to verify  attribute certificate  %v", err)
 		}
 		glog.V(20).Infof("     Verified Platform cert signed by privacyCA")
@@ -230,16 +267,16 @@ func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatfo
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
-		if val, ok := attestationKeys[in.Uid]; ok {
+		if val, ok := attestationKeys[evt.EKM]; ok {
 			val.PlatformCert = ac
-			attestationKeys[in.Uid] = val
+			attestationKeys[evt.EKM] = val
 		} else {
-			attestationKeys[in.Uid] = db{
+			attestationKeys[evt.EKM] = db{
 				PlatformCert: ac,
 			}
 		}
 	} else {
-		glog.Errorf("Error error reading platform cert [%s]", in.Uid)
+		glog.Errorf("Error error reading platform cert [%s]", evt.EKM)
 		return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "ERROR:  error reading platform cert")
 	}
 	return &verifier.OfferPlatformCertResponse{}, nil
@@ -248,13 +285,13 @@ func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatfo
 func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*verifier.OfferEKResponse, error) {
 	glog.V(2).Infof("======= OfferEK ========")
 
-	val := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", val.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", val.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	ekcert, err := x509.ParseCertificate(in.EkCert)
 	if err != nil {
-		glog.Errorf("Error  ParseCertificate [%s] %v", in.Uid, err)
+		glog.Errorf("Error  ParseCertificate [%s] %v", evt.EKM, err)
 		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "ERROR:   ParseCertificate:  %v", err)
 	}
 
@@ -282,8 +319,8 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 		if ex.Id.Equal(oidExtensionSubjectAltName) {
 			s, err := x509ext.ParseSubjectAltName(ex)
 			if err != nil {
-				glog.Errorf("Error  failed to parse EK to unmarshal EK SAN [%s] %v", in.Uid, err.Error())
-				return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK to unmarshal EK SAN [%s] %v", in.Uid, err.Error())
+				glog.Errorf("Error  failed to parse EK to unmarshal EK SAN [%s] %v", evt.EKM, err.Error())
+				return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK to unmarshal EK SAN [%s] %v", evt.EKM, err.Error())
 			}
 			for _, na := range s.DirectoryNames {
 				for _, attr := range na.Names {
@@ -306,26 +343,26 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 			var attrs []attribute
 			_, err := asn1.Unmarshal(ex.Value, &attrs)
 			if err != nil {
-				glog.Errorf("Error failed to parse EK SubjectDirectoryAttributes [%s] %v", in.Uid, err.Error())
-				return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes [%s] %v", in.Uid, err.Error())
+				glog.Errorf("Error failed to parse EK SubjectDirectoryAttributes [%s] %v", evt.EKM, err.Error())
+				return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes [%s] %v", evt.EKM, err.Error())
 			}
 
 			for _, attr := range attrs {
 				if attr.Type.Equal(oid.TPMSpecification) {
 					if len(attr.Values) != 1 {
-						glog.Errorf("Error failed to parse EK SubjectDirectoryAttributes [%s] ", in.Uid)
-						return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes [%s] %v", in.Uid, errors.New("expected SET size of 1"))
+						glog.Errorf("Error failed to parse EK SubjectDirectoryAttributes [%s] ", evt.EKM)
+						return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes [%s] %v", evt.EKM, errors.New("expected SET size of 1"))
 					}
 					value := attr.Values[0]
 					var spec tpmSpecification
 					rest, err := asn1.Unmarshal(value.FullBytes, &spec)
 					if err != nil {
-						glog.Errorf("Error failed to parse EK SubjectDirectoryAttributes [%s] %v", in.Uid, err)
-						return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes [%s] %v", in.Uid, err)
+						glog.Errorf("Error failed to parse EK SubjectDirectoryAttributes [%s] %v", evt.EKM, err)
+						return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes [%s] %v", evt.EKM, err)
 					}
 					if len(rest) != 0 {
-						glog.Errorf("failed to parse EK SubjectDirectoryAttributes [%s] %v", in.Uid, err)
-						return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes [%s] %v", in.Uid, err)
+						glog.Errorf("failed to parse EK SubjectDirectoryAttributes [%s] %v", evt.EKM, err)
+						return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes [%s] %v", evt.EKM, err)
 					}
 					glog.V(20).Infof("     TPM Family %s", spec.Family)
 					glog.V(20).Infof("     TPM Level %d", spec.Level)
@@ -350,8 +387,8 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 
 	skBytes, err := x509.MarshalPKIXPublicKey(spubKey)
 	if err != nil {
-		glog.Errorf("failed to parse EK SubjectDirectoryAttributes [%s] %v", in.Uid, err)
-		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes  [%s] %v", in.Uid, err)
+		glog.Errorf("failed to parse EK SubjectDirectoryAttributes [%s] %v", evt.EKM, err)
+		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to parse EK SubjectDirectoryAttributes  [%s] %v", evt.EKM, err)
 	}
 	ekPubPEM := pem.EncodeToMemory(
 		&pem.Block{
@@ -370,14 +407,14 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 	glog.V(10).Info("    Verifying EKCert")
 	ekRootPEM, err := os.ReadFile(*ekRootCA)
 	if err != nil {
-		glog.Errorf("failed to reading roots: [%s] %v", in.Uid, err)
+		glog.Errorf("failed to reading roots: [%s] %v", evt.EKM, err)
 		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to reading roots: %v", err.Error())
 	}
 
 	ekRoots := x509.NewCertPool()
 	ok := ekRoots.AppendCertsFromPEM([]byte(ekRootPEM))
 	if !ok {
-		glog.Errorf("ffailed append to roots [%s]", in.Uid)
+		glog.Errorf("ffailed append to roots [%s]", evt.EKM)
 		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed append to roots ")
 	}
 
@@ -403,13 +440,13 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 	if *ekIntermediateCA != "" {
 		intermediatePEM, err := os.ReadFile(*ekIntermediateCA)
 		if err != nil {
-			glog.Errorf("failed to read intermediate CA: [%s] %v", in.Uid, err.Error())
-			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to read intermediate CA: [%s] %v", in.Uid, err.Error())
+			glog.Errorf("failed to read intermediate CA: [%s] %v", evt.EKM, err.Error())
+			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to read intermediate CA: [%s] %v", evt.EKM, err.Error())
 		}
 
 		ok = intermediates.AppendCertsFromPEM([]byte(intermediatePEM))
 		if !ok {
-			glog.Errorf("failed to update intermediate CA: [%s] ", in.Uid)
+			glog.Errorf("failed to update intermediate CA: [%s] ", evt.EKM)
 			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to append intermediates: ")
 		}
 	}
@@ -420,8 +457,8 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsage(x509.ExtKeyUsageAny)},
 	}
 	if _, err := ekcert.Verify(opts); err != nil {
-		glog.Errorf("failed to verify certificate:  [%s] %v", in.Uid, err.Error())
-		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to verify certificate:  [%s] %v", in.Uid, err.Error())
+		glog.Errorf("failed to verify certificate:  [%s] %v", evt.EKM, err.Error())
+		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "failed to verify certificate:  [%s] %v", evt.EKM, err.Error())
 	}
 
 	glog.V(10).Info("    EKCert Verified")
@@ -429,20 +466,20 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if val, ok := attestationKeys[in.Uid]; ok {
+	if val, ok := attestationKeys[evt.EKM]; ok {
 
 		// you'll want to compare the platform holder's serial number to match the EK
 		if fmt.Sprintf("%s", val.PlatformCert.Holder.Serial) != fmt.Sprintf("%s", ekcert.SerialNumber) {
 			glog.Errorf("Platform Certificates holder serial number does not match EK Certificate serial number expected AttributeCert serial [%v]     EK serial [%v]", val.PlatformCert.Holder.Serial, ekcert.SerialNumber)
-			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "Platform Certificates holder serial number does not match EK Certificate serial number [%s]", in.Uid)
+			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "Platform Certificates holder serial number does not match EK Certificate serial number [%s]", evt.EKM)
 		}
 		if val.PlatformCert != nil {
 			// do some validation of the platform cert and EK here
 		}
 		val.EKCert = ekcert
-		attestationKeys[in.Uid] = val
+		attestationKeys[evt.EKM] = val
 	} else {
-		attestationKeys[in.Uid] = db{
+		attestationKeys[evt.EKM] = db{
 			EKCert: ekcert,
 		}
 	}
@@ -454,19 +491,19 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 func (s *server) OfferAK(ctx context.Context, in *verifier.OfferAKRequest) (*verifier.OfferAKResponse, error) {
 	glog.V(2).Infof("======= OfferAK ========")
 
-	rval := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", rval.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", rval.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if val, ok := attestationKeys[in.Uid]; ok {
+	if val, ok := attestationKeys[evt.EKM]; ok {
 		if val.EKCert == nil {
-			glog.Errorf("Error cannot process AK before calling OfferEK [%s]", in.Uid)
+			glog.Errorf("Error cannot process AK before calling OfferEK [%s]", evt.EKM)
 			return &verifier.OfferAKResponse{}, status.Errorf(codes.Internal, "Error cannot process AK before calling OfferEK")
 		}
 	} else {
-		glog.Errorf("Error cannot process AK before calling OfferEK [%s]", in.Uid)
+		glog.Errorf("Error cannot process AK before calling OfferEK [%s]", evt.EKM)
 		return &verifier.OfferAKResponse{}, status.Errorf(codes.Internal, "Error cannot process AK before calling OfferEK")
 	}
 
@@ -474,19 +511,19 @@ func (s *server) OfferAK(ctx context.Context, in *verifier.OfferAKRequest) (*ver
 	reader := bytes.NewReader(in.AttestationParameters)
 	err := json.NewDecoder(reader).Decode(serverAttestationParameter)
 	if err != nil {
-		glog.Errorf("Error encoding serverAttestationParamer [%s] %v", in.Uid, err)
+		glog.Errorf("Error encoding serverAttestationParamer [%s] %v", evt.EKM, err)
 		return &verifier.OfferAKResponse{}, status.Errorf(codes.Internal, "Error encoding serverAttestationParameter  %v", err)
 	}
 
 	akp, err := attest.ParseAKPublic(serverAttestationParameter.Public)
 	if err != nil {
-		glog.Errorf("Error Parsing AK [%s] %v", in.Uid, err)
+		glog.Errorf("Error Parsing AK [%s] %v", evt.EKM, err)
 		return &verifier.OfferAKResponse{}, status.Errorf(codes.Internal, "Error Parsing AK %v", err)
 	}
 
 	akpPub, err := x509.MarshalPKIXPublicKey(akp.Public)
 	if err != nil {
-		glog.Errorf("Error MarshalPKIXPublicKey ak [%s] %v", in.Uid, err)
+		glog.Errorf("Error MarshalPKIXPublicKey ak [%s] %v", evt.EKM, err)
 		return &verifier.OfferAKResponse{}, status.Errorf(codes.Internal, "Error MarshalPKIXPublicKey ak %v", err)
 	}
 	akPubPEM := pem.EncodeToMemory(
@@ -498,10 +535,10 @@ func (s *server) OfferAK(ctx context.Context, in *verifier.OfferAKRequest) (*ver
 
 	glog.V(5).Infof("      ak public \n%s\n", akPubPEM)
 
-	val := attestationKeys[in.Uid]
+	val := attestationKeys[evt.EKM]
 	val.AKPub = akp.Public
 	val.AttestationParameters = serverAttestationParameter
-	attestationKeys[in.Uid] = val
+	attestationKeys[evt.EKM] = val
 
 	glog.V(5).Infof("=============== end GetAK ===============")
 
@@ -511,24 +548,24 @@ func (s *server) OfferAK(ctx context.Context, in *verifier.OfferAKRequest) (*ver
 func (s *server) GetMakeCredential(ctx context.Context, in *verifier.GetMakeCredentialRequest) (*verifier.GetMakeCredentialResponse, error) {
 	glog.V(2).Infof("======= GetMakeCredential ========")
 
-	rval := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", rval.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", rval.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if val, ok := attestationKeys[in.Uid]; ok {
+	if val, ok := attestationKeys[evt.EKM]; ok {
 		if val.EKCert == nil || val.AKPub == nil {
-			glog.Errorf("Error MakeCredential requires AK and EK [%s]", in.Uid)
+			glog.Errorf("Error MakeCredential requires AK and EK [%s]", evt.EKM)
 			return &verifier.GetMakeCredentialResponse{}, status.Errorf(codes.Internal, "Error MakeCredential requires AK and EK")
 		}
 	} else {
-		glog.Errorf("Error MakeCredential requires AK and EK [%s]", in.Uid)
+		glog.Errorf("Error MakeCredential requires AK and EK [%s]", evt.EKM)
 		return &verifier.GetMakeCredentialResponse{}, status.Errorf(codes.Internal, "Error MakeCredential requires AK and EK")
 	}
 	glog.V(5).Infof("=============== end GetMakeCredential ===============")
 
-	val := attestationKeys[in.Uid]
+	val := attestationKeys[evt.EKM]
 
 	params := attest.ActivationParameters{
 		EK: val.EKCert.PublicKey,
@@ -537,7 +574,7 @@ func (s *server) GetMakeCredential(ctx context.Context, in *verifier.GetMakeCred
 
 	secret, encryptedCredentials, err := params.Generate()
 	if err != nil {
-		glog.Errorf("Error generating make credential parameters [%s] %v ", in.Uid, err)
+		glog.Errorf("Error generating make credential parameters [%s] %v ", evt.EKM, err)
 		return &verifier.GetMakeCredentialResponse{}, status.Errorf(codes.Internal, "Error generating make credential parameters %v ", err)
 	}
 	glog.Infof("      Outbound Secret: %s\n", base64.StdEncoding.EncodeToString(secret))
@@ -545,12 +582,12 @@ func (s *server) GetMakeCredential(ctx context.Context, in *verifier.GetMakeCred
 	encryptedCredentialsBytes := new(bytes.Buffer)
 	err = json.NewEncoder(encryptedCredentialsBytes).Encode(encryptedCredentials)
 	if err != nil {
-		glog.Errorf("Error encoding encryptedCredentials [%s] %v ", in.Uid, err)
+		glog.Errorf("Error encoding encryptedCredentials [%s] %v ", evt.EKM, err)
 		return &verifier.GetMakeCredentialResponse{}, status.Errorf(codes.Internal, "Error encoding encryptedCredentials %v", err)
 	}
 
 	val.Secret = secret
-	attestationKeys[in.Uid] = val
+	attestationKeys[evt.EKM] = val
 
 	return &verifier.GetMakeCredentialResponse{
 		EncryptedCredentials: encryptedCredentialsBytes.Bytes(),
@@ -560,34 +597,33 @@ func (s *server) GetMakeCredential(ctx context.Context, in *verifier.GetMakeCred
 func (s *server) SetActivateCredential(ctx context.Context, in *verifier.SetActivateCredentialRequest) (*verifier.SetActivateCredentialResponse, error) {
 	glog.V(2).Infof("======= SetActivateCredential ========")
 
-	rval := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", rval.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", rval.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if val, ok := attestationKeys[in.Uid]; ok {
-
+	if val, ok := attestationKeys[evt.EKM]; ok {
 		if val.EKCert == nil || val.AKPub == nil || val.AttestationParameters == nil {
-			glog.Errorf("Error SetActivateCredential requires AK and EK and AttestationParameters [%s] ", in.Uid)
+			glog.Errorf("Error SetActivateCredential requires AK and EK and AttestationParameters [%s] ", evt.EKM)
 			return &verifier.SetActivateCredentialResponse{}, status.Errorf(codes.Internal, "Error SetActivateCredential requires AK and EK and AttestationParameters")
 		}
 	} else {
-		glog.Errorf("Error SetActivateCredential requires AK and EK and AttestationParameters [%s] ", in.Uid)
+		glog.Errorf("Error SetActivateCredential requires AK and EK and AttestationParameters [%s] ", evt.EKM)
 		return &verifier.SetActivateCredentialResponse{}, status.Errorf(codes.Internal, "Error SetActivateCredential requires AK and EK and AttestationParameters")
 	}
 
-	val := attestationKeys[in.Uid]
+	val := attestationKeys[evt.EKM]
 
 	if !bytes.Equal(val.Secret, in.Secret) {
-		glog.Errorf("Error SetActivateCredential secrets not equal [%s] ", in.Uid)
+		glog.Errorf("Error SetActivateCredential secrets not equal [%s] ", evt.EKM)
 		return &verifier.SetActivateCredentialResponse{}, status.Errorf(codes.Internal, "Error SetActivateCredential secrets not equal")
 	}
 
-	vv := attestationKeys[in.Uid]
+	vv := attestationKeys[evt.EKM]
 	vv.Attested = true
 
-	attestationKeys[in.Uid] = vv
+	attestationKeys[evt.EKM] = vv
 
 	glog.V(5).Infof("=============== end SetActivateCredential ===============")
 	return &verifier.SetActivateCredentialResponse{}, nil
@@ -596,28 +632,28 @@ func (s *server) SetActivateCredential(ctx context.Context, in *verifier.SetActi
 func (s *server) OfferQuote(ctx context.Context, in *verifier.OfferQuoteRequest) (*verifier.OfferQuoteResponse, error) {
 	glog.V(2).Infof("======= OfferQuote ========")
 
-	rval := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", rval.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", rval.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if val, ok := attestationKeys[in.Uid]; ok {
+	if val, ok := attestationKeys[evt.EKM]; ok {
 		if val.EKCert == nil || val.AKPub == nil || val.AttestationParameters == nil || !val.Attested {
-			glog.Errorf("Error OfferQuote requires AK and EK and AttestationParameters and must be Attested first [%s] ", in.Uid)
+			glog.Errorf("Error OfferQuote requires AK and EK and AttestationParameters and must be Attested first [%s] ", evt.EKM)
 			return &verifier.OfferQuoteResponse{}, status.Errorf(codes.Internal, "Error OfferQuote requires AK and EK and AttestationParameters and must be Attested first")
 		}
 	} else {
-		glog.Errorf("Error OfferQuote requires AK and EK and AttestationParameters and must be Attested first [%s] ", in.Uid)
+		glog.Errorf("Error OfferQuote requires AK and EK and AttestationParameters and must be Attested first [%s] ", evt.EKM)
 		return &verifier.OfferQuoteResponse{}, status.Errorf(codes.Internal, "Error OfferQuote requires AK and EK and AttestationParameters and must be Attested first")
 	}
 
 	nonce := []byte(uuid.New().String())
 
-	vv := attestationKeys[in.Uid]
+	vv := attestationKeys[evt.EKM]
 	vv.Nonce = nonce
 
-	attestationKeys[in.Uid] = vv
+	attestationKeys[evt.EKM] = vv
 
 	glog.V(5).Infof("=============== end OfferQuote ===============")
 	return &verifier.OfferQuoteResponse{
@@ -628,28 +664,28 @@ func (s *server) OfferQuote(ctx context.Context, in *verifier.OfferQuoteRequest)
 func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*verifier.SetQuoteResponse, error) {
 	glog.V(2).Infof("======= SetQuote ========")
 
-	rval := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", rval.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", rval.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if val, ok := attestationKeys[in.Uid]; ok {
+	if val, ok := attestationKeys[evt.EKM]; ok {
 		if val.EKCert == nil || val.AKPub == nil || val.AttestationParameters == nil || !val.Attested || val.Nonce == nil {
-			glog.Errorf("Error OfferQuote requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first [%s] ", in.Uid)
+			glog.Errorf("Error OfferQuote requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first [%s] ", evt.EKM)
 			return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Error OfferQuote requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first")
 		}
 	} else {
-		glog.Errorf("Error OfferQuote requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first [%s] ", in.Uid)
+		glog.Errorf("Error OfferQuote requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first [%s] ", evt.EKM)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Error OfferQuote requires AK and EK and AttestationParameters,OfferQuote(nonce) and must be Attested first")
 	}
 
-	vv := attestationKeys[in.Uid]
+	vv := attestationKeys[evt.EKM]
 
 	// create pcr map for go-tpm-tools
 	pcrMap, _, err := getPCRMap(*expectedPCRMapSHA256, tpm.HashAlgo_SHA256)
 	if err != nil {
-		glog.Errorf("Could not get PCRMap: [%s] %v", in.Uid, err)
+		glog.Errorf("Could not get PCRMap: [%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "  Could not get PCRMap: %s", err)
 	}
 	//vpcrs := &tpmpb.PCRs{Hash: tpmpb.HashAlgo_SHA256, Pcrs: pcrMap}
@@ -657,13 +693,13 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 	serverPlatformAttestationParameter := &attest.PlatformParameters{}
 	err = json.NewDecoder(bytes.NewReader(in.PlatformAttestation)).Decode(serverPlatformAttestationParameter)
 	if err != nil {
-		glog.Errorf("Quote Failed: json decoding quote response:  [%s] %v", in.Uid, err)
+		glog.Errorf("Quote Failed: json decoding quote response:  [%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Quote Failed: json decoding quote response: %v", err)
 	}
 
 	pub, err := attest.ParseAKPublic(serverPlatformAttestationParameter.Public)
 	if err != nil {
-		glog.Errorf("Quote Failed ParseAKPublic:  [%s] %v", in.Uid, err)
+		glog.Errorf("Quote Failed ParseAKPublic:  [%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Quote Failed ParseAKPublic: %v", err)
 	}
 
@@ -683,7 +719,7 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 
 	akpPub, err := x509.MarshalPKIXPublicKey(vv.AKPub)
 	if err != nil {
-		glog.Errorf("Error MarshalPKIXPublicKey ak   [%s] %v", in.Uid, err)
+		glog.Errorf("Error MarshalPKIXPublicKey ak   [%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Error MarshalPKIXPublicKey ak %v", err)
 	}
 	akPubPEM := pem.EncodeToMemory(
@@ -699,14 +735,14 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 
 	for _, quote := range serverPlatformAttestationParameter.Quotes {
 		if err := pub.Verify(quote, serverPlatformAttestationParameter.PCRs, vv.Nonce); err != nil {
-			glog.Errorf("Quote Failed Verify:  [%s] %v", in.Uid, err)
+			glog.Errorf("Quote Failed Verify:  [%s] %v", evt.EKM, err)
 			return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, " Quote Failed Verify: %v", err)
 		}
 	}
 
 	for _, p := range serverPlatformAttestationParameter.PCRs {
 		if !p.QuoteVerified() {
-			glog.Errorf("Quote Failed Verify:  [%s] for PCR [%d] %v", in.Uid, p.Index, err)
+			glog.Errorf("Quote Failed Verify:  [%s] for PCR [%d] %v", evt.EKM, p.Index, err)
 			return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, " Quote Failed Verify: for PCR [%d] %v", p.Index, err)
 		}
 		glog.V(20).Infof("     PCR: %d, verified: %t value: %s", p.Index, p.QuoteVerified(), hex.EncodeToString((p.Digest)))
@@ -714,7 +750,7 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 			v, ok := pcrMap[uint32(p.Index)]
 			if ok {
 				if hex.EncodeToString(v) != hex.EncodeToString(p.Digest) {
-					glog.Errorf("Quote Failed Verify for index: %d [%s] expected %s, got %s ", p.Index, in.Uid, hex.EncodeToString(v), hex.EncodeToString(p.Digest))
+					glog.Errorf("Quote Failed Verify for index: %d [%s] expected %s, got %s ", p.Index, evt.EKM, hex.EncodeToString(v), hex.EncodeToString(p.Digest))
 					return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Quote Failed Verify for index: %d", p.Index)
 				}
 			}
@@ -724,7 +760,7 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 	glog.V(5).Infof("     quotes verified")
 	el, err := attest.ParseEventLog(serverPlatformAttestationParameter.EventLog)
 	if err != nil {
-		glog.Errorf("Quote Parsing EventLog Failed:  [%s] %v", in.Uid, err)
+		glog.Errorf("Quote Parsing EventLog Failed:  [%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Quote Parsing EventLog Failed: %v", err)
 	}
 
@@ -745,14 +781,14 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 
 	sb, err := attest.ParseSecurebootState(el.Events(attest.HashSHA256))
 	if err != nil {
-		glog.Errorf("Quote Parsing ParseSecurebootState Failed: [%s] %v", in.Uid, err)
+		glog.Errorf("Quote Parsing ParseSecurebootState Failed: [%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Quote Parsing ParseSecurebootState Failed: %v", err)
 	}
 
 	glog.V(5).Infof("     secureBoot State enabled: [%t]", sb.Enabled)
 
 	if _, err := el.Verify(serverPlatformAttestationParameter.PCRs); err != nil {
-		glog.Errorf("Quote Verify Failed:[%s] %v", in.Uid, err)
+		glog.Errorf("Quote Verify Failed:[%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Quote Verify Failed: %v", err)
 	}
 
@@ -763,23 +799,23 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 func (s *server) SetAttestedKey(ctx context.Context, in *verifier.SetAttestedKeyRequest) (*verifier.SetAttestedKeyResponse, error) {
 	glog.V(2).Infof("======= SetAttestedKey ========")
 
-	rval := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", rval.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", rval.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if val, ok := attestationKeys[in.Uid]; ok {
+	if val, ok := attestationKeys[evt.EKM]; ok {
 		if val.EKCert == nil || val.AKPub == nil || val.AttestationParameters == nil || !val.Attested || val.Nonce == nil {
-			glog.Errorf("Error SetAttestedKey requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first: [%s] %v", in.Uid)
+			glog.Errorf("Error SetAttestedKey requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first: [%s] %v", evt.EKM)
 			return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Error SetAttestedKey requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first")
 		}
 	} else {
-		glog.Errorf("Error SetAttestedKey requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first: [%s] %v", in.Uid)
+		glog.Errorf("Error SetAttestedKey requires AK and EK and AttestationParameters, OfferQuote(nonce) and must be Attested first: [%s] %v", evt.EKM)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Error SetAttestedKey requires AK and EK and AttestationParameters,OfferQuote(nonce) and must be Attested first")
 	}
 
-	vv := attestationKeys[in.Uid]
+	vv := attestationKeys[evt.EKM]
 
 	//cr := pem.EncodeToMemory(&pem.Block{Type: "Public Key", Bytes: in.Key})
 	glog.V(2).Infof("        New PublicKey ========")
@@ -788,7 +824,7 @@ func (s *server) SetAttestedKey(ctx context.Context, in *verifier.SetAttestedKey
 	keyCertificationParameter := &attest.CertificationParameters{}
 	err := json.NewDecoder(bytes.NewReader(in.KeyCertification)).Decode(keyCertificationParameter)
 	if err != nil {
-		glog.Errorf("Key Certification error: [%s] %v", in.Uid, err)
+		glog.Errorf("Key Certification error: [%s] %v", evt.EKM, err)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Key Certification  %v", err)
 	}
 
@@ -797,13 +833,13 @@ func (s *server) SetAttestedKey(ctx context.Context, in *verifier.SetAttestedKey
 		Hash:   crypto.SHA256,
 	})
 	if err != nil {
-		glog.Errorf("Key Verification error error: [%s] %v", in.Uid, err)
+		glog.Errorf("Key Verification error error: [%s] %v", evt.EKM, err)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Key Verification error %v", err)
 	}
 
 	decodedTPMNTPublic, err := tpm2.DecodePublic(keyCertificationParameter.Public)
 	if err != nil {
-		glog.Errorf("error parsing TPM public key structure: [%s] %v", in.Uid, err)
+		glog.Errorf("error parsing TPM public key structure: [%s] %v", evt.EKM, err)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "error parsing TPM public key structure: %v", err)
 	}
 
@@ -823,25 +859,25 @@ func (s *server) SetAttestedKey(ctx context.Context, in *verifier.SetAttestedKey
 	glog.V(20).Infof("     Key Expected Properties mask %d", expectedAttributeMask)
 
 	if expectedAttributeMask != tlsKeyProps {
-		glog.Errorf("error Key attribute mismatch, [%s]  expected [%d], got [%d]", in.Uid, expectedAttributeMask, tlsKeyProps)
+		glog.Errorf("error Key attribute mismatch, [%s]  expected [%d], got [%d]", evt.EKM, expectedAttributeMask, tlsKeyProps)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "error Key attribute mismatch, expected [%d], got [%d]", expectedAttributeMask, tlsKeyProps)
 	}
 
 	// extract the PEM key
 	tlsPubKey, err := decodedTPMNTPublic.Key()
 	if err != nil {
-		glog.Errorf("error parsing getting public key for TLS Key [%s] %v", in.Uid, err)
+		glog.Errorf("error parsing getting public key for TLS Key [%s] %v", evt.EKM, err)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "error parsing getting public key for TLS Key %v", err)
 	}
 	tlsECCPub, ok := tlsPubKey.(*ecdsa.PublicKey)
 	if !ok {
-		glog.Errorf("error converting tls public key to ec key: [%s]", in.Uid)
+		glog.Errorf("error converting tls public key to ec key: [%s]", evt.EKM)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "error converting tls public key to ec key:")
 	}
 
 	certifyPubbytes, err := x509.MarshalPKIXPublicKey(tlsECCPub)
 	if err != nil {
-		glog.Errorf("ERROR:  Failed to marshall certificate publcikey[%s] %v", in.Uid, err)
+		glog.Errorf("ERROR:  Failed to marshall certificate publcikey[%s] %v", evt.EKM, err)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "ERROR:  Failed to marshall certificate publcikey: %s", err)
 	}
 	certifyPEM := pem.EncodeToMemory(
@@ -852,7 +888,7 @@ func (s *server) SetAttestedKey(ctx context.Context, in *verifier.SetAttestedKey
 	)
 
 	vv.IssuedKey = tlsECCPub
-	attestationKeys[in.Uid] = vv
+	attestationKeys[evt.EKM] = vv
 	glog.V(5).Infof("     key verified \n%s\n", certifyPEM)
 
 	glog.V(5).Infof("=============== end SetAttestedKey ===============")
@@ -862,34 +898,34 @@ func (s *server) SetAttestedKey(ctx context.Context, in *verifier.SetAttestedKey
 func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificateRequest) (*verifier.GetCertificateResponse, error) {
 	glog.V(2).Infof("======= GetCertificate ========")
 
-	rval := ctx.Value(contextKey("event")).(event)
-	glog.V(60).Infof("     Inbound gRPC request from: %s", rval.PeerIP)
-	glog.V(60).Infof("     Inbound EKM: %s", rval.EKM)
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if val, ok := attestationKeys[in.Uid]; ok {
+	if val, ok := attestationKeys[evt.EKM]; ok {
 		if val.EKCert == nil || val.AKPub == nil || val.AttestationParameters == nil || !val.Attested || val.Nonce == nil || val.IssuedKey == nil {
-			glog.Errorf("Error GetCertificate requires AK and EK and AttestationParameters, OfferQuote(nonce), SetAttestedKey and must be Attested first [%s]", in.Uid)
+			glog.Errorf("Error GetCertificate requires AK and EK and AttestationParameters, OfferQuote(nonce), SetAttestedKey and must be Attested first [%s]", evt.EKM)
 			return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Error GetCertificate requires AK and EK and AttestationParameters, OfferQuote(nonce), SetAttestedKey and must be Attested first")
 		}
 	} else {
-		glog.Errorf("Error GetCertificate requires AK and EK and AttestationParameters, OfferQuote(nonce), SetAttestedKey and must be Attested first [%s]", in.Uid)
+		glog.Errorf("Error GetCertificate requires AK and EK and AttestationParameters, OfferQuote(nonce), SetAttestedKey and must be Attested first [%s]", evt.EKM)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Error GetCertificate requires AK and EK and AttestationParameters,OfferQuote(nonce),SetAttestedKey and must be Attested first")
 	}
 	csr, err := x509.ParseCertificateRequest(in.Csr)
 	if err != nil {
-		glog.Errorf("Failed to parse CSR: [%s] %v", in.Uid, err)
+		glog.Errorf("Failed to parse CSR: [%s] %v", evt.EKM, err)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to parse CSR: %s", err)
 	}
 
-	val := attestationKeys[in.Uid]
+	val := attestationKeys[evt.EKM]
 	if val.IssuedKey == nil {
-		glog.Errorf("newKey not provided; please use SetAttestedKey first [%s]", in.Uid)
+		glog.Errorf("newKey not provided; please use SetAttestedKey first [%s]", evt.EKM)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "newKey not provided; please use SetAttestedKey first")
 	}
 	if !val.IssuedKey.Equal(csr.PublicKey.(*ecdsa.PublicKey)) {
-		glog.Errorf("Public Key provided does not match attested public newkey [%s]", in.Uid)
+		glog.Errorf("Public Key provided does not match attested public newkey [%s]", evt.EKM)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Public Key provided does not match attested public newkey")
 	}
 
@@ -900,30 +936,30 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 	// read the root cert and key that will sign the client cert
 	clientCAcrtBytes, err := os.ReadFile(*signingCert)
 	if err != nil {
-		glog.Errorf("could not load clientCA certificate [%s] %v", in.Uid, err)
+		glog.Errorf("could not load clientCA certificate [%s] %v", evt.EKM, err)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "could not load clientCA certificate: %v", err)
 	}
 
 	block, _ := pem.Decode(clientCAcrtBytes)
 	if block == nil {
-		glog.Errorf("error decoding client ca certificate file [%s]", in.Uid)
+		glog.Errorf("error decoding client ca certificate file [%s]", evt.EKM)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "error decoding client ca certificate file %v", err)
 	}
 	ccacrt, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		glog.Errorf("error parsing client ca certificate [%s] %v", in.Uid, err)
+		glog.Errorf("error parsing client ca certificate [%s] %v", evt.EKM, err)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "error parsing client ca certificate  %v", err)
 	}
 
 	clientCAKeyBytes, err := os.ReadFile(*signingKey)
 	if err != nil {
-		glog.Errorf("error reading client ca certificate private key: [%s] %v", in.Uid, err)
+		glog.Errorf("error reading client ca certificate private key: [%s] %v", evt.EKM, err)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "error reading client ca certificate private key: %v", err)
 	}
 	caPrivPem, _ := pem.Decode(clientCAKeyBytes)
 	ccakey, err := x509.ParsePKCS8PrivateKey(caPrivPem.Bytes)
 	if err != nil {
-		glog.Errorf("error decoding client ca certificate ca key: [%s] %v", in.Uid, err)
+		glog.Errorf("error decoding client ca certificate ca key: [%s] %v", evt.EKM, err)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "error decoding client ca certificate ca key %v", err)
 	}
 
@@ -935,7 +971,7 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		glog.Errorf("Failed to generate serial number: [%s] %v", in.Uid, err)
+		glog.Errorf("Failed to generate serial number: [%s] %v", evt.EKM, err)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to generate serial number: %s", err)
 	}
 
@@ -960,9 +996,12 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, &template, ccacrt, csr.PublicKey, ccakey)
 	if err != nil {
-		glog.Errorf("Failed to create certificate: [%s] %v", in.Uid, err)
+		glog.Errorf("Failed to create certificate: [%s] %v", evt.EKM, err)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to create certificate: %s", err)
 	}
+
+	glog.V(50).Infof("      Clearing Session")
+	delete(attestationKeys, evt.EKM)
 
 	glog.V(5).Infof("=============== end GetCertificate ===============")
 	return &verifier.GetCertificateResponse{
@@ -970,7 +1009,18 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 	}, nil
 }
 
+// NewServer returns a new Server.
+func NewServer() *server {
+	return &server{
+		statusMap: make(map[string]healthpb.HealthCheckResponse_ServingStatus),
+	}
+}
+
 func main() {
+	os.Exit(run()) // since defer func() needs to get called first
+}
+
+func run() int {
 	flag.Set("logtostderr", "true")
 	flag.Set("stderrthreshold", "INFO")
 	flag.Parse()
@@ -979,7 +1029,7 @@ func main() {
 	defaultCerts, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
 	if err != nil {
 		glog.Errorf("failed to create default certs: %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	tlsConfig := &tls.Config{
@@ -989,18 +1039,20 @@ func main() {
 	lis, err := net.Listen("tcp", *grpcPort)
 	if err != nil {
 		glog.Errorf("failed to listen: %v", err)
-		os.Exit(1)
+		return 1
 	}
 
 	sopts := []grpc.ServerOption{grpc.MaxConcurrentStreams(10)}
 
 	sopts = append(sopts, grpc.Creds(ce), grpc.UnaryInterceptor(authUnaryInterceptor))
 	s := grpc.NewServer(sopts...)
-
-	verifier.RegisterVerifierServer(s, &server{})
+	srv := NewServer()
+	verifier.RegisterVerifierServer(s, srv)
+	healthpb.RegisterHealthServer(s, srv)
 
 	glog.V(2).Infof("Starting gRPC server on port %v", *grpcPort)
 	s.Serve(lis)
+	return 0
 }
 
 func getPCRMap(expectedPCRMapSHA256 string, algo tpm.HashAlgo) (map[uint32][]byte, []byte, error) {

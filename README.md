@@ -55,17 +55,22 @@ On startup:
 19. Verifier checks signature of the Attestation is by the AK and the
     PCR values from the Quote and the nonce values match.
     Verifier replays the eventLog to confirm derived PCR value.
-21. (optiona Issue New ECC x509) Attestor genrate newKey on TPM 
-22. Attestor uses AK to certify newKey
-23. Attestor transmits newKey and certification data to Verifer
-24. Verifer confirms newKey is on the TPM and was certified by AK
-25. Attestor uses newKey to generate a CSR
-26. Attestor sends CSR to Verifier
-27. Verifer confirms CSR's public key is certified newKey
-28. Verifer signes csr and issues x509
-29. Verifer returns x509 to Attestor
+20. (optiona Issue New ECC x509) Attestor genrate newKey on TPM 
+21. Attestor uses AK to certify newKey
+22. Attestor transmits newKey and certification data to Verifer
+23. Verifer confirms newKey is on the TPM and was certified by AK
+24. Attestor uses newKey to generate a CSR
+25. Attestor sends CSR to Verifier
+26. Verifer confirms CSR's public key is certified newKey
+27. Verifer signes csr and issues x509
+28. Verifer returns x509 to Attestor
 
 ![images/pull.png](images/pull.png)
+
+Note that prior to the start of this protocol, the Attestor creates a gRPC [HealthCheck](https://github.com/grpc/grpc/blob/master/doc/health-checking.md) request over mTLS to the Verifier.
+
+The TLS connection for that request returns a unique connection-specific [Exported Key Material](https://github.com/salrashid123/go_ekm_tls).  This `EKM` value is unique to the connection and is derived simultaneously by both the client and server.  The EKM value is used to populate the an internal session database on the Verifier for each of the steps from step `2` to step `28` after which the EKM entry in the datatabase is discarded.  This means that those steps 2->28 *must* be done on the same TLS session.
+
 
 ---
 

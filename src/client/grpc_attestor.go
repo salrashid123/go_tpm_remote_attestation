@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"io"
@@ -25,10 +26,11 @@ import (
 	"github.com/google/go-attestation/attest"
 	"github.com/google/go-attestation/attributecert"
 	"github.com/google/go-tpm/tpmutil"
-	"github.com/google/uuid"
 	"github.com/salrashid123/go_tpm_registrar/verifier"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/peer"
 )
 
 const ()
@@ -110,7 +112,45 @@ func main() {
 	}
 	defer conn.Close()
 
-	uid := uuid.New().String()
+	glog.V(5).Infof("=============== HealthCheck ===============")
+
+	pr := new(peer.Peer)
+
+	hctx, cancel := context.WithTimeout(ctx, 1*time.Second)
+	defer cancel()
+	resp, err := healthpb.NewHealthClient(conn).Check(hctx, &healthpb.HealthCheckRequest{Service: verifier.Verifier_ServiceDesc.ServiceName}, grpc.Peer(pr))
+	if err != nil {
+		glog.Errorf("HealthCheck failed %+v", err)
+		os.Exit(1)
+	}
+
+	if resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
+		glog.Errorf("service not in serving state: ", resp.GetStatus().String())
+		os.Exit(1)
+	}
+	glog.V(5).Infof("RPC HealthChekStatus: %v\n", resp.GetStatus())
+
+	switch info := pr.AuthInfo.(type) {
+	case credentials.TLSInfo:
+		authType := info.AuthType()
+		sn := info.State.ServerName
+		glog.V(60).Infof("AuthType, ServerName %s, %s\n", authType, sn)
+		tlsInfo, ok := pr.AuthInfo.(credentials.TLSInfo)
+		if !ok {
+			glog.Errorf("ERROR:  Could get remote TLS")
+			os.Exit(1)
+		}
+		ekm, err := tlsInfo.State.ExportKeyingMaterial("EXPORTER-my_label", []byte("mycontext"), 32)
+		if err != nil {
+			glog.Errorf("ERROR:  Could getting EKM %v", err)
+			os.Exit(1)
+		}
+		glog.V(10).Infof("EKM: %s\n", hex.EncodeToString(ekm))
+
+	default:
+		glog.Errorf("Unknown AuthInfo type")
+		os.Exit(1)
+	}
 
 	// first get the ek so we can stuff it into the platform cert
 
@@ -252,7 +292,6 @@ func main() {
 	}
 
 	_, err = c.OfferPlatformCert(ctx, &verifier.OfferPlatformCertRequest{
-		Uid:          uid,
 		PlatformCert: platformCert,
 	})
 	if err != nil {
@@ -264,7 +303,6 @@ func main() {
 	glog.V(5).Infof("=============== OfferEK ===============")
 
 	_, err = c.OfferEK(ctx, &verifier.OfferEKRequest{
-		Uid:    uid,
 		EkCert: ek.Certificate.Raw,
 	})
 	if err != nil {
@@ -305,7 +343,6 @@ func main() {
 	}
 
 	_, err = c.OfferAK(ctx, &verifier.OfferAKRequest{
-		Uid:                   uid,
 		AttestationParameters: attestParametersBytes.Bytes(),
 	})
 	if err != nil {
@@ -316,9 +353,7 @@ func main() {
 
 	glog.V(5).Infof("=============== GetMakeCredential ===============")
 
-	mk, err := c.GetMakeCredential(ctx, &verifier.GetMakeCredentialRequest{
-		Uid: uid,
-	})
+	mk, err := c.GetMakeCredential(ctx, &verifier.GetMakeCredentialRequest{})
 	if err != nil {
 		glog.Errorf("error sending getMakeCredentials: %v", err)
 		os.Exit(1)
@@ -350,7 +385,6 @@ func main() {
 	glog.V(5).Infof("=============== SetActivateCredential ===============")
 
 	_, err = c.SetActivateCredential(ctx, &verifier.SetActivateCredentialRequest{
-		Uid:    uid,
 		Secret: secret,
 	})
 	if err != nil {
@@ -361,9 +395,7 @@ func main() {
 
 	glog.V(5).Infof("=============== OfferQuote ===============")
 
-	oq, err := c.OfferQuote(ctx, &verifier.OfferQuoteRequest{
-		Uid: uid,
-	})
+	oq, err := c.OfferQuote(ctx, &verifier.OfferQuoteRequest{})
 	if err != nil {
 		glog.Errorf("error sending OfferQuote: %v", err)
 		os.Exit(1)
@@ -394,7 +426,6 @@ func main() {
 	}
 
 	_, err = c.SetQuote(ctx, &verifier.SetQuoteRequest{
-		Uid:                 uid,
 		PlatformAttestation: platformAttestationBytes.Bytes(),
 	})
 	if err != nil {
@@ -464,7 +495,6 @@ func main() {
 	}
 
 	_, err = c.SetAttestedKey(ctx, &verifier.SetAttestedKeyRequest{
-		Uid:              uid,
 		Key:              issuedKeyderBytes,
 		KeyCertification: keyCertificationBytes.Bytes(),
 	})
@@ -512,7 +542,6 @@ func main() {
 	glog.V(5).Infof("CSR \n%s\n", string(pemcsr))
 
 	ccr, err := c.GetCertificate(ctx, &verifier.GetCertificateRequest{
-		Uid: uid,
 		Csr: csrBytes,
 	})
 	if err != nil {

@@ -17,68 +17,56 @@ service Verifier {
 }
 
 message OfferPlatformCertRequest {
-  string uid = 1;  
-  bytes platformCert = 2;  
+  bytes platformCert = 1;  
 }
 
 message OfferPlatformCertResponse {}
 
 message OfferEKRequest {
-  string uid = 1;  
-  bytes ekCert = 2;  
+  bytes ekCert = 1;  
 }
 
 message OfferEKResponse {}
 
 message OfferAKRequest {
-  string uid = 1;  
-  bytes attestation_parameters = 2;  
+  bytes attestation_parameters = 1;  
 }
 
 message OfferAKResponse {}
 
-message GetMakeCredentialRequest {
-  string uid = 1;  
-}
+message GetMakeCredentialRequest {}
 
 message GetMakeCredentialResponse {
     bytes encrypted_credentials = 1;  
 }
 
 message SetActivateCredentialRequest {
-  string uid = 1;
-  bytes secret = 2;  
+  bytes secret = 1;  
 }
 
 message SetActivateCredentialResponse {}
 
-message OfferQuoteRequest {
-  string uid = 1;
-}
+message OfferQuoteRequest {}
 
 message OfferQuoteResponse {
   bytes nonce = 1;
 }
 
 message SetQuoteRequest {
-  string uid = 1;
-  bytes platform_attestation = 2;
+  bytes platform_attestation = 1;
 }
 
 message SetQuoteResponse {}
 
-
 message SetAttestedKeyRequest {
-  string uid = 1;
-  bytes key = 2;
-  bytes keyCertification = 3;
+  bytes key = 1;
+  bytes keyCertification = 2;
 }
 
 message SetAttestedKeyResponse {}
 
 message GetCertificateRequest {
-  string uid = 1;
-  bytes csr = 2;
+  bytes csr = 1;
 }
 
 message GetCertificateResponse {
