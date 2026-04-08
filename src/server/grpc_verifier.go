@@ -76,8 +76,10 @@ var (
 	expectedPCRMapSHA256 = flag.String("expectedPCRMapSHA256", "0:d0c70a9310cd0b55767084333022ce53f42befbb69c059ee6c0a32766f160783", "Sealing and Quote PCRMap (as comma separated key:value).  pcr#:sha256,pcr#sha256.  Default value uses pcr0:sha256")
 	ekRootCA             = flag.String("ekrootCA", "certs/ek_root.pem", "EK rootsCA")
 	ekIntermediateCA     = flag.String("ekintermediateCA", "", "EK intermediate CA")
-	platformCA           = flag.String("platformCA", "certs/IntelSigningKey_20April2017.cer", "Platform CA")
-	attestationKeys      = make(map[string]db) // map which holds the EKM value for a session and the database of attestation state
+	attestationKeys      = make(map[string]db) // map which holds the EKM value for a session and the database of attestation state; todo: evict stale, unused keys
+
+	ekmLabel   = flag.String("ekmLabel", "EXPORTER-my_label", "label to use for the EKM (default: EXPORTER-my_label)")
+	ekmContext = flag.String("ekmContext", "mycontext", "context to use for the EKM (default: mycontext)")
 )
 
 type server struct {
@@ -125,7 +127,7 @@ func authUnaryInterceptor(
 		glog.Errorf("ERROR:  Could get remote TLS")
 		return nil, status.Errorf(codes.PermissionDenied, "ERROR: could not get remote TLS")
 	}
-	ekm, err := tlsInfo.State.ExportKeyingMaterial("EXPORTER-my_label", []byte("mycontext"), 32)
+	ekm, err := tlsInfo.State.ExportKeyingMaterial(*ekmLabel, []byte(*ekmContext), 32)
 	if err != nil {
 		glog.Errorf("ERROR:  Could getting EKM %v", err)
 		return nil, status.Errorf(codes.PermissionDenied, "ERROR: error getting EKM")
@@ -147,10 +149,15 @@ func (s *server) Check(ctx context.Context, in *healthpb.HealthCheckRequest) (*h
 
 	if in.Service == "" {
 		// return overall status
-		return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVING}, nil
+		return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVICE_UNKNOWN}, nil
 	}
 
 	s.statusMap[verifier.Verifier_ServiceDesc.ServiceName] = healthpb.HealthCheckResponse_SERVING
+
+	evt := ctx.Value(contextKey("event")).(event)
+	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
+	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+	attestationKeys[evt.EKM] = db{}
 
 	status, ok := s.statusMap[in.Service]
 	if !ok {
@@ -178,6 +185,11 @@ func (s *server) OfferPlatformCert(ctx context.Context, in *verifier.OfferPlatfo
 	evt := ctx.Value(contextKey("event")).(event)
 	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
 	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if _, ok := attestationKeys[evt.EKM]; !ok {
+		glog.Errorf("Error cannot process OfferPlatformCert before calling HealthCheck [%s]", evt.EKM)
+		return &verifier.OfferPlatformCertResponse{}, status.Errorf(codes.Internal, "Error cannot process OfferPlatformCert before calling HealthCheck")
+	}
 
 	if len(in.PlatformCert) > 0 {
 
@@ -288,6 +300,11 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 	evt := ctx.Value(contextKey("event")).(event)
 	glog.V(60).Infof("     Inbound gRPC request from: %s", evt.PeerIP)
 	glog.V(60).Infof("     Inbound EKM: %s", evt.EKM)
+
+	if _, ok := attestationKeys[evt.EKM]; !ok {
+		glog.Errorf("Error cannot process OfferEK before calling HealthCheck [%s]", evt.EKM)
+		return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "Error cannot process OfferPlatformCert before calling HealthCheck")
+	}
 
 	ekcert, err := x509.ParseCertificate(in.EkCert)
 	if err != nil {

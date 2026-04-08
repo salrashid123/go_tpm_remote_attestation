@@ -36,16 +36,17 @@ import (
 const ()
 
 var (
-	address          = flag.String("host", "localhost:50051", "host:port of gRPC server")
-	grpcServerName   = flag.String("grpcservername", "verify.domain.com", "SNI for grpc server")
-	tlsCert          = flag.String("tlsCert", "certs/root-ca.crt", "tls Certificate")
-	eventLogPath     = flag.String("eventLogPath", "/sys/kernel/security/tpm0/binary_bios_measurements", "Path to the eventlog")
-	platformCertFile = flag.String("platformCertFile", "certs/platform_cert.der", "Platform Certificate File")
-	tpmPath          = flag.String("tpm-path", "127.0.0.1:2321", "Path to the TPM device (character device or a Unix socket).")
+	address        = flag.String("host", "localhost:50051", "host:port of gRPC server")
+	grpcServerName = flag.String("grpcservername", "verify.domain.com", "SNI for grpc server")
+	tlsCert        = flag.String("tlsCert", "certs/root-ca.crt", "tls Certificate")
+	eventLogPath   = flag.String("eventLogPath", "/sys/kernel/security/tpm0/binary_bios_measurements", "Path to the eventlog")
+	tpmPath        = flag.String("tpm-path", "127.0.0.1:2321", "Path to the TPM device (character device or a Unix socket).")
 
 	platformCACert = flag.String("platformCACert", "certs/platform-ca.crt", "tls Certificate")
 	platformCAKey  = flag.String("platformCAKey", "certs/platform-ca.key", "tls Key")
 
+	ekmLabel          = flag.String("ekmLabel", "EXPORTER-my_label", "label to use for the EKM (default: EXPORTER-my_label)")
+	ekmContext        = flag.String("ekmContext", "mycontext", "context to use for the EKM (default: mycontext)")
 	tpm               *attest.TPM
 	ek                *attest.EK
 	ekpubBytes        []byte
@@ -54,8 +55,6 @@ var (
 	nkBytes           []byte
 	issuedKeyderBytes []byte
 )
-
-const ()
 
 var TPMDEVICES = []string{"/dev/tpm0", "/dev/tpmrm0"}
 
@@ -140,7 +139,7 @@ func main() {
 			glog.Errorf("ERROR:  Could get remote TLS")
 			os.Exit(1)
 		}
-		ekm, err := tlsInfo.State.ExportKeyingMaterial("EXPORTER-my_label", []byte("mycontext"), 32)
+		ekm, err := tlsInfo.State.ExportKeyingMaterial(*ekmLabel, []byte(*ekmContext), 32)
 		if err != nil {
 			glog.Errorf("ERROR:  Could getting EKM %v", err)
 			os.Exit(1)
