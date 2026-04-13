@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/tls"
@@ -341,8 +342,47 @@ func main() {
 		os.Exit(1)
 	}
 
+	glog.V(5).Infof("Creating AK CSR")
+
+	var akcsrtemplate = x509.CertificateRequest{
+		Subject: pkix.Name{
+			Organization:       []string{"Acme Co"},
+			OrganizationalUnit: []string{"Enterprise"},
+			Locality:           []string{"Mountain View"},
+			Province:           []string{"California"},
+			Country:            []string{"US"},
+			CommonName:         "attestor.domain.com",
+		},
+		DNSNames:           []string{"attestor.domain.com"},
+		SignatureAlgorithm: x509.SHA256WithRSA,
+	}
+
+	aks, err := NewTPMCrypto(&TPM{
+		TPM: tpm,
+		AK:  ak,
+	})
+	if err != nil {
+		glog.Errorf("Failed to create CSR: %s", err)
+		os.Exit(1)
+	}
+
+	akcsrBytes, err := x509.CreateCertificateRequest(rand.Reader, &akcsrtemplate, aks)
+	if err != nil {
+		glog.Errorf("Failed to create CSR: %s", err)
+		os.Exit(1)
+	}
+	akpemcsr := pem.EncodeToMemory(
+		&pem.Block{
+			Type:  "CERTIFICATE REQUEST",
+			Bytes: akcsrBytes,
+		},
+	)
+	glog.V(5).Infof("AK CSR \n%s\n", string(akpemcsr))
+	defer ak.Close(tpm)
+
 	_, err = c.OfferAK(ctx, &verifier.OfferAKRequest{
 		AttestationParameters: attestParametersBytes.Bytes(),
+		AkCsr:                 akcsrBytes,
 	})
 	if err != nil {
 		glog.Errorf("error sending attestation parameters: %v", err)
@@ -424,13 +464,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	_, err = c.SetQuote(ctx, &verifier.SetQuoteRequest{
+	sq, err := c.SetQuote(ctx, &verifier.SetQuoteRequest{
 		PlatformAttestation: platformAttestationBytes.Bytes(),
 	})
 	if err != nil {
 		glog.Errorf("error sending SetQuote: %v", err)
 		os.Exit(1)
 	}
+
+	issuedakcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: sq.AkCertificate})
+
+	glog.V(5).Infof("Issued AK Certificate: \n%s\n", string(issuedakcrtPEM))
 	glog.V(5).Infof("SetQuote complete \n")
 
 	glog.V(5).Infof("=============== SetAttestedKey ===============")
@@ -554,4 +598,37 @@ func main() {
 
 	glog.V(5).Infof("GetCertificate complete \n")
 
+}
+
+type TPM struct {
+	_ crypto.Signer
+	//_ crypto.MessageSigner // introduced in https://tip.golang.org/doc/go1.25#cryptopkgcrypto
+	_   crypto.MessageSigner
+	TPM *attest.TPM
+	AK  *attest.AK
+}
+
+func NewTPMCrypto(conf *TPM) (TPM, error) {
+
+	if conf.TPM == nil {
+		return TPM{}, fmt.Errorf("AK TPM cannot be null")
+	}
+
+	if conf.AK == nil {
+		return TPM{}, fmt.Errorf("AK cannot be null")
+	}
+
+	return *conf, nil
+}
+
+func (t TPM) Public() crypto.PublicKey {
+	return t.AK.Public()
+}
+
+func (t TPM) Sign(rr io.Reader, digest []byte, opts crypto.SignerOpts) ([]byte, error) {
+	return t.AK.SignMsg(t.TPM, digest, opts)
+}
+
+func (t TPM) SignMessage(rand io.Reader, msg []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+	return t.AK.SignMsg(t.TPM, msg, opts)
 }

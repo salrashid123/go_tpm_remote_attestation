@@ -30,6 +30,7 @@ message OfferEKResponse {}
 
 message OfferAKRequest {
   bytes attestation_parameters = 1;  
+  bytes ak_csr = 2;  
 }
 
 message OfferAKResponse {}
@@ -56,7 +57,9 @@ message SetQuoteRequest {
   bytes platform_attestation = 1;
 }
 
-message SetQuoteResponse {}
+message SetQuoteResponse {
+  bytes ak_certificate = 1;
+}
 
 message SetAttestedKeyRequest {
   bytes key = 1;

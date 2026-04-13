@@ -1,6 +1,6 @@
 module verifier
 
-go 1.24.0
+go 1.26.2
 
 require (
 	google.golang.org/grpc v1.77.0
