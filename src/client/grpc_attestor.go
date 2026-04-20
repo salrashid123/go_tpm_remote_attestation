@@ -179,6 +179,19 @@ func main() {
 	}
 	defer tpm.Close()
 
+	r, err := tpm.Info()
+	if err != nil {
+		glog.Errorf("error getting TPMInfo %v", err)
+		os.Exit(1)
+	}
+
+	glog.V(10).Infof("VendorInfo: %s\n", r.VendorInfo)
+	glog.V(10).Infof("FirmwareVersionMajor: %d\n", r.FirmwareVersionMajor)
+	glog.V(10).Infof("FirmwareVersionMinor: %d\n", r.FirmwareVersionMinor)
+
+	glog.V(10).Infof("Manufacturer: %s\n", r.Manufacturer)
+	glog.V(10).Infof("VendorInfo: %s\n", r.VendorInfo)
+
 	eks, err := tpm.EKs()
 	if err != nil {
 		glog.Errorf("error getting EK %v", err)
