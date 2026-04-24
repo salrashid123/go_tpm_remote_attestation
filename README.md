@@ -4,10 +4,10 @@ This repo contains a sample `gRPC` client server application that uses a Trusted
 
 * TPM [Remote Attestation](https://tpm2-software.github.io/tpm2-tss/getting-started/2019/12/18/Remote-Attestation.html)
 * TPM [Quote-Verify](https://github.com/salrashid123/tpm2/tree/master/quote_verify)
-* Sealed and PCR bound Transfer of RSA or AES keys.
-* Parse TPM EventLog
+* TPM Attestation of signing key
+* Parse TPM EventLog; verify SecureBoot
 
->>> **NOTE** the code and procedure outlined here is **NOT** supported by google.
+>>> **NOTE** the code outlined here is **NOT** supported by google.
 
 
 You can use this standalone to setup a gRPC client/server for remote attestation.
@@ -55,7 +55,7 @@ On startup:
 19. Verifier checks signature of the Attestation is by the AK and the
     PCR values from the Quote and the nonce values match.
     Verifier replays the eventLog to confirm derived PCR value.
-20. (optiona Issue New ECC x509) Attestor genrate newKey on TPM 
+20. (optiona Issue New ECC x509) Attestor genrates an ECC newKey on TPM 
 21. Attestor uses AK to certify newKey
 22. Attestor transmits newKey and certification data to Verifer
 23. Verifer confirms newKey is on the TPM and was certified by AK
