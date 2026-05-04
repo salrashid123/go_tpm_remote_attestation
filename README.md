@@ -1457,6 +1457,15 @@ SU5Y8sRw48pfLtbTuQw83VoqJxx3bnhLWnXHhBYkQA/3iw==
 -----END CERTIFICATE-----
 ```
 
+### EK-Based Key Attestation with TPM Firmware Version
+
+This prototocol does not include deriving the firmware version from the attestor. 
+
+However, you can easily implement new methods which follow [EK-Based Key Attestation with TPM Firmware Version](https://trustedcomputinggroup.org/wp-content/uploads/EK-Based-Key-Attestation-with-TPM-Firmware-Version-Version-1_Pub.pdf).
+
+For example, see [salrashid123/tpm2/tree/master/ek_attestation](https://github.com/salrashid123/tpm2/tree/master/ek_attestation)
+
+
 ### Applications
 
 This is just an academic exercise (so do not use the code as is).   However, some applications of this

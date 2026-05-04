@@ -63,6 +63,7 @@ type db struct {
 	IssuedCert            *x509.Certificate
 	Nonce                 []byte
 	AttestedKey           crypto.PublicKey
+	DeviceSerialNumber    string
 }
 
 var (
@@ -154,7 +155,7 @@ func authUnaryInterceptor(
 		glog.Errorf("ERROR:  Could getting EKM %v", err)
 		return nil, status.Errorf(codes.PermissionDenied, "ERROR: error getting EKM")
 	}
-	glog.V(10).Infof("     EKM: %s\n", hex.EncodeToString(ekm))
+	glog.V(60).Infof("     EKM: %s\n", hex.EncodeToString(ekm))
 
 	event := &event{
 		EKM:    hex.EncodeToString(ekm),
@@ -168,7 +169,7 @@ func authUnaryInterceptor(
 func (s *server) Check(ctx context.Context, in *healthpb.HealthCheckRequest) (*healthpb.HealthCheckResponse, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
+	glog.V(2).Infof("======= HealthCheck ========")
 	if in.Service == "" {
 		// return overall status
 		return &healthpb.HealthCheckResponse{Status: healthpb.HealthCheckResponse_SERVICE_UNKNOWN}, nil
@@ -927,6 +928,19 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 		Value:    cc,
 	}
 
+	// create a unique device serial number:
+	// pg 55: https://trustedcomputinggroup.org/wp-content/uploads/TPM-2p0-Keys-for-Device-Identity-and-Attestation_v1_r12_pub10082021.pdf
+	// The subject field’s DN encoding SHOULD include the “serialNumber” attribute with the device’s unique serial number.
+
+	deviceSerialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	devserialNumber, err := rand.Int(rand.Reader, deviceSerialNumberLimit)
+	if err != nil {
+		glog.Errorf("Failed to generate device serial number: [%s] %v", evt.EKM, err)
+		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to generate serial number: %s", err)
+	}
+
+	vv.DeviceSerialNumber = devserialNumber.String()
+
 	// TODO: set the correct extensions
 	// I'm injecting the policy here...this too is just optional and while its not even used, i don't know if this is entirely applicable/correct
 	// pg4  https://trustedcomputinggroup.org/wp-content/uploads/TCG-OID-Registry-Version-1.00-Revision-0.74_10July24.pdf
@@ -944,6 +958,7 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 			Province:           []string{"California"},
 			Country:            []string{"US"},
 			CommonName:         vv.AKCSR.Subject.CommonName,
+			SerialNumber:       devserialNumber.String(),
 		},
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
@@ -1220,6 +1235,7 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 			Province:           []string{"California"},
 			Country:            []string{"US"},
 			CommonName:         csr.Subject.CommonName,
+			SerialNumber:       val.DeviceSerialNumber,
 		},
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
@@ -1237,6 +1253,10 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 		glog.Errorf("Failed to create certificate: [%s] %v", evt.EKM, err)
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to create certificate: %s", err)
 	}
+
+	issuedakcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+
+	glog.V(5).Infof("Issued ECC Certificate: \n%s\n", string(issuedakcrtPEM))
 
 	glog.V(50).Infof("      Clearing Session")
 	delete(attestationKeys, evt.EKM)

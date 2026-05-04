@@ -185,12 +185,23 @@ func main() {
 		os.Exit(1)
 	}
 
-	glog.V(10).Infof("VendorInfo: %s\n", r.VendorInfo)
-	glog.V(10).Infof("FirmwareVersionMajor: %d\n", r.FirmwareVersionMajor)
-	glog.V(10).Infof("FirmwareVersionMinor: %d\n", r.FirmwareVersionMinor)
+	//https://github.com/google/go-attestation/blob/master/attest/tpm.go#L232C1-L233C44
+
+	// $ tpm2_getcap  properties-fixed
+	// 	TPM2_PT_FIRMWARE_VERSION_1:
+	//   raw: 0x20240125     <<< u16 bigendian: 8228
+	// TPM2_PT_FIRMWARE_VERSION_2:
+	//   raw: 0x120000
+
+	// Manufacturer: IBM
+	// VendorInfo: SW   TPM
+	// FirmwareVersionMajor: 8228
+	// FirmwareVersionMinor: 293
 
 	glog.V(10).Infof("Manufacturer: %s\n", r.Manufacturer)
 	glog.V(10).Infof("VendorInfo: %s\n", r.VendorInfo)
+	glog.V(10).Infof("FirmwareVersionMajor: %d\n", r.FirmwareVersionMajor)
+	glog.V(10).Infof("FirmwareVersionMinor: %d\n", r.FirmwareVersionMinor)
 
 	eks, err := tpm.EKs()
 	if err != nil {
@@ -200,7 +211,7 @@ func main() {
 
 	for _, e := range eks {
 		if e.Certificate != nil {
-			glog.Infof("ECCert with available Issuer: %s", e.Certificate.Issuer)
+			glog.Infof("EKCert Issuer: %s", e.Certificate.Issuer)
 		}
 	}
 
@@ -226,6 +237,7 @@ func main() {
 	if ek.Certificate != nil {
 		ekCert = ek.Certificate
 	}
+	glog.V(10).Infof("EKCert SerialNumber: %d\n", ek.Certificate.SerialNumber)
 
 	c := verifier.NewVerifierClient(conn)
 	glog.V(5).Infof("=============== OfferPlatformCert ===============")
