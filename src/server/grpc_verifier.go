@@ -22,6 +22,7 @@ import (
 	"hash"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -1255,7 +1256,7 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 	}
 
 	issuedakcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-
+	glog.V(5).Infof("Issued Certificate SerialNumber: %d\n", serialNumber)
 	glog.V(5).Infof("Issued ECC Certificate: \n%s\n", string(issuedakcrtPEM))
 
 	glog.V(50).Infof("      Clearing Session")
@@ -1313,15 +1314,24 @@ func run() int {
 		return 1
 	}
 
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{defaultCerts},
-	}
-	ce := credentials.NewTLS(tlsConfig)
-	lis, err := net.Listen("tcp", *grpcPort)
+	clientCAcrtBytes, err := os.ReadFile(*signingCert)
 	if err != nil {
-		glog.Errorf("failed to listen: %v", err)
+		glog.Errorf("could not load clientCA certificate  %v", err)
 		return 1
 	}
+	client_cert_pool := x509.NewCertPool()
+	ok := client_cert_pool.AppendCertsFromPEM(clientCAcrtBytes)
+	if !ok {
+		glog.Errorf("Error parsing singing ca")
+		return 1
+	}
+	tlsConfig := &tls.Config{
+		NextProtos:   []string{"h2", "http/1.1"},
+		Certificates: []tls.Certificate{defaultCerts},
+		ClientAuth:   tls.RequestClientCert,
+		ClientCAs:    client_cert_pool,
+	}
+	ce := credentials.NewTLS(tlsConfig)
 
 	sopts := []grpc.ServerOption{grpc.MaxConcurrentStreams(10)}
 
@@ -1331,8 +1341,48 @@ func run() int {
 	verifier.RegisterVerifierServer(s, srv)
 	healthpb.RegisterHealthServer(s, srv)
 
+	httpMux := http.NewServeMux()
+	httpMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+		if r.TLS == nil {
+			glog.Errorf("TLS connection required")
+			http.Error(w, "TLS connection required", http.StatusBadRequest)
+			return
+		}
+		if len(r.TLS.PeerCertificates) > 0 {
+			clientCert := r.TLS.PeerCertificates[0]
+			subject := clientCert.Subject.CommonName
+			serialNumber := clientCert.SerialNumber
+			glog.V(5).Infof("=============== Got MTLS HTTPS request: mtls client Subject Common Name: %s, SerialNumber %d\n", subject, serialNumber)
+
+			fmt.Fprintf(w, "Client certificate found! Subject Common Name: %s, SerialNumber %d\n", subject, serialNumber)
+		} else {
+			// No client certificate was provided
+			glog.Errorf("No client certificate was sent.")
+			http.Error(w, "no client certificat ewas provided", http.StatusUnauthorized)
+		}
+	})
+
+	mixedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+			s.ServeHTTP(w, r)
+			return
+		}
+		httpMux.ServeHTTP(w, r)
+	})
+
 	glog.V(2).Infof("Starting gRPC server on port %v", *grpcPort)
-	s.Serve(lis)
+	glog.V(2).Infof("Starting https server on port %v", *grpcPort)
+	hserver := &http.Server{
+		Addr:      *grpcPort,
+		Handler:   mixedHandler,
+		TLSConfig: tlsConfig,
+	}
+	err = hserver.ListenAndServeTLS(*tlsCert, *tlsKey)
+	if err != nil {
+		glog.Fatalf("Error starting http server %v", err)
+	}
+
 	return 0
 }
 
