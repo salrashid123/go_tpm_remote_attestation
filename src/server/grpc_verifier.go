@@ -39,8 +39,10 @@ import (
 	"github.com/google/go-tpm-tools/proto/tpm"
 	tpmtoolsserver "github.com/google/go-tpm-tools/server"
 	"github.com/google/go-tpm/legacy/tpm2"
+	directtpm2 "github.com/google/go-tpm/tpm2"
 	"github.com/google/uuid"
 	"github.com/salrashid123/go_tpm_registrar/verifier"
+	"github.com/smallstep/certinfo"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -980,13 +982,19 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 
 	issuedakcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 
-	glog.V(5).Infof("Issued AK Certificate: \n%s\n", string(issuedakcrtPEM))
-
 	akcert, err := x509.ParseCertificate(derBytes)
 	if err != nil {
 		glog.Errorf("Failed to create certificate: [%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to parse ak certificate: %s", err)
 	}
+
+	akcertPrintable, err := certinfo.CertificateText(akcert)
+	if err != nil {
+		glog.Errorf("Failed to format certificate: [%s] %v", evt.EKM, err)
+		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to format ak certificate: %s", err)
+	}
+	glog.V(5).Infof("Issued AK Certificate: \n%s\n%s\n", string(issuedakcrtPEM), akcertPrintable)
+
 	vv.AKCert = akcert
 
 	attestationKeys[evt.EKM] = vv
@@ -1037,6 +1045,14 @@ func (s *server) SetAttestedKey(ctx context.Context, in *verifier.SetAttestedKey
 		glog.Errorf("Key Verification error error: [%s] %v", evt.EKM, err)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Key Verification error %v", err)
 	}
+
+	ad, err := directtpm2.Unmarshal[directtpm2.TPMSAttest](keyCertificationParameter.CreateAttestation)
+	if err != nil {
+		glog.Errorf("Key Verification error error: [%s] %v", evt.EKM, err)
+		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Key Verification error for TPMSAttest %v", err)
+	}
+	// print out any encoded client side data that may have been sent over
+	glog.V(2).Infof("        Key CertificationParameters.QualifyingData [%s]\n", string(ad.ExtraData.Buffer))
 
 	decodedTPMNTPublic, err := tpm2.DecodePublic(keyCertificationParameter.Public)
 	if err != nil {
@@ -1241,8 +1257,8 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
 		//DNSNames:              csr.DNSNames,
-		KeyUsage: x509.KeyUsageDigitalSignature,
-		//ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		PolicyIdentifiers:     []asn1.ObjectIdentifier{verifiedTPMResidency, verifiedTPMFixed},
 		ExtraExtensions:       []pkix.Extension{extSubjectAltName},
 		BasicConstraintsValid: true,
@@ -1255,9 +1271,21 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to create certificate: %s", err)
 	}
 
-	issuedakcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	issuedcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 	glog.V(5).Infof("Issued Certificate SerialNumber: %d\n", serialNumber)
-	glog.V(5).Infof("Issued ECC Certificate: \n%s\n", string(issuedakcrtPEM))
+
+	issuedcert, err := x509.ParseCertificate(derBytes)
+	if err != nil {
+		glog.Errorf("Failed to create certificate: [%s] %v", evt.EKM, err)
+		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to parse issued certificate: %s", err)
+	}
+
+	issuedcertPrintable, err := certinfo.CertificateText(issuedcert)
+	if err != nil {
+		glog.Errorf("Failed to format certificate: [%s] %v", evt.EKM, err)
+		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to format issued certificate: %s", err)
+	}
+	glog.V(5).Infof("Issued Certificate: \n%s\n%s\n", string(issuedcrtPEM), issuedcertPrintable)
 
 	glog.V(50).Infof("      Clearing Session")
 	delete(attestationKeys, evt.EKM)

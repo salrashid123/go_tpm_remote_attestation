@@ -516,6 +516,7 @@ func main() {
 		// 	Algorithm: attest.RSA,
 		// 	Handle:    0x81000001, // default RSA SRK
 		// },
+		QualifyingData: []byte("somecustomdata"), // encode some client-side data into the attestatio that the server can verify
 	}
 	nk, err := tpm.NewKey(ak, kConfig)
 	if err != nil {
@@ -586,7 +587,7 @@ func main() {
 			Country:            []string{"US"},
 			CommonName:         "mytpm",
 		},
-		DNSNames: []string{"mytpm"},
+		DNSNames: []string{"mytpm.domain.com"},
 		//SignatureAlgorithm: x509.SHA256WithRSAPSS,
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
