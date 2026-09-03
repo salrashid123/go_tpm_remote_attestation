@@ -16,7 +16,6 @@ import (
 	"encoding/pem"
 	"io"
 	"net"
-	"net/http"
 	"slices"
 	"time"
 
@@ -516,7 +515,6 @@ func main() {
 		// 	Algorithm: attest.RSA,
 		// 	Handle:    0x81000001, // default RSA SRK
 		// },
-		QualifyingData: []byte("somecustomdata"), // encode some client-side data into the attestatio that the server can verify
 	}
 	nk, err := tpm.NewKey(ak, kConfig)
 	if err != nil {
@@ -587,7 +585,7 @@ func main() {
 			Country:            []string{"US"},
 			CommonName:         "mytpm",
 		},
-		DNSNames: []string{"mytpm.domain.com"},
+		DNSNames: []string{"mytpm"},
 		//SignatureAlgorithm: x509.SHA256WithRSAPSS,
 		SignatureAlgorithm: x509.ECDSAWithSHA256,
 	}
@@ -624,49 +622,6 @@ func main() {
 	glog.V(5).Infof("Issued Certificate: \n%s\n", string(issuedcrtPEM))
 
 	glog.V(5).Infof("GetCertificate complete \n")
-
-	glog.V(5).Infof("Making mTLS HTTPS call \n")
-
-	clientx509, err := x509.ParseCertificate(ccr.Certificate)
-	if err != nil {
-		glog.Errorf("can't parse  certificate : %v", err)
-		os.Exit(1)
-	}
-
-	ccert := tls.Certificate{
-		PrivateKey:  nkp,
-		Leaf:        clientx509,
-		Certificate: [][]byte{clientx509.Raw},
-	}
-
-	tlsConfig := &tls.Config{
-		RootCAs: grpcRootCAs,
-		//Certificates: []tls.Certificate{ccert},
-		GetClientCertificate: func(info *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			return &ccert, nil
-		},
-
-		ServerName: "verify.domain.com",
-	}
-
-	client := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: tlsConfig,
-		},
-	}
-
-	hresp, err := client.Get("https://localhost:50051/")
-	if err != nil {
-		glog.Errorf("mTLS http request failed: %v", err)
-		os.Exit(1)
-	}
-	defer hresp.Body.Close()
-	body, err := io.ReadAll(hresp.Body)
-	if err != nil {
-		glog.Errorf("error reading response body %v\n", err)
-		os.Exit(1)
-	}
-	glog.Infof("Server Response: %s\n", string(body))
 
 }
 

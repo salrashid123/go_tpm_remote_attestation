@@ -22,7 +22,6 @@ import (
 	"hash"
 	"math/big"
 	"net"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -39,7 +38,6 @@ import (
 	"github.com/google/go-tpm-tools/proto/tpm"
 	tpmtoolsserver "github.com/google/go-tpm-tools/server"
 	"github.com/google/go-tpm/legacy/tpm2"
-	directtpm2 "github.com/google/go-tpm/tpm2"
 	"github.com/google/uuid"
 	"github.com/salrashid123/go_tpm_registrar/verifier"
 	"github.com/smallstep/certinfo"
@@ -111,6 +109,7 @@ var (
 	oidExtensionSubjectAltName = []int{2, 5, 29, 17}
 	oidPermanentIdentifier     = []int{1, 3, 6, 1, 5, 5, 7, 8, 3}
 	oidHardwareModuleName      = []int{1, 3, 6, 1, 5, 5, 7, 8, 4}
+	oidTPMHardwareType         = asn1.ObjectIdentifier{2, 23, 133, 1, 2}
 )
 
 type otherName struct {
@@ -124,7 +123,8 @@ type permanentIdentifier struct {
 }
 
 type hardwareModuleName struct {
-	SerialNumber []byte `asn1:"tag:4"`
+	Type         asn1.ObjectIdentifier
+	SerialNumber []byte `asn1:"tag:4"` //  //4 asn1.TagOctetString,
 }
 
 func authUnaryInterceptor(
@@ -876,100 +876,163 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 	var notBefore time.Time
 	notBefore = time.Now()
 
-	notAfter := notBefore.Add(time.Hour * 24 * 1)
+	notAfter := notBefore.Add(time.Hour * 24 * 365)
 
-	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 32)
 	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
 	if err != nil {
-		glog.Errorf("Failed to generate serial number: [%s] %v", evt.EKM, err)
+		glog.Errorf("Failed to generate serial number: %s", err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to generate serial number: %s", err)
 	}
 
 	// add tpm SAN as "OtherName"
 
-	// pg 56:
-	//    https://trustedcomputinggroup.org/wp-content/uploads/TPM-2p0-Keys-for-Device-Identity-and-Attestation_v1_r12_pub10082021.pdf
-
-	// Provider Name is from pg 10 https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Family-1.2-and-2.0-Version-1.07-Revision-0.02_pub.pdf
-	simulatorHW := "SIM0" // we'll assume its a simulator
-	var buf bytes.Buffer
-	buf.WriteString(simulatorHW)
-	buf.WriteString(":")
-	buf.Write(vv.EKCert.AuthorityKeyId)
-	buf.WriteString(":")
-	buf.Write(vv.EKCert.SerialNumber.Bytes())
-
-	pic, err := marshalOtherName(oidHardwareModuleName, hardwareModuleName{
-		SerialNumber: buf.Bytes(),
-	})
+	// create a unique device serial number; the deviceID can be issued by the attestorCA as is the case here
+	// pg 55: https://trustedcomputinggroup.org/wp-content/uploads/TPM-2p0-Keys-for-Device-Identity-and-Attestation_v1_r12_pub10082021.pdf
+	// The subject field’s DN encoding SHOULD include the “serialNumber” attribute with the device’s unique serial number.
+	deviceSerialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 64)
+	devserialNumber, err := rand.Int(rand.Reader, deviceSerialNumberLimit)
 	if err != nil {
-		glog.Errorf("Failed to create oidHardwareModuleName: [%s] %v", evt.EKM, err)
-		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to create oidHardwareModuleName: %s", err)
+		glog.Errorf("Failed to generate serial number: %s", err)
+		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to generate serial number: %s", err)
 	}
+	// 4. Create a Certificate Order
+	glog.V(5).Infof(">>>>>>>>  DeviceSerial Number [%s]\n", hex.EncodeToString(devserialNumber.Bytes()))
 
-	h := sha256.New()
-	h.Write([]byte(vv.EKCert.Raw))
-	ekHash := h.Sum(nil)
+	glog.V(5).Infof("      verify quote, PCRs and secureBootState")
 
-	pi, err := marshalOtherName(oidPermanentIdentifier, permanentIdentifier{
-		IdentifierValue: hex.EncodeToString(ekHash),
+	var oidAIKCertificate = asn1.ObjectIdentifier{2, 23, 133, 8, 3}
+
+	pid, err := marshalOtherName(oidPermanentIdentifier, permanentIdentifier{
+		IdentifierValue: hex.EncodeToString(devserialNumber.Bytes()),
 	})
 	if err != nil {
-		glog.Errorf("Failed to create permanentIdentifier [%s] %v", evt.EKM, err)
+		glog.Errorf("Failed to create permanentIdentifier: %s", err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to create permanentIdentifier: %s", err)
 	}
 
-	cc, err := mustMarshal([]asn1.RawValue{pic, pi})
+	// extract the DirName from the EK and use those
+	// DirName:/tcg-at-tpmManufacturer=id:00001014/tcg-at-tpmModel=swtpm/tcg-at-tpmVersion=id:20240125
+	// dirName := pkix.Name{
+	// 	ExtraNames: []pkix.AttributeTypeAndValue{
+	// 		{Type: oid.TPMManufacturer, Value: "id:00001014"},
+	// 		{Type: oid.TPMModel, Value: "swtpm"},
+	// 		{Type: oid.TPMVersion, Value: "id:20240125"},
+	// 	},
+	// }
+
+	var tpmManufacturer string
+	var tpmModel string
+	var tpmVersion string
+
+	for _, ex := range vv.EKCert.Extensions {
+		if ex.Id.Equal(oidExtensionSubjectAltName) {
+			s, err := x509ext.ParseSubjectAltName(ex)
+			if err != nil {
+				glog.Errorf("Error  failed to parse EK to unmarshal EK SAN [%s] %v", evt.EKM, err.Error())
+				return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "failed to parse EK to unmarshal EK SAN [%s] %v", evt.EKM, err.Error())
+			}
+			for _, na := range s.DirectoryNames {
+				for _, attr := range na.Names {
+					if attr.Type.Equal(oid.TPMManufacturer) {
+						tpmManufacturer = fmt.Sprintf("%s", attr.Value)
+					}
+					if attr.Type.Equal(oid.TPMModel) {
+						tpmModel = fmt.Sprintf("%s", attr.Value)
+					}
+					if attr.Type.Equal(oid.TPMVersion) {
+						tpmVersion = fmt.Sprintf("%s", attr.Value)
+					}
+				}
+			}
+		}
+	}
+
+	dirName := pkix.Name{
+		ExtraNames: []pkix.AttributeTypeAndValue{
+			{Type: oid.TPMManufacturer, Value: tpmManufacturer},
+			{Type: oid.TPMModel, Value: tpmModel},
+			{Type: oid.TPMVersion, Value: tpmVersion},
+		},
+	}
+
+	rdnSeq := dirName.ToRDNSequence()
+	marshaledRDN, err := asn1.Marshal(rdnSeq)
 	if err != nil {
-		glog.Errorf("Failed to generate serial number: [%s] %v", evt.EKM, err)
+		glog.Errorf("Failed to marshal RDN sequence: %v", err)
+		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to marshal RDN sequence: %v", err)
+	}
+
+	dirNameRaw := asn1.RawValue{
+		Class:      2,    // Context-specific class
+		Tag:        4,    // tag [4] for directoryName
+		IsCompound: true, // EXPLICIT wraps the inner elements
+		Bytes:      marshaledRDN,
+	}
+
+	// pg 57 https://trustedcomputinggroup.org/wp-content/uploads/TPM-2p0-Keys-for-Device-Identity-and-Attestation_v1_r12_pub10082021.pdf
+	// The TCG registered OID (2.23.133.1.2) represents the hwType of TPM 2.0.
+	// The hwSerialNum value is an OCTET STRING and SHALL be constructed by one of two methods:
+	// 1. When the TPM has an EK Certificate, the hwSerialNum is created by concatenating three ASCII values: The
+	// TCG TPM Manufacturer code, the EK Authority Key Identifier and the EK CertificateSerialNumber. These three
+	// fields SHALL be separated by a colon (‘:’) character. The three values SHALL be listed in the order specified
+	// above.
+	// 2. When the TPM does not have an EK certificate, the hwSerialNum is a digest of the EK Certificate public key.
+	// swtpm: id:00001014
+
+	sn := fmt.Sprintf("%s:%s:%s", "00001014", hex.EncodeToString(vv.EKCert.AuthorityKeyId), fmt.Sprintf("%x", vv.EKCert.SerialNumber))
+	pic, err := marshalOtherName(oidHardwareModuleName, hardwareModuleName{
+		Type:         oidTPMHardwareType,
+		SerialNumber: []byte(sn),
+	})
+	if err != nil {
+		glog.Errorf("Failed to create oidHardwareModuleName: %s", err)
+		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to create oidHardwareModuleName: %s", err)
+	}
+
+	ccd, err := mustMarshal([]asn1.RawValue{pic, pid, dirNameRaw})
+	if err != nil {
+		glog.Errorf("Failed to mustMarshal otherName: %s", err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to mustMarshal otherName: %s", err)
 	}
 
-	extSubjectAltName := pkix.Extension{
+	extSubjectAltNamed := pkix.Extension{
 		Id:       oidExtensionSubjectAltName,
 		Critical: false,
-		Value:    cc,
+		Value:    ccd,
 	}
 
-	// create a unique device serial number:
-	// pg 55: https://trustedcomputinggroup.org/wp-content/uploads/TPM-2p0-Keys-for-Device-Identity-and-Attestation_v1_r12_pub10082021.pdf
-	// The subject field’s DN encoding SHOULD include the “serialNumber” attribute with the device’s unique serial number.
-
-	deviceSerialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
-	devserialNumber, err := rand.Int(rand.Reader, deviceSerialNumberLimit)
-	if err != nil {
-		glog.Errorf("Failed to generate device serial number: [%s] %v", evt.EKM, err)
-		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to generate serial number: %s", err)
-	}
-
-	vv.DeviceSerialNumber = devserialNumber.String()
-
-	// TODO: set the correct extensions
-	// I'm injecting the policy here...this too is just optional and while its not even used, i don't know if this is entirely applicable/correct
+	// add policy constraints
 	// pg4  https://trustedcomputinggroup.org/wp-content/uploads/TCG-OID-Registry-Version-1.00-Revision-0.74_10July24.pdf
 	// 2.23.133.11.1.1 tcg-cap-verifiedTPMResidency
 	// 2.23.133.11.1.2 tcg-cap-verifiedTPMFixed
-	verifiedTPMResidency := asn1.ObjectIdentifier{2, 23, 133, 11, 1, 1}
-	verifiedTPMFixed := asn1.ObjectIdentifier{2, 23, 133, 11, 1, 2}
-	verifiedTPMRestricted := asn1.ObjectIdentifier{2, 23, 133, 11, 1, 3}
+
+	oidverifiedTPMResidency, err := x509.OIDFromASN1OID(asn1.ObjectIdentifier{2, 23, 133, 11, 1, 1})
+	if err != nil {
+		glog.Errorf("Failed to crate Policy Constraint: [%s] %v", evt.EKM, err)
+		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to create x509OID oidverifiedTPMResidency: %s", err)
+	}
+
+	oidverifiedTPMFixed, err := x509.OIDFromASN1OID(asn1.ObjectIdentifier{2, 23, 133, 11, 1, 2})
+	if err != nil {
+		glog.Errorf("Failed to crate Policy Constraint: [%s] %v", evt.EKM, err)
+		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to create x509OID oidverifiedTPMFixed: %s", err)
+	}
+
+	oidverifiedTPMRestricted, err := x509.OIDFromASN1OID(asn1.ObjectIdentifier{2, 23, 133, 11, 1, 3})
+	if err != nil {
+		glog.Errorf("Failed to crate Policy Constraint: [%s] %v", evt.EKM, err)
+		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to create x509OID oidverifiedTPMRestricted %s", err)
+	}
+
 	template := x509.Certificate{
-		SerialNumber: serialNumber,
-		Subject: pkix.Name{
-			Organization:       []string{"Acme Co"},
-			OrganizationalUnit: []string{"Enterprise"},
-			Locality:           []string{"Mountain View"},
-			Province:           []string{"California"},
-			Country:            []string{"US"},
-			CommonName:         vv.AKCSR.Subject.CommonName,
-			SerialNumber:       devserialNumber.String(),
-		},
-		NotBefore: notBefore,
-		NotAfter:  notAfter,
-		//DNSNames:              csr.DNSNames,
-		KeyUsage: x509.KeyUsageDigitalSignature,
-		//ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
-		PolicyIdentifiers:     []asn1.ObjectIdentifier{verifiedTPMResidency, verifiedTPMFixed, verifiedTPMRestricted},
-		ExtraExtensions:       []pkix.Extension{extSubjectAltName},
+		SerialNumber:          serialNumber,
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
+		UnknownExtKeyUsage:    []asn1.ObjectIdentifier{oidAIKCertificate},
+		Policies:              []x509.OID{oidverifiedTPMResidency, oidverifiedTPMFixed, oidverifiedTPMRestricted},
+		ExtraExtensions:       []pkix.Extension{extSubjectAltNamed},
 		BasicConstraintsValid: true,
 		IsCA:                  false,
 	}
@@ -982,11 +1045,14 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 
 	issuedakcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 
+	glog.V(5).Infof("Issued AK Certificate: \n%s\n", string(issuedakcrtPEM))
+
 	akcert, err := x509.ParseCertificate(derBytes)
 	if err != nil {
 		glog.Errorf("Failed to create certificate: [%s] %v", evt.EKM, err)
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to parse ak certificate: %s", err)
 	}
+	vv.AKCert = akcert
 
 	akcertPrintable, err := certinfo.CertificateText(akcert)
 	if err != nil {
@@ -994,8 +1060,6 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to format ak certificate: %s", err)
 	}
 	glog.V(5).Infof("Issued AK Certificate: \n%s\n%s\n", string(issuedakcrtPEM), akcertPrintable)
-
-	vv.AKCert = akcert
 
 	attestationKeys[evt.EKM] = vv
 
@@ -1045,14 +1109,6 @@ func (s *server) SetAttestedKey(ctx context.Context, in *verifier.SetAttestedKey
 		glog.Errorf("Key Verification error error: [%s] %v", evt.EKM, err)
 		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Key Verification error %v", err)
 	}
-
-	ad, err := directtpm2.Unmarshal[directtpm2.TPMSAttest](keyCertificationParameter.CreateAttestation)
-	if err != nil {
-		glog.Errorf("Key Verification error error: [%s] %v", evt.EKM, err)
-		return &verifier.SetAttestedKeyResponse{}, status.Errorf(codes.Internal, "Key Verification error for TPMSAttest %v", err)
-	}
-	// print out any encoded client side data that may have been sent over
-	glog.V(2).Infof("        Key CertificationParameters.QualifyingData [%s]\n", string(ad.ExtraData.Buffer))
 
 	decodedTPMNTPublic, err := tpm2.DecodePublic(keyCertificationParameter.Public)
 	if err != nil {
@@ -1198,16 +1254,22 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 	//    https://trustedcomputinggroup.org/wp-content/uploads/TPM-2p0-Keys-for-Device-Identity-and-Attestation_v1_r12_pub10082021.pdf
 
 	// Provider Name is from pg 10 https://trustedcomputinggroup.org/wp-content/uploads/TCG-TPM-Vendor-ID-Registry-Family-1.2-and-2.0-Version-1.07-Revision-0.02_pub.pdf
-	simulatorHW := "SIM0" // we'll assume its a simulator
-	var buf bytes.Buffer
-	buf.WriteString(simulatorHW)
-	buf.WriteString(":")
-	buf.Write(val.EKCert.AuthorityKeyId)
-	buf.WriteString(":")
-	buf.Write(val.EKCert.SerialNumber.Bytes())
+	// simulatorHW := "SIM0" // we'll assume its a simulator
+	// var buf bytes.Buffer
+	// buf.WriteString(simulatorHW)
+	// buf.WriteString(":")
+	// buf.Write(val.EKCert.AuthorityKeyId)
+	// buf.WriteString(":")
+	// buf.Write(val.EKCert.SerialNumber.Bytes())
 
+	// pic, err := marshalOtherName(oidHardwareModuleName, hardwareModuleName{
+	// 	SerialNumber: buf.Bytes(),
+	// })
+
+	sn := fmt.Sprintf("%s:%s:%s", "00001014", hex.EncodeToString(val.EKCert.AuthorityKeyId), fmt.Sprintf("%x", val.EKCert.SerialNumber))
 	pic, err := marshalOtherName(oidHardwareModuleName, hardwareModuleName{
-		SerialNumber: buf.Bytes(),
+		Type:         oidTPMHardwareType,
+		SerialNumber: []byte(sn),
 	})
 	if err != nil {
 		glog.Errorf("Failed to create oidHardwareModuleName: [%s] %v", evt.EKM, err)
@@ -1257,8 +1319,8 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 		NotBefore: notBefore,
 		NotAfter:  notAfter,
 		//DNSNames:              csr.DNSNames,
-		KeyUsage:              x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		KeyUsage: x509.KeyUsageDigitalSignature,
+		//ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		PolicyIdentifiers:     []asn1.ObjectIdentifier{verifiedTPMResidency, verifiedTPMFixed},
 		ExtraExtensions:       []pkix.Extension{extSubjectAltName},
 		BasicConstraintsValid: true,
@@ -1271,21 +1333,9 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to create certificate: %s", err)
 	}
 
-	issuedcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	glog.V(5).Infof("Issued Certificate SerialNumber: %d\n", serialNumber)
+	issuedakcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
 
-	issuedcert, err := x509.ParseCertificate(derBytes)
-	if err != nil {
-		glog.Errorf("Failed to create certificate: [%s] %v", evt.EKM, err)
-		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to parse issued certificate: %s", err)
-	}
-
-	issuedcertPrintable, err := certinfo.CertificateText(issuedcert)
-	if err != nil {
-		glog.Errorf("Failed to format certificate: [%s] %v", evt.EKM, err)
-		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to format issued certificate: %s", err)
-	}
-	glog.V(5).Infof("Issued Certificate: \n%s\n%s\n", string(issuedcrtPEM), issuedcertPrintable)
+	glog.V(5).Infof("Issued ECC Certificate: \n%s\n", string(issuedakcrtPEM))
 
 	glog.V(50).Infof("      Clearing Session")
 	delete(attestationKeys, evt.EKM)
@@ -1342,24 +1392,15 @@ func run() int {
 		return 1
 	}
 
-	clientCAcrtBytes, err := os.ReadFile(*signingCert)
-	if err != nil {
-		glog.Errorf("could not load clientCA certificate  %v", err)
-		return 1
-	}
-	client_cert_pool := x509.NewCertPool()
-	ok := client_cert_pool.AppendCertsFromPEM(clientCAcrtBytes)
-	if !ok {
-		glog.Errorf("Error parsing singing ca")
-		return 1
-	}
 	tlsConfig := &tls.Config{
-		NextProtos:   []string{"h2", "http/1.1"},
 		Certificates: []tls.Certificate{defaultCerts},
-		ClientAuth:   tls.RequestClientCert,
-		ClientCAs:    client_cert_pool,
 	}
 	ce := credentials.NewTLS(tlsConfig)
+	lis, err := net.Listen("tcp", *grpcPort)
+	if err != nil {
+		glog.Errorf("failed to listen: %v", err)
+		return 1
+	}
 
 	sopts := []grpc.ServerOption{grpc.MaxConcurrentStreams(10)}
 
@@ -1369,48 +1410,8 @@ func run() int {
 	verifier.RegisterVerifierServer(s, srv)
 	healthpb.RegisterHealthServer(s, srv)
 
-	httpMux := http.NewServeMux()
-	httpMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-
-		if r.TLS == nil {
-			glog.Errorf("TLS connection required")
-			http.Error(w, "TLS connection required", http.StatusBadRequest)
-			return
-		}
-		if len(r.TLS.PeerCertificates) > 0 {
-			clientCert := r.TLS.PeerCertificates[0]
-			subject := clientCert.Subject.CommonName
-			serialNumber := clientCert.SerialNumber
-			glog.V(5).Infof("=============== Got MTLS HTTPS request: mtls client Subject Common Name: %s, SerialNumber %d\n", subject, serialNumber)
-
-			fmt.Fprintf(w, "Client certificate found! Subject Common Name: %s, SerialNumber %d\n", subject, serialNumber)
-		} else {
-			// No client certificate was provided
-			glog.Errorf("No client certificate was sent.")
-			http.Error(w, "no client certificat ewas provided", http.StatusUnauthorized)
-		}
-	})
-
-	mixedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
-			s.ServeHTTP(w, r)
-			return
-		}
-		httpMux.ServeHTTP(w, r)
-	})
-
 	glog.V(2).Infof("Starting gRPC server on port %v", *grpcPort)
-	glog.V(2).Infof("Starting https server on port %v", *grpcPort)
-	hserver := &http.Server{
-		Addr:      *grpcPort,
-		Handler:   mixedHandler,
-		TLSConfig: tlsConfig,
-	}
-	err = hserver.ListenAndServeTLS(*tlsCert, *tlsKey)
-	if err != nil {
-		glog.Fatalf("Error starting http server %v", err)
-	}
-
+	s.Serve(lis)
 	return 0
 }
 
