@@ -16,6 +16,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"math/big"
 	"net"
 	"slices"
 	"time"
@@ -256,31 +257,13 @@ func run() int {
 
 	// Now get the platformcert
 	//  this step should be done by the platform issuer and their CA prior to any remote attestation protocol
-	//   there are two options here:  1) either use a static platform cert, or issue one dynamically just as a demo
-
-	// STATIC
-	// // I just statically generated the platform cert on another sheildedVM with a different EKCert/TPM
-	// //  i did that since i don't know how to generate and issue a platformcert in golang
-	// //  but i do know how to issue one win JAVA
-	// //  so, what i did created a new attribute cert on a different vm but used the same trusted CA to sign it.
-	// //  the verifer will check the signature but will pretend the EKCert the attestor has has the same static serial number
-	// // https://github.com/salrashid123/attribute_certificate
-	// // https://en.wikipedia.org/wiki/Authorization_certificate
-	// // https://github.com/openssl/openssl/issues/14648
-	// // 2.1.5 Assertions Made by a Platform Certificate >  https://trustedcomputinggroup.org/wp-content/uploads/IWG_Platform_Certificate_Profile_v1p1_r19_pub_fixed.pdf
-
-	// // for now just accept it w/o verifying its claims and move on
-
-	// platformCert, err := os.ReadFile(*platformCertFile)
-	// if err != nil {
-	// 	glog.Errorf("ERROR: Unable to load parse platform certificate %v", err)
-	// 			return 1
-	// }
+	// https://trustedcomputinggroup.org/wp-content/uploads/TCG_Platform_Certificate_Profile_2.1_Pub_v2.pdf
 
 	// Dynamic
 	// //  the following generates the platform CA and injects the EK's issuer and serial number into it
 	// //   this step should be done before any of the remote attestation protocol begins and should not be part
 	// //   of this protocol.  The only reason i'm doing it here is to make it an end-to-end example.
+	// //   ideally, you don't use the EK cert's serail here...it should use the platform manufacturer's own unnique number
 
 	platformCACertBytes, err := os.ReadFile(*platformCACert)
 	if err != nil {
@@ -322,7 +305,20 @@ func run() int {
 		return 1
 	}
 
-	platformCert, err := attributecert.CreateAttributeCertificate(derBytes, ek.Certificate.SerialNumber, notBefore, notAfter, ccacrt, ccakey)
+	// since this is a demo system, i'm assuming the platform manufacturer already issued a cert with serial number
+	// as a demo, i'm just assigning a static one which we can compare in the validator
+	platformSerialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 64)
+	platformSerialNumber, err := rand.Int(rand.Reader, platformSerialNumberLimit)
+	if err != nil {
+		glog.Errorf("Failed to generate serial number: %s", err)
+		return 1
+	}
+	// just set a staic value here which we can validate remotely
+	platformSerialNumber = big.NewInt(123456789)
+	// 4. Create a Certificate Order
+	glog.V(5).Infof("Using platformSerialNumber Number [%s]\n", hex.EncodeToString(platformSerialNumber.Bytes()))
+
+	platformCert, err := attributecert.CreateAttributeCertificate(derBytes, platformSerialNumber, notBefore, notAfter, ccacrt, ccakey)
 	if err != nil {
 		glog.Errorf("ERROR:Failed to marshal RDNSequence to DER: %v", err)
 		return 1

@@ -150,238 +150,722 @@ $ tpm2_eventlog binary_bios_measurements
     14 : 0x306f9d8b94f17d93dc6e7cf8f5c79d652eb4c6c4d13de2dddc24af416e13ecaf
 ```
 
-##### Verifier
+
+#### Start Verifier
 
 So first start the verifier and specifiy the CA that signed the EK and the pcr value for the evenlog seeded values for pcr=0
+
+Note that with `v=60` the full eventlog including encoded data is rendered.
 
 ```bash
 $ go run src/server/grpc_verifier.go  \
        --ekrootCA swtpm/config/var/lib/swtpm-localca/issuercert.pem \
        --expectedPCRMapSHA256=0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85 \
-        --v=40 -alsologtostderr
+        --v=10 -alsologtostderr
+```
 
-0907 04:14:59.584113  118477 grpc_verifier.go:1496] Starting gRPC server on port :50051
-I0907 04:15:03.731502  118477 grpc_verifier.go:175] ======= HealthCheck ========
-I0907 04:15:03.739817  118477 grpc_verifier.go:209] ======= OfferPlatformCert ========
-I0907 04:15:03.740242  118477 grpc_verifier.go:253]      PlatformCertificate Issuer: CN=Platform Root CA,OU=Enterprise,O=Google,C=US
-I0907 04:15:03.740304  118477 grpc_verifier.go:254]      PlatformCertificate Version: 2
-I0907 04:15:03.740324  118477 grpc_verifier.go:256]      PlatformCertificate CredentialSpecification: 
-I0907 04:15:03.740371  118477 grpc_verifier.go:257]      PlatformCertificate PlatformManufacturer: 
-I0907 04:15:03.740388  118477 grpc_verifier.go:258]      PlatformCertificate PlatformModel: 
-I0907 04:15:03.740403  118477 grpc_verifier.go:259]      PlatformCertificate PlatformVersion: 
-I0907 04:15:03.740419  118477 grpc_verifier.go:260]      PlatformCertificate PropertiesURI: 
-I0907 04:15:03.740435  118477 grpc_verifier.go:275]      PlatformCertificate Holder.Issuer: CN=swtpm-localca
-I0907 04:15:03.740462  118477 grpc_verifier.go:276]      PlatformCertificate Holder.Serial: 1231
-I0907 04:15:03.740497  118477 grpc_verifier.go:277]      PlatformCertificate Holder.Issuer.CommonName: swtpm-localca
-I0907 04:15:03.740523  118477 grpc_verifier.go:282]      PlatformCertificate TBBSecurityAssertions.Iso9000URI: 
-I0907 04:15:03.740548  118477 grpc_verifier.go:283]      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileOid: 
-I0907 04:15:03.740578  118477 grpc_verifier.go:284]      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileURI: 
-I0907 04:15:03.740605  118477 grpc_verifier.go:285]      PlatformCertificate TBBSecurityAssertions.CcInfo.TargetOid: 
-I0907 04:15:03.740633  118477 grpc_verifier.go:286]      PlatformCertificate TBBSecurityAssertions.CcInfo.TargetURI: 
-I0907 04:15:03.740661  118477 grpc_verifier.go:287]      PlatformCertificate TBBSecurityAssertions.CcInfo.Version: 
-I0907 04:15:03.740689  118477 grpc_verifier.go:289]      PlatformCertificate TCGPlatformSpecification.Version: {0 0 0}
-I0907 04:15:03.740723  118477 grpc_verifier.go:290]      PlatformCertificate TCGPlatformSpecification.Version.MajorVersion: 0
-I0907 04:15:03.740753  118477 grpc_verifier.go:291]      PlatformCertificate TCGPlatformSpecification.Version.MinorVersion: 0
-I0907 04:15:03.740783  118477 grpc_verifier.go:292]      PlatformCertificate TCGPlatformSpecification.Version.Revision: 0
-I0907 04:15:03.740813  118477 grpc_verifier.go:294]      PlatformCertificate UserNotice.UserNotice.ExplicitText: 
-I0907 04:15:03.740844  118477 grpc_verifier.go:295]      PlatformCertificate UserNotice.UserNotice.Organization: 
-I0907 04:15:03.740875  118477 grpc_verifier.go:296]      PlatformCertificate UserNotice.UserNotice.NoticeNumbers: []
-I0907 04:15:03.741072  118477 grpc_verifier.go:303]      Verified Platform cert signed by privacyCA
-I0907 04:15:03.741899  118477 grpc_verifier.go:324] ======= OfferEK ========
-I0907 04:15:03.742042  118477 grpc_verifier.go:371]      TPM Manufacturer id:00001014
-I0907 04:15:03.742067  118477 grpc_verifier.go:374]      TPM Model swtpm
-I0907 04:15:03.742086  118477 grpc_verifier.go:378]      TPM Version id:20240125
-I0907 04:15:03.742124  118477 grpc_verifier.go:410]      TPM Family 2.0
-I0907 04:15:03.742145  118477 grpc_verifier.go:411]      TPM Level 0
-I0907 04:15:03.742174  118477 grpc_verifier.go:412]      TPM Revision 183
-I0907 04:15:03.742209  118477 grpc_verifier.go:427]         EKCertificate ========
+#### Start Attestor
+
+```bash
+go run src/client/grpc_attestor.go -host 127.0.0.1:50051 \
+   --tpm-path="127.0.0.1:2321"   --eventLogPath=swtpm/binary_bios_measurements  \
+    --v=10 -alsologtostderr
+```
+
+---
+
+##### Logs
+
+The following outputs at full verbosity `--v=60`, you can reduce the clutter by running `--v=10`.  Notably, high verbosity will print out the validate boot sequence in the eventlog
+
+
+###### Verifier Logs
+
+```bash
+$ go run src/server/grpc_verifier.go  \
+       --ekrootCA swtpm/config/var/lib/swtpm-localca/issuercert.pem \
+       --expectedPCRMapSHA256=0:a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85 \
+        --v=60 -alsologtostderr
+        
+I0907 06:55:49.791223  206655 grpc_verifier.go:1497] Starting gRPC server on port :50051
+I0907 06:55:52.944989  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:52.945178  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:52.945215  206655 grpc_verifier.go:175] ======= HealthCheck ========
+I0907 06:55:52.945238  206655 grpc_verifier.go:184]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:52.945258  206655 grpc_verifier.go:185]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:52.953330  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:52.953420  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:52.953440  206655 grpc_verifier.go:209] ======= OfferPlatformCert ========
+I0907 06:55:52.953454  206655 grpc_verifier.go:212]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:52.953466  206655 grpc_verifier.go:213]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:52.953772  206655 grpc_verifier.go:253]      PlatformCertificate Issuer: CN=Platform Root CA,OU=Enterprise,O=Google,C=US
+I0907 06:55:52.953811  206655 grpc_verifier.go:254]      PlatformCertificate Version: 2
+I0907 06:55:52.953828  206655 grpc_verifier.go:256]      PlatformCertificate CredentialSpecification: 
+I0907 06:55:52.953844  206655 grpc_verifier.go:257]      PlatformCertificate PlatformManufacturer: 
+I0907 06:55:52.953861  206655 grpc_verifier.go:258]      PlatformCertificate PlatformModel: 
+I0907 06:55:52.953878  206655 grpc_verifier.go:259]      PlatformCertificate PlatformVersion: 
+I0907 06:55:52.953894  206655 grpc_verifier.go:260]      PlatformCertificate PropertiesURI: 
+I0907 06:55:52.953910  206655 grpc_verifier.go:275]      PlatformCertificate Holder.Issuer: CN=swtpm-localca
+I0907 06:55:52.953934  206655 grpc_verifier.go:276]      PlatformCertificate Holder.Serial: 123456789
+I0907 06:55:52.953965  206655 grpc_verifier.go:277]      PlatformCertificate Holder.Issuer.CommonName: swtpm-localca
+I0907 06:55:52.953993  206655 grpc_verifier.go:282]      PlatformCertificate TBBSecurityAssertions.Iso9000URI: 
+I0907 06:55:52.954018  206655 grpc_verifier.go:283]      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileOid: 
+I0907 06:55:52.954047  206655 grpc_verifier.go:284]      PlatformCertificate TBBSecurityAssertions.CcInfo.ProfileURI: 
+I0907 06:55:52.954074  206655 grpc_verifier.go:285]      PlatformCertificate TBBSecurityAssertions.CcInfo.TargetOid: 
+I0907 06:55:52.954102  206655 grpc_verifier.go:286]      PlatformCertificate TBBSecurityAssertions.CcInfo.TargetURI: 
+I0907 06:55:52.954127  206655 grpc_verifier.go:287]      PlatformCertificate TBBSecurityAssertions.CcInfo.Version: 
+I0907 06:55:52.954155  206655 grpc_verifier.go:289]      PlatformCertificate TCGPlatformSpecification.Version: {0 0 0}
+I0907 06:55:52.954189  206655 grpc_verifier.go:290]      PlatformCertificate TCGPlatformSpecification.Version.MajorVersion: 0
+I0907 06:55:52.954217  206655 grpc_verifier.go:291]      PlatformCertificate TCGPlatformSpecification.Version.MinorVersion: 0
+I0907 06:55:52.954250  206655 grpc_verifier.go:292]      PlatformCertificate TCGPlatformSpecification.Version.Revision: 0
+I0907 06:55:52.954281  206655 grpc_verifier.go:294]      PlatformCertificate UserNotice.UserNotice.ExplicitText: 
+I0907 06:55:52.954311  206655 grpc_verifier.go:295]      PlatformCertificate UserNotice.UserNotice.Organization: 
+I0907 06:55:52.954341  206655 grpc_verifier.go:296]      PlatformCertificate UserNotice.UserNotice.NoticeNumbers: []
+I0907 06:55:52.954461  206655 grpc_verifier.go:303]      Verified Platform cert signed by privacyCA
+I0907 06:55:52.955186  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:52.955254  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:52.955272  206655 grpc_verifier.go:324] ======= OfferEK ========
+I0907 06:55:52.955303  206655 grpc_verifier.go:327]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:52.955316  206655 grpc_verifier.go:328]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:52.955403  206655 grpc_verifier.go:371]      TPM Manufacturer id:00001014
+I0907 06:55:52.955420  206655 grpc_verifier.go:374]      TPM Model swtpm
+I0907 06:55:52.955435  206655 grpc_verifier.go:378]      TPM Version id:20240125
+I0907 06:55:52.955464  206655 grpc_verifier.go:410]      TPM Family 2.0
+I0907 06:55:52.955484  206655 grpc_verifier.go:411]      TPM Level 0
+I0907 06:55:52.955502  206655 grpc_verifier.go:412]      TPM Revision 183
+I0907 06:55:52.955531  206655 grpc_verifier.go:427]         EKCertificate ========
 -----BEGIN CERTIFICATE-----
-MIID9TCCAl2gAwIBAgICBM8wDQYJKoZIhvcNAQELBQAwGDEWMBQGA1UEAxMNc3d0
-cG0tbG9jYWxjYTAgFw0yNjA5MDcwNzU4MDBaGA85OTk5MTIzMTIzNTk1OVowEjEQ
+MIID9TCCAl2gAwIBAgICBNIwDQYJKoZIhvcNAQELBQAwGDEWMBQGA1UEAxMNc3d0
+cG0tbG9jYWxjYTAgFw0yNjA5MDcwODU1MzVaGA85OTk5MTIzMTIzNTk1OVowEjEQ
 MA4GA1UEAxMHdW5rbm93bjCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEB
-AOUQcocXlL/OSOIgUCUnnnm/dKonG9hRj9RwYRjkPO98v2069MXwWq5d1MUNP0w/
-YBDhDvP7E9zE9d9uLFwZAahiiqP09ITh1gsZLnjXQsWcXFHSn8Wo3JuWzEXOzy8J
-SXiSfA7twjc3Elb7DBEbNhpSQ5OLjOmozKawTf5LktQYP5gxwC8I+9Q/enyI2Uc8
-V/9/UfSpxCSoFU4N11gFFJzpQlks0hp2nVXamiDYC6CMFZN81rIyQIgo1laDAAEc
-Y0giHLzr8Oz8LZ/aHg/Cp9BL6o7BuxWDnzDhZ2C3ODN+oQ9jzP/JxGsS5wVPxkeI
-QWLn3D2f9kcspPPLon9PF9cCAwEAAaOBzDCByTAQBgNVHSUECTAHBgVngQUIATBS
+AM7LKtHGEmMBJOaSnBkDbxcpavKRy4VaL5jaGjFGdQ9sUH0Xdr8FENp98P4hUTpW
+p36T+XU32Mcsoh0uB/78qMaS5E7idx0C6KEV9b0f9eL4K7B6RHZI37sfagHl9n2r
+Uh+HXKeWe+R+h4qiRLnEEiTOZoFZ51EUjf0ZT+aDj0G5pM0Svam1wOvLb9kpKJNg
+p34I4ZSSO2LQsK+CRe2Y0kmCdUO34zFSE5mBSTD6stbeLptpDq9UnJBHNNzrjwx1
+OSTAJgKTekPYKGkBXDtYozsntYK/97Y2vwEcTLicbU6S22pWDXXwzuWIaGDm6TKY
+UrwuXYWodvJqFxP9NMdTPUkCAwEAAaOBzDCByTAQBgNVHSUECTAHBgVngQUIATBS
 BgNVHREBAf8ESDBGpEQwQjEWMBQGBWeBBQIBDAtpZDowMDAwMTAxNDEQMA4GBWeB
 BQICDAVzd3RwbTEWMBQGBWeBBQIDDAtpZDoyMDI0MDEyNTAMBgNVHRMBAf8EAjAA
 MCIGA1UdCQQbMBkwFwYFZ4EFAhAxDjAMDAMyLjACAQACAgC3MB8GA1UdIwQYMBaA
 FC9tUdt3Nuy5Lc3iJ4AxyLHsw4e0MA4GA1UdDwEB/wQEAwIFIDANBgkqhkiG9w0B
-AQsFAAOCAYEAKXaDnyH9itp24CVHR5DRGigLNJ7dOtYztR8pP5rP3tZOWlErQhkY
-TcZE69Nt7nCpm8313TclZxB92suj1YUDSY3T+3X3qi1TaanUWq5XEdB/zL5LU/zB
-/eEQvpn7Qf4sCBGBn9bhkpe4D0/AVHASlMHgXA8EJ9ERX+ofESXkpVOyNzFaYaeC
-i3ra2GTf69KC/F36cDNvFOagOmTZvNsBumB+QjH5+IlFQpACsBGYlx+c7PCezuwM
-PZUi562MRbdzE6ZWS1CFYDYm1/WLT1fqD1bj4uJTMbEss1Zbwwwy1Mlq1QP8qd9S
-RS84F3iTnI7h3PUvyACrmzVz7niP0waDnTudUqsxLJcoVw9mmDo5P08iRwgUS9Zb
-3IG4yq1xdKf/SZ0KB7qR4JRV8RfYddMSd3oZG+qe7to3l8dHZZ19wkYMVwP/pvam
-mogRrrRYT+u/tVdQCQOJuaCe6AFRjCHz3AHbdNYjDsKWfmq61TorFzjkAPYidEHV
-UhH/ed7yWHlU
+AQsFAAOCAYEArhv1Rkr6WgxxpVfO6qr1aj2m6Yk45M/uqlqDY/JmqchOlVfb62AB
+DYhmc9RX471+bVsmI8x7Nk0QrYD2vxr6+Rn4DdOcsTdtW+SYhHlEZfdqhkcbKgcD
+dzDiylb57WvYEYWtjK5HfKhH8G6qR9uPt0Csky+gxw7FXIhr2PAqFwrhAnVlUBK0
+glCMvOX2K7jmE0jArSZT6koe2nYcaBz2CcWTLPuxyIeLw9cxXH0Km7hbCTNYFMY0
+7MKP9ujDLAc6mcb0AI/pGKF9rGtoWOPrOcys9LS5KhSZT6UD1QfoH6vTNRgzqdIy
+KUWLM7rrOY4QXy0TEVLf28XKm0L1HZ44Q9AZHiwbPT40PMuUrStjPel5PDB7cp/O
+DgGBoeildC+/4LTy2iSeclo4CbLooHtFpLosdgC1J2M3h2CJEXcxeioRTKUrsSO5
+OkSa9Uf7DjBaQI9gXrZ2xD/2sqXYXykAx7IvgsvuVklpmS9tGzs/eo1KTqae5/Ck
+q8j1Kdv9v7Q1
 -----END CERTIFICATE-----
 
-I0907 04:15:03.742280  118477 grpc_verifier.go:443]      EKCert  Issuer CN=swtpm-localca
-I0907 04:15:03.742320  118477 grpc_verifier.go:444]      EKCert  IssuingCertificateURL []
-I0907 04:15:03.742352  118477 grpc_verifier.go:445]      EKCert  SerialNumber 1231
-I0907 04:15:03.742377  118477 grpc_verifier.go:447]     EkCert Public Key 
+I0907 06:55:52.955581  206655 grpc_verifier.go:443]      EKCert  Issuer CN=swtpm-localca
+I0907 06:55:52.955614  206655 grpc_verifier.go:444]      EKCert  IssuingCertificateURL []
+I0907 06:55:52.955642  206655 grpc_verifier.go:445]      EKCert  SerialNumber 1234
+I0907 06:55:52.955668  206655 grpc_verifier.go:447]     EkCert Public Key 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5RByhxeUv85I4iBQJSee
-eb90qicb2FGP1HBhGOQ873y/bTr0xfBarl3UxQ0/TD9gEOEO8/sT3MT1324sXBkB
-qGKKo/T0hOHWCxkueNdCxZxcUdKfxajcm5bMRc7PLwlJeJJ8Du3CNzcSVvsMERs2
-GlJDk4uM6ajMprBN/kuS1Bg/mDHALwj71D96fIjZRzxX/39R9KnEJKgVTg3XWAUU
-nOlCWSzSGnadVdqaINgLoIwVk3zWsjJAiCjWVoMAARxjSCIcvOvw7Pwtn9oeD8Kn
-0EvqjsG7FYOfMOFnYLc4M36hD2PM/8nEaxLnBU/GR4hBYufcPZ/2Ryyk88uif08X
-1wIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzssq0cYSYwEk5pKcGQNv
+Fylq8pHLhVovmNoaMUZ1D2xQfRd2vwUQ2n3w/iFROlanfpP5dTfYxyyiHS4H/vyo
+xpLkTuJ3HQLooRX1vR/14vgrsHpEdkjfux9qAeX2fatSH4dcp5Z75H6HiqJEucQS
+JM5mgVnnURSN/RlP5oOPQbmkzRK9qbXA68tv2Skok2CnfgjhlJI7YtCwr4JF7ZjS
+SYJ1Q7fjMVITmYFJMPqy1t4um2kOr1SckEc03OuPDHU5JMAmApN6Q9goaQFcO1ij
+Oye1gr/3tja/ARxMuJxtTpLbalYNdfDO5YhoYObpMphSvC5dhah28moXE/00x1M9
+SQIDAQAB
 -----END PUBLIC KEY-----
 
-I0907 04:15:03.742407  118477 grpc_verifier.go:450]     Verifying EKCert
-I0907 04:15:03.742601  118477 grpc_verifier.go:478]      EKCert Includes tcg-kp-EKCertificate ExtendedKeyUsage 2.23.133.8.1
-I0907 04:15:03.743052  118477 grpc_verifier.go:507]     EKCert Verified
-I0907 04:15:03.743099  118477 grpc_verifier.go:530] =============== end OfferEK ===============
-I0907 04:15:03.822525  118477 grpc_verifier.go:535] ======= OfferAK ========
-I0907 04:15:03.822824  118477 grpc_verifier.go:579]       ak public 
+I0907 06:55:52.955695  206655 grpc_verifier.go:450]     Verifying EKCert
+I0907 06:55:52.955835  206655 grpc_verifier.go:478]      EKCert Includes tcg-kp-EKCertificate ExtendedKeyUsage 2.23.133.8.1
+I0907 06:55:52.956228  206655 grpc_verifier.go:507]     EKCert Verified
+I0907 06:55:52.956271  206655 grpc_verifier.go:534] =============== end OfferEK ===============
+I0907 06:55:53.238810  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:53.238954  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.238993  206655 grpc_verifier.go:539] ======= OfferAK ========
+I0907 06:55:53.239017  206655 grpc_verifier.go:542]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:53.239035  206655 grpc_verifier.go:543]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.239296  206655 grpc_verifier.go:583]       ak public 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt11WLzJlGSbYJc+tbIRJ
-2xPJWJxhZ/JrILI5veJ7VHF9fuMcUQ9oFLh0Fw2Edh6yXTzuGjtwqsf+0giOEiEC
-zpxkE2+Aa/NKgYgtsUlYCQerM9xPuq6XoXwQk4ldbgymTFBULaDzqfOTM+OBZD0G
-AXHP5DOXgmui6ES3Rd0LTZWBqNXRJEakBYhC3IbB+YXx6WgApfFe7wYSuLjVmTsN
-hiCpWkuOoSEfYHALeNxWTZgqaJYmQ2sqJSHh/ig4vV/1m3kTaNoV7Y0OK3C44Rs0
-EoqBx0lHkJO8YtPwmDTArTJPYy1Dc99hMXRzMdZ7xHa8rpnGxBAI7b9QEAikQ7iS
-HwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsUrpG1vJCW4aiZGIl1u8
++g0OmXDdiJMIoN4uq3iqolgvVZjXKqjp0eR4eLyjhFC1A/PevfqeLHvM0Drn5Ubc
+sOXmJIxfAhPMRAhQS5SLhS+RA0BoBjkrzXWB7j2ngybOxIM4QIqJCHCYulhN5BOH
+MvPU46RJc4KLLpQ2yVbhyPj3M6vCAKG93iseV/U73pZklx9Rbdk/ma2s3YvKPcqT
+66O+KoVZ5e7VG67TcVlIcWgLuvjYpGmPstvRVKmt3XaIStm7chxHsgufvdZVSKrL
+IyAJ0rscR2M0Mviqu+7HU5qdU03c5kVNQZi6KtAshPBBDCb+S1P0oE8qebpdeqtY
+JwIDAQAB
 -----END PUBLIC KEY-----
 
-I0907 04:15:03.822989  118477 grpc_verifier.go:593] =============== end GetAK ===============
-I0907 04:15:03.824037  118477 grpc_verifier.go:599] ======= GetMakeCredential ========
-I0907 04:15:03.824069  118477 grpc_verifier.go:616] =============== end GetMakeCredential ===============
-I0907 04:15:03.824382  118477 grpc_verifier.go:630]       Outbound Secret: iOetVx7dto+oZB35HXORmR12b8TQf3pl0d2Z0bPff8A=
-I0907 04:15:03.831155  118477 grpc_verifier.go:648] ======= SetActivateCredential ========
-I0907 04:15:03.831190  118477 grpc_verifier.go:678] =============== end SetActivateCredential ===============
-I0907 04:15:03.831741  118477 grpc_verifier.go:683] ======= OfferQuote ========
-I0907 04:15:03.831774  118477 grpc_verifier.go:708] =============== end OfferQuote ===============
-I0907 04:15:03.841052  118477 grpc_verifier.go:715] ======= SetQuote ========
-I0907 04:15:03.844476  118477 grpc_verifier.go:768]       quote-attested public 
+I0907 06:55:53.239473  206655 grpc_verifier.go:597] =============== end GetAK ===============
+I0907 06:55:53.240450  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:53.240550  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.240577  206655 grpc_verifier.go:603] ======= GetMakeCredential ========
+I0907 06:55:53.240596  206655 grpc_verifier.go:606]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:53.240612  206655 grpc_verifier.go:607]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.240629  206655 grpc_verifier.go:620] =============== end GetMakeCredential ===============
+I0907 06:55:53.241252  206655 grpc_verifier.go:634]       Outbound Secret: EK5QYbjPArwwKgntNpxV8wZOXH5ZBcYOJdLcW/eHIhQ=
+I0907 06:55:53.257378  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:53.257487  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.257516  206655 grpc_verifier.go:652] ======= SetActivateCredential ========
+I0907 06:55:53.257569  206655 grpc_verifier.go:655]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:53.257587  206655 grpc_verifier.go:656]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.257612  206655 grpc_verifier.go:682] =============== end SetActivateCredential ===============
+I0907 06:55:53.258355  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:53.258442  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.258469  206655 grpc_verifier.go:687] ======= OfferQuote ========
+I0907 06:55:53.258486  206655 grpc_verifier.go:690]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:53.258502  206655 grpc_verifier.go:691]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.258952  206655 grpc_verifier.go:712] =============== end OfferQuote ===============
+I0907 06:55:53.265736  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:53.265794  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.265829  206655 grpc_verifier.go:719] ======= SetQuote ========
+I0907 06:55:53.265840  206655 grpc_verifier.go:722]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:53.265850  206655 grpc_verifier.go:723]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.269015  206655 grpc_verifier.go:772]       quote-attested public 
 -----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt11WLzJlGSbYJc+tbIRJ
-2xPJWJxhZ/JrILI5veJ7VHF9fuMcUQ9oFLh0Fw2Edh6yXTzuGjtwqsf+0giOEiEC
-zpxkE2+Aa/NKgYgtsUlYCQerM9xPuq6XoXwQk4ldbgymTFBULaDzqfOTM+OBZD0G
-AXHP5DOXgmui6ES3Rd0LTZWBqNXRJEakBYhC3IbB+YXx6WgApfFe7wYSuLjVmTsN
-hiCpWkuOoSEfYHALeNxWTZgqaJYmQ2sqJSHh/ig4vV/1m3kTaNoV7Y0OK3C44Rs0
-EoqBx0lHkJO8YtPwmDTArTJPYy1Dc99hMXRzMdZ7xHa8rpnGxBAI7b9QEAikQ7iS
-HwIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsUrpG1vJCW4aiZGIl1u8
++g0OmXDdiJMIoN4uq3iqolgvVZjXKqjp0eR4eLyjhFC1A/PevfqeLHvM0Drn5Ubc
+sOXmJIxfAhPMRAhQS5SLhS+RA0BoBjkrzXWB7j2ngybOxIM4QIqJCHCYulhN5BOH
+MvPU46RJc4KLLpQ2yVbhyPj3M6vCAKG93iseV/U73pZklx9Rbdk/ma2s3YvKPcqT
+66O+KoVZ5e7VG67TcVlIcWgLuvjYpGmPstvRVKmt3XaIStm7chxHsgufvdZVSKrL
+IyAJ0rscR2M0Mviqu+7HU5qdU03c5kVNQZi6KtAshPBBDCb+S1P0oE8qebpdeqtY
+JwIDAQAB
 -----END PUBLIC KEY-----
 
-I0907 04:15:03.844668  118477 grpc_verifier.go:798]      PCR: 0, verified: true value: a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85
-I0907 04:15:03.844694  118477 grpc_verifier.go:798]      PCR: 1, verified: true value: e50edb964f66a7417954b1506f78a49d62062228ce84ee0b4e7e3b0e19b64a69
-I0907 04:15:03.844709  118477 grpc_verifier.go:798]      PCR: 2, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
-I0907 04:15:03.844719  118477 grpc_verifier.go:798]      PCR: 3, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
-I0907 04:15:03.844729  118477 grpc_verifier.go:798]      PCR: 4, verified: true value: a3358453a5148b4e3f4b96b006ae1761a2ce4aea75f6a13e10eb3e0903dfd6e2
-I0907 04:15:03.844736  118477 grpc_verifier.go:798]      PCR: 5, verified: true value: 098a2ae2d1aabed3e346b9fef96ec64056ea4043514672243bbf40b7d0972302
-I0907 04:15:03.844743  118477 grpc_verifier.go:798]      PCR: 6, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
-I0907 04:15:03.844751  118477 grpc_verifier.go:798]      PCR: 7, verified: true value: 0a3f60cea411388b09eac782999f5e62246ab5469f9047eb508aa22c4dcd2237
-I0907 04:15:03.844759  118477 grpc_verifier.go:798]      PCR: 8, verified: true value: a775d521739876ecde2c17d0e856c584ec513e8758d9199a3d5c735836ba0ebe
-I0907 04:15:03.844766  118477 grpc_verifier.go:798]      PCR: 9, verified: true value: 4a7254a1740444f04ec61cf3f8eb8ffb5dae2069b44ad900e894b34a07626b36
-I0907 04:15:03.844773  118477 grpc_verifier.go:798]      PCR: 10, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
-I0907 04:15:03.844781  118477 grpc_verifier.go:798]      PCR: 11, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
-I0907 04:15:03.844788  118477 grpc_verifier.go:798]      PCR: 12, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
-I0907 04:15:03.844795  118477 grpc_verifier.go:798]      PCR: 13, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
-I0907 04:15:03.844802  118477 grpc_verifier.go:798]      PCR: 14, verified: true value: 306f9d8b94f17d93dc6e7cf8f5c79d652eb4c6c4d13de2dddc24af416e13ecaf
-I0907 04:15:03.844810  118477 grpc_verifier.go:798]      PCR: 15, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
-I0907 04:15:03.844817  118477 grpc_verifier.go:798]      PCR: 16, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
-I0907 04:15:03.844823  118477 grpc_verifier.go:798]      PCR: 17, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-I0907 04:15:03.844830  118477 grpc_verifier.go:798]      PCR: 18, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-I0907 04:15:03.844837  118477 grpc_verifier.go:798]      PCR: 19, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-I0907 04:15:03.844845  118477 grpc_verifier.go:798]      PCR: 20, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-I0907 04:15:03.844852  118477 grpc_verifier.go:798]      PCR: 21, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-I0907 04:15:03.844860  118477 grpc_verifier.go:798]      PCR: 22, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-I0907 04:15:03.844867  118477 grpc_verifier.go:798]      PCR: 23, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
-I0907 04:15:03.844874  118477 grpc_verifier.go:810]      quotes verified
-I0907 04:15:03.845914  118477 grpc_verifier.go:838]      secureBoot State enabled: [true]
-I0907 04:15:03.846641  118477 grpc_verifier.go:900] >>>>>>>>  DeviceSerial Number [0e67ca2671ea24d7]
-I0907 04:15:03.846673  118477 grpc_verifier.go:902]       verify quote, PCRs and secureBootState
-I0907 04:15:03.849460  118477 grpc_verifier.go:1048] Issued AK Certificate: 
+I0907 06:55:53.269345  206655 grpc_verifier.go:802]      PCR: 0, verified: true value: a0b5ff3383a1116bd7dc6df177c0c2d433b9ee1813ea958fa5d166a202cb2a85
+I0907 06:55:53.269392  206655 grpc_verifier.go:802]      PCR: 1, verified: true value: e50edb964f66a7417954b1506f78a49d62062228ce84ee0b4e7e3b0e19b64a69
+I0907 06:55:53.269409  206655 grpc_verifier.go:802]      PCR: 2, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
+I0907 06:55:53.269425  206655 grpc_verifier.go:802]      PCR: 3, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
+I0907 06:55:53.269441  206655 grpc_verifier.go:802]      PCR: 4, verified: true value: a3358453a5148b4e3f4b96b006ae1761a2ce4aea75f6a13e10eb3e0903dfd6e2
+I0907 06:55:53.269479  206655 grpc_verifier.go:802]      PCR: 5, verified: true value: 098a2ae2d1aabed3e346b9fef96ec64056ea4043514672243bbf40b7d0972302
+I0907 06:55:53.269497  206655 grpc_verifier.go:802]      PCR: 6, verified: true value: 3d458cfe55cc03ea1f443f1562beec8df51c75e14a9fcf9a7234a13f198e7969
+I0907 06:55:53.269510  206655 grpc_verifier.go:802]      PCR: 7, verified: true value: 0a3f60cea411388b09eac782999f5e62246ab5469f9047eb508aa22c4dcd2237
+I0907 06:55:53.269523  206655 grpc_verifier.go:802]      PCR: 8, verified: true value: a775d521739876ecde2c17d0e856c584ec513e8758d9199a3d5c735836ba0ebe
+I0907 06:55:53.269535  206655 grpc_verifier.go:802]      PCR: 9, verified: true value: 4a7254a1740444f04ec61cf3f8eb8ffb5dae2069b44ad900e894b34a07626b36
+I0907 06:55:53.269547  206655 grpc_verifier.go:802]      PCR: 10, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0907 06:55:53.269560  206655 grpc_verifier.go:802]      PCR: 11, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0907 06:55:53.269572  206655 grpc_verifier.go:802]      PCR: 12, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0907 06:55:53.269583  206655 grpc_verifier.go:802]      PCR: 13, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0907 06:55:53.269595  206655 grpc_verifier.go:802]      PCR: 14, verified: true value: 306f9d8b94f17d93dc6e7cf8f5c79d652eb4c6c4d13de2dddc24af416e13ecaf
+I0907 06:55:53.269607  206655 grpc_verifier.go:802]      PCR: 15, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0907 06:55:53.269618  206655 grpc_verifier.go:802]      PCR: 16, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0907 06:55:53.269630  206655 grpc_verifier.go:802]      PCR: 17, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0907 06:55:53.269643  206655 grpc_verifier.go:802]      PCR: 18, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0907 06:55:53.269655  206655 grpc_verifier.go:802]      PCR: 19, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0907 06:55:53.269667  206655 grpc_verifier.go:802]      PCR: 20, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0907 06:55:53.269680  206655 grpc_verifier.go:802]      PCR: 21, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0907 06:55:53.269691  206655 grpc_verifier.go:802]      PCR: 22, verified: true value: ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+I0907 06:55:53.269702  206655 grpc_verifier.go:802]      PCR: 23, verified: true value: 0000000000000000000000000000000000000000000000000000000000000000
+I0907 06:55:53.269714  206655 grpc_verifier.go:814]      quotes verified
+I0907 06:55:53.269982  206655 grpc_verifier.go:822] Event Index: 0
+I0907 06:55:53.270025  206655 grpc_verifier.go:823]    Event Type: EV_NO_ACTION
+I0907 06:55:53.270065  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.270091  206655 grpc_verifier.go:822] Event Index: 0
+I0907 06:55:53.270113  206655 grpc_verifier.go:823]    Event Type: EV_NO_ACTION
+I0907 06:55:53.270138  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.270160  206655 grpc_verifier.go:822] Event Index: 0
+I0907 06:55:53.270183  206655 grpc_verifier.go:823]    Event Type: EV_S_CRTM_VERSION
+I0907 06:55:53.270210  206655 grpc_verifier.go:827]    Event: G C E   V i r t u a l   F i r m w a r e   v 2   
+I0907 06:55:53.270238  206655 grpc_verifier.go:822] Event Index: 0
+I0907 06:55:53.270262  206655 grpc_verifier.go:823]    Event Type: EV_NONHOST_INFO
+I0907 06:55:53.270294  206655 grpc_verifier.go:827]    Event: GCE NonHostInfo                
+I0907 06:55:53.270319  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.270353  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_DRIVER_CONFIG
+I0907 06:55:53.270378  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.270399  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.270421  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_DRIVER_CONFIG
+I0907 06:55:53.270444  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.270465  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.270490  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_DRIVER_CONFIG
+I0907 06:55:53.270517  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.270537  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.270559  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_DRIVER_CONFIG
+I0907 06:55:53.270584  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.270602  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.270626  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_DRIVER_CONFIG
+I0907 06:55:53.270652  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.270670  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.270694  206655 grpc_verifier.go:823]    Event Type: EV_SEPARATOR
+I0907 06:55:53.270718  206655 grpc_verifier.go:827]    Event:     
+I0907 06:55:53.270745  206655 grpc_verifier.go:822] Event Index: 1
+I0907 06:55:53.270769  206655 grpc_verifier.go:823]    Event Type: EV_PLATFORM_CONFIG_FLAGS
+I0907 06:55:53.270795  206655 grpc_verifier.go:827]    Event: ACPI DATA
+I0907 06:55:53.270824  206655 grpc_verifier.go:822] Event Index: 1
+I0907 06:55:53.270851  206655 grpc_verifier.go:823]    Event Type: EV_PLATFORM_CONFIG_FLAGS
+I0907 06:55:53.270876  206655 grpc_verifier.go:827]    Event: ACPI DATA
+I0907 06:55:53.270902  206655 grpc_verifier.go:822] Event Index: 1
+I0907 06:55:53.270929  206655 grpc_verifier.go:823]    Event Type: EV_PLATFORM_CONFIG_FLAGS
+I0907 06:55:53.270952  206655 grpc_verifier.go:827]    Event: ACPI DATA
+I0907 06:55:53.270979  206655 grpc_verifier.go:822] Event Index: 1
+I0907 06:55:53.271002  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_BOOT
+I0907 06:55:53.271030  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.271049  206655 grpc_verifier.go:822] Event Index: 1
+I0907 06:55:53.271073  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_BOOT
+I0907 06:55:53.271097  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.271115  206655 grpc_verifier.go:822] Event Index: 1
+I0907 06:55:53.271134  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_BOOT
+I0907 06:55:53.271158  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.271177  206655 grpc_verifier.go:822] Event Index: 1
+I0907 06:55:53.271201  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_BOOT
+I0907 06:55:53.271226  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.271245  206655 grpc_verifier.go:822] Event Index: 4
+I0907 06:55:53.271270  206655 grpc_verifier.go:823]    Event Type: EV_EFI_ACTION
+I0907 06:55:53.271296  206655 grpc_verifier.go:827]    Event: Calling EFI Application from Boot Option
+I0907 06:55:53.271323  206655 grpc_verifier.go:822] Event Index: 0
+I0907 06:55:53.271346  206655 grpc_verifier.go:823]    Event Type: EV_SEPARATOR
+I0907 06:55:53.271375  206655 grpc_verifier.go:827]    Event:     
+I0907 06:55:53.271400  206655 grpc_verifier.go:822] Event Index: 1
+I0907 06:55:53.271425  206655 grpc_verifier.go:823]    Event Type: EV_SEPARATOR
+I0907 06:55:53.271452  206655 grpc_verifier.go:827]    Event:     
+I0907 06:55:53.271478  206655 grpc_verifier.go:822] Event Index: 2
+I0907 06:55:53.271500  206655 grpc_verifier.go:823]    Event Type: EV_SEPARATOR
+I0907 06:55:53.271529  206655 grpc_verifier.go:827]    Event:     
+I0907 06:55:53.271555  206655 grpc_verifier.go:822] Event Index: 3
+I0907 06:55:53.271580  206655 grpc_verifier.go:823]    Event Type: EV_SEPARATOR
+I0907 06:55:53.271606  206655 grpc_verifier.go:827]    Event:     
+I0907 06:55:53.271632  206655 grpc_verifier.go:822] Event Index: 4
+I0907 06:55:53.271664  206655 grpc_verifier.go:823]    Event Type: EV_SEPARATOR
+I0907 06:55:53.271690  206655 grpc_verifier.go:827]    Event:     
+I0907 06:55:53.271719  206655 grpc_verifier.go:822] Event Index: 5
+I0907 06:55:53.271742  206655 grpc_verifier.go:823]    Event Type: EV_SEPARATOR
+I0907 06:55:53.271768  206655 grpc_verifier.go:827]    Event:     
+I0907 06:55:53.271794  206655 grpc_verifier.go:822] Event Index: 6
+I0907 06:55:53.271818  206655 grpc_verifier.go:823]    Event Type: EV_SEPARATOR
+I0907 06:55:53.271845  206655 grpc_verifier.go:827]    Event:     
+I0907 06:55:53.271871  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.271894  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_AUTHORITY
+I0907 06:55:53.271918  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.271937  206655 grpc_verifier.go:822] Event Index: 5
+I0907 06:55:53.271963  206655 grpc_verifier.go:823]    Event Type: EV_EFI_GPT_EVENT
+I0907 06:55:53.271985  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.272006  206655 grpc_verifier.go:822] Event Index: 4
+I0907 06:55:53.272027  206655 grpc_verifier.go:823]    Event Type: EV_EFI_BOOT_SERVICES_APPLICATION
+I0907 06:55:53.272052  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.272071  206655 grpc_verifier.go:822] Event Index: 14
+I0907 06:55:53.272093  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272120  206655 grpc_verifier.go:827]    Event: MokList 
+I0907 06:55:53.272144  206655 grpc_verifier.go:822] Event Index: 14
+I0907 06:55:53.272169  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272193  206655 grpc_verifier.go:827]    Event: MokListX 
+I0907 06:55:53.272220  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.272243  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_AUTHORITY
+I0907 06:55:53.272268  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.272287  206655 grpc_verifier.go:822] Event Index: 14
+I0907 06:55:53.272311  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272336  206655 grpc_verifier.go:827]    Event: MokListTrusted 
+I0907 06:55:53.272363  206655 grpc_verifier.go:822] Event Index: 7
+I0907 06:55:53.272386  206655 grpc_verifier.go:823]    Event Type: EV_EFI_VARIABLE_AUTHORITY
+I0907 06:55:53.272411  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.272432  206655 grpc_verifier.go:822] Event Index: 4
+I0907 06:55:53.272461  206655 grpc_verifier.go:823]    Event Type: EV_EFI_BOOT_SERVICES_APPLICATION
+I0907 06:55:53.272485  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.272504  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.272527  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272550  206655 grpc_verifier.go:827]    Event: (hd0,gpt15)/EFI/ubuntu/grub.cfg 
+I0907 06:55:53.272577  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.272599  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272623  206655 grpc_verifier.go:827]    Event: (hd0,gpt15)/EFI/ubuntu/grub.cfg 
+I0907 06:55:53.272650  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.272672  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272699  206655 grpc_verifier.go:827]    Event: grub_cmd: search.fs_uuid 8b8d2f19-f53c-4803-9931-220a72d8ce63 root 
+I0907 06:55:53.272725  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.272747  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272771  206655 grpc_verifier.go:827]    Event: grub_cmd: set prefix=(hd0,gpt16)/grub 
+I0907 06:55:53.272798  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.272820  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272845  206655 grpc_verifier.go:827]    Event: (hd0,gpt16)/grub/x86_64-efi/command.lst 
+I0907 06:55:53.272872  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.272890  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272915  206655 grpc_verifier.go:827]    Event: (hd0,gpt16)/grub/x86_64-efi/fs.lst 
+I0907 06:55:53.272949  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.272972  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.272999  206655 grpc_verifier.go:827]    Event: (hd0,gpt16)/grub/x86_64-efi/crypto.lst 
+I0907 06:55:53.273024  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.273046  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273074  206655 grpc_verifier.go:827]    Event: (hd0,gpt16)/grub/x86_64-efi/terminal.lst 
+I0907 06:55:53.273101  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.273145  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273362  206655 grpc_verifier.go:827]    Event: grub_cmd: configfile (hd0,gpt16)/grub/grub.cfg 
+I0907 06:55:53.273392  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.273413  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273434  206655 grpc_verifier.go:827]    Event: (hd0,gpt16)/grub/grub.cfg 
+I0907 06:55:53.273453  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.273479  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273525  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -s (hd0,gpt16)/grub/grubenv ] 
+I0907 06:55:53.273570  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.273616  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273661  206655 grpc_verifier.go:827]    Event: (hd0,gpt16)/grub/grubenv 
+I0907 06:55:53.273703  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.273721  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273739  206655 grpc_verifier.go:827]    Event: grub_cmd: set have_grubenv=true 
+I0907 06:55:53.273757  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.273773  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273790  206655 grpc_verifier.go:827]    Event: grub_cmd: load_env 
+I0907 06:55:53.273809  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.273825  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273843  206655 grpc_verifier.go:827]    Event: (hd0,gpt16)/grub/grubenv 
+I0907 06:55:53.273862  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.273879  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273892  206655 grpc_verifier.go:827]    Event: grub_cmd: [  = 2 ] 
+I0907 06:55:53.273909  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.273928  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.273956  206655 grpc_verifier.go:827]    Event: grub_cmd: [  = 1 ] 
+I0907 06:55:53.273980  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274002  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274025  206655 grpc_verifier.go:827]    Event: grub_cmd: [  ] 
+I0907 06:55:53.274049  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274071  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274093  206655 grpc_verifier.go:827]    Event: grub_cmd: set default=0 
+I0907 06:55:53.274115  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274140  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274160  206655 grpc_verifier.go:827]    Event: grub_cmd: [ xy = xy ] 
+I0907 06:55:53.274181  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274202  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274222  206655 grpc_verifier.go:827]    Event: grub_cmd: menuentry_id_option=--id 
+I0907 06:55:53.274246  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274269  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274286  206655 grpc_verifier.go:827]    Event: grub_cmd: export menuentry_id_option 
+I0907 06:55:53.274307  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274320  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274338  206655 grpc_verifier.go:827]    Event: grub_cmd: [  ] 
+I0907 06:55:53.274356  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274372  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274403  206655 grpc_verifier.go:827]    Event: grub_cmd: serial 
+I0907 06:55:53.274421  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274438  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274455  206655 grpc_verifier.go:827]    Event: grub_cmd: terminal_input serial 
+I0907 06:55:53.274473  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274490  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274507  206655 grpc_verifier.go:827]    Event: grub_cmd: terminal_output serial 
+I0907 06:55:53.274525  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274542  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274559  206655 grpc_verifier.go:827]    Event: grub_cmd: [  = 1 ] 
+I0907 06:55:53.274577  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274594  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274610  206655 grpc_verifier.go:827]    Event: grub_cmd: [ xy = xy ] 
+I0907 06:55:53.274628  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274645  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274662  206655 grpc_verifier.go:827]    Event: grub_cmd: set timeout_style=hidden 
+I0907 06:55:53.274680  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274697  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274714  206655 grpc_verifier.go:827]    Event: grub_cmd: set timeout=0.1 
+I0907 06:55:53.274732  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274749  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274766  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -n true ] 
+I0907 06:55:53.274784  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274801  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274819  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -n  ] 
+I0907 06:55:53.274837  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274850  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274868  206655 grpc_verifier.go:827]    Event: grub_cmd: unset initrdless_boot_fallback_triggered 
+I0907 06:55:53.274887  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274903  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274921  206655 grpc_verifier.go:827]    Event: grub_cmd: save_env initrdless_boot_fallback_triggered 
+I0907 06:55:53.274939  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.274955  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.274973  206655 grpc_verifier.go:827]    Event: grub_cmd: set menu_color_normal=white/black 
+I0907 06:55:53.274991  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275008  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275026  206655 grpc_verifier.go:827]    Event: grub_cmd: set menu_color_highlight=black/light-gray 
+I0907 06:55:53.275044  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275060  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275078  206655 grpc_verifier.go:827]    Event: grub_cmd: set partuuid=a460d7b4-9a27-4ff3-90ef-aa492c77302a 
+I0907 06:55:53.275096  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275112  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275128  206655 grpc_verifier.go:827]    Event: grub_cmd: [  != 1 ] 
+I0907 06:55:53.275146  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275163  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275180  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -e (hd0,gpt16)/grub/gfxblacklist.txt ] 
+I0907 06:55:53.275198  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275215  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275232  206655 grpc_verifier.go:827]    Event: grub_cmd: [ efi != pc ] 
+I0907 06:55:53.275250  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275267  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275287  206655 grpc_verifier.go:827]    Event: grub_cmd: set linux_gfx_mode=keep 
+I0907 06:55:53.275306  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275321  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275338  206655 grpc_verifier.go:827]    Event: grub_cmd: export linux_gfx_mode 
+I0907 06:55:53.275357  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275373  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275391  206655 grpc_verifier.go:827]    Event: grub_cmd: menuentry Ubuntu --class ubuntu --class gnu-linux --class gnu --class os --id gnulinux-simple-d7216b02-44fe-40ee-88a7-3e23d3b839f3 {
+	recordfail
+	load_video
+	gfxmode $linux_gfx_mode
+	insmod gzio
+	if [ x$grub_platform = xxen ]; then insmod xzio; insmod lzopio; fi
+	insmod part_gpt
+	insmod ext2
+	search --no-floppy --fs-uuid --set=root 8b8d2f19-f53c-4803-9931-220a72d8ce63
+	if [ "${initrdfail}" = 1 ]; then
+		echo	'GRUB_FORCE_PARTUUID set, initrdless boot failed. Attempting with initrd.'
+		linux	/vmlinuz-6.14.0-1016-gcp root=PARTUUID=a460d7b4-9a27-4ff3-90ef-aa492c77302a ro  console=ttyS0,115200
+		initrd	/initrd.img-6.14.0-1016-gcp
+	else
+		echo	'GRUB_FORCE_PARTUUID set, attempting initrdless boot.'
+		linux	/vmlinuz-6.14.0-1016-gcp root=PARTUUID=a460d7b4-9a27-4ff3-90ef-aa492c77302a ro  console=ttyS0,115200 panic=-1
+	fi
+	initrdfail
+} 
+I0907 06:55:53.275411  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275440  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275458  206655 grpc_verifier.go:827]    Event: grub_cmd: submenu Advanced options for Ubuntu --id gnulinux-advanced-d7216b02-44fe-40ee-88a7-3e23d3b839f3 {
+	menuentry 'Ubuntu, with Linux 6.14.0-1016-gcp' --class ubuntu --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-6.14.0-1016-gcp-advanced-d7216b02-44fe-40ee-88a7-3e23d3b839f3' {
+		recordfail
+		load_video
+		gfxmode $linux_gfx_mode
+		insmod gzio
+		if [ x$grub_platform = xxen ]; then insmod xzio; insmod lzopio; fi
+		insmod part_gpt
+		insmod ext2
+		search --no-floppy --fs-uuid --set=root 8b8d2f19-f53c-4803-9931-220a72d8ce63
+		echo	'Loading Linux 6.14.0-1016-gcp ...'
+		if [ "${initrdfail}" = 1 ]; then
+			echo	'GRUB_FORCE_PARTUUID set, initrdless boot failed. Attempting with initrd.'
+			linux	/vmlinuz-6.14.0-1016-gcp root=PARTUUID=a460d7b4-9a27-4ff3-90ef-aa492c77302a ro  console=ttyS0,115200
+			echo	'Loading initial ramdisk ...'
+			initrd	/initrd.img-6.14.0-1016-gcp
+		else
+			echo	'GRUB_FORCE_PARTUUID set, attempting initrdless boot.'
+			linux	/vmlinuz-6.14.0-1016-gcp root=PARTUUID=a460d7b4-9a27-4ff3-90ef-aa492c77302a ro  console=ttyS0,115200 panic=-1
+		fi
+		initrdfail
+	}
+	menuentry 'Ubuntu, with Linux 6.14.0-1016-gcp (recovery mode)' --class ubuntu --class gnu-linux --class gnu --class os $menuentry_id_option 'gnulinux-6.14.0-1016-gcp-recovery-d7216b02-44fe-40ee-88a7-3e23d3b839f3' {
+		recordfail
+		load_video
+		insmod gzio
+		if [ x$grub_platform = xxen ]; then insmod xzio; insmod lzopio; fi
+		insmod part_gpt
+		insmod ext2
+		search --no-floppy --fs-uuid --set=root 8b8d2f19-f53c-4803-9931-220a72d8ce63
+		echo	'Loading Linux 6.14.0-1016-gcp ...'
+		if [ "${initrdfail}" = 1 ]; then
+			echo	'GRUB_FORCE_PARTUUID set, initrdless boot failed. Attempting with initrd.'
+			linux	/vmlinuz-6.14.0-1016-gcp root=PARTUUID=a460d7b4-9a27-4ff3-90ef-aa492c77302a ro recovery nomodeset dis_ucode_ldr 
+			echo	'Loading initial ramdisk ...'
+			initrd	/initrd.img-6.14.0-1016-gcp
+		else
+			echo	'GRUB_FORCE_PARTUUID set, attempting initrdless boot.'
+			linux	/vmlinuz-6.14.0-1016-gcp root=PARTUUID=a460d7b4-9a27-4ff3-90ef-aa492c77302a ro recovery nomodeset dis_ucode_ldr  panic=-1
+		fi
+		initrdfail
+	}
+} 
+I0907 06:55:53.275477  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275494  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275511  206655 grpc_verifier.go:827]    Event: grub_cmd: [ efi = efi ] 
+I0907 06:55:53.275530  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275547  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275567  206655 grpc_verifier.go:827]    Event: grub_cmd: insmod bli 
+I0907 06:55:53.275586  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.275602  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275620  206655 grpc_verifier.go:827]    Event: (hd0,gpt16)/grub/x86_64-efi/bli.mod 
+I0907 06:55:53.275637  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275654  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275672  206655 grpc_verifier.go:827]    Event: grub_cmd: [ efi = efi ] 
+I0907 06:55:53.275690  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275707  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275724  206655 grpc_verifier.go:827]    Event: grub_cmd: fwsetup --is-supported 
+I0907 06:55:53.275743  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275759  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275777  206655 grpc_verifier.go:827]    Event: grub_cmd: [ 0 = 0 ] 
+I0907 06:55:53.275795  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275811  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275829  206655 grpc_verifier.go:827]    Event: grub_cmd: menuentry UEFI Firmware Settings --id uefi-firmware {
+			fwsetup
+		} 
+I0907 06:55:53.275847  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275862  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275879  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -f (hd0,gpt16)/grub/custom.cfg ] 
+I0907 06:55:53.275896  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275912  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275928  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -z (hd0,gpt16)/grub -a -f (hd0,gpt16)/grub/custom.cfg ] 
+I0907 06:55:53.275946  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.275962  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.275980  206655 grpc_verifier.go:827]    Event: grub_cmd: setparams Ubuntu 
+I0907 06:55:53.275994  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276011  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276028  206655 grpc_verifier.go:827]    Event: grub_cmd: recordfail 
+I0907 06:55:53.276046  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276061  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276078  206655 grpc_verifier.go:827]    Event: grub_cmd: set recordfail=1 
+I0907 06:55:53.276096  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276111  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276129  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -n true ] 
+I0907 06:55:53.276146  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276163  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276180  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -z  ] 
+I0907 06:55:53.276194  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276211  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276228  206655 grpc_verifier.go:827]    Event: grub_cmd: save_env recordfail 
+I0907 06:55:53.276246  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276262  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276279  206655 grpc_verifier.go:827]    Event: grub_cmd: load_video 
+I0907 06:55:53.276297  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276314  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276331  206655 grpc_verifier.go:827]    Event: grub_cmd: [ xy = xy ] 
+I0907 06:55:53.276349  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276365  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276382  206655 grpc_verifier.go:827]    Event: grub_cmd: insmod all_video 
+I0907 06:55:53.276401  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276417  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276435  206655 grpc_verifier.go:827]    Event: grub_cmd: gfxmode keep 
+I0907 06:55:53.276456  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276472  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276490  206655 grpc_verifier.go:827]    Event: grub_cmd: set gfxpayload=keep 
+I0907 06:55:53.276508  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276524  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276541  206655 grpc_verifier.go:827]    Event: grub_cmd: [ keep = keep ] 
+I0907 06:55:53.276560  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276578  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276596  206655 grpc_verifier.go:827]    Event: grub_cmd: set vt_handoff=vt.handoff=7 
+I0907 06:55:53.276614  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276629  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276646  206655 grpc_verifier.go:827]    Event: grub_cmd: insmod gzio 
+I0907 06:55:53.276664  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276680  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276697  206655 grpc_verifier.go:827]    Event: grub_cmd: [ xefi = xxen ] 
+I0907 06:55:53.276713  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276729  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276745  206655 grpc_verifier.go:827]    Event: grub_cmd: insmod part_gpt 
+I0907 06:55:53.276763  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276779  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276796  206655 grpc_verifier.go:827]    Event: grub_cmd: insmod ext2 
+I0907 06:55:53.276814  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276831  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276848  206655 grpc_verifier.go:827]    Event: grub_cmd: search --no-floppy --fs-uuid --set=root 8b8d2f19-f53c-4803-9931-220a72d8ce63 
+I0907 06:55:53.276866  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276883  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276900  206655 grpc_verifier.go:827]    Event: grub_cmd: [  = 1 ] 
+I0907 06:55:53.276919  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276934  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.276951  206655 grpc_verifier.go:827]    Event: grub_cmd: echo GRUB_FORCE_PARTUUID set, attempting initrdless boot. 
+I0907 06:55:53.276968  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.276985  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277002  206655 grpc_verifier.go:827]    Event: grub_cmd: linux /vmlinuz-6.14.0-1016-gcp root=PARTUUID=a460d7b4-9a27-4ff3-90ef-aa492c77302a ro console=ttyS0,115200 panic=-1 
+I0907 06:55:53.277020  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.277035  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277053  206655 grpc_verifier.go:827]    Event: /vmlinuz-6.14.0-1016-gcp 
+I0907 06:55:53.277071  206655 grpc_verifier.go:822] Event Index: 4
+I0907 06:55:53.277088  206655 grpc_verifier.go:823]    Event Type: EV_EFI_BOOT_SERVICES_APPLICATION
+I0907 06:55:53.277106  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.277131  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.277148  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277166  206655 grpc_verifier.go:827]    Event: kernel_cmdline: /vmlinuz-6.14.0-1016-gcp root=PARTUUID=a460d7b4-9a27-4ff3-90ef-aa492c77302a ro console=ttyS0,115200 panic=-1 
+I0907 06:55:53.277184  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.277202  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277219  206655 grpc_verifier.go:827]    Event: grub_cmd: initrdfail 
+I0907 06:55:53.277238  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.277275  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277292  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -n true ] 
+I0907 06:55:53.277309  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.277326  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277346  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -n a460d7b4-9a27-4ff3-90ef-aa492c77302a ] 
+I0907 06:55:53.277364  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.277381  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277399  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -z  ] 
+I0907 06:55:53.277418  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.277434  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277452  206655 grpc_verifier.go:827]    Event: grub_cmd: set initrdfail=1 
+I0907 06:55:53.277469  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.277485  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277502  206655 grpc_verifier.go:827]    Event: grub_cmd: [ -n  ] 
+I0907 06:55:53.277521  206655 grpc_verifier.go:822] Event Index: 8
+I0907 06:55:53.277536  206655 grpc_verifier.go:823]    Event Type: EV_IPL
+I0907 06:55:53.277553  206655 grpc_verifier.go:827]    Event: grub_cmd: save_env initrdfail 
+I0907 06:55:53.277571  206655 grpc_verifier.go:822] Event Index: 9
+I0907 06:55:53.277586  206655 grpc_verifier.go:823]    Event Type: EV_EVENT_TAG
+I0907 06:55:53.277604  206655 grpc_verifier.go:825]    Event: [non-ascii]
+I0907 06:55:53.277618  206655 grpc_verifier.go:822] Event Index: 5
+I0907 06:55:53.277634  206655 grpc_verifier.go:823]    Event Type: EV_EFI_ACTION
+I0907 06:55:53.277651  206655 grpc_verifier.go:827]    Event: Exit Boot Services Invocation
+I0907 06:55:53.277669  206655 grpc_verifier.go:822] Event Index: 5
+I0907 06:55:53.277684  206655 grpc_verifier.go:823]    Event Type: EV_EFI_ACTION
+I0907 06:55:53.277702  206655 grpc_verifier.go:827]    Event: Exit Boot Services Returned with Success
+I0907 06:55:53.278438  206655 grpc_verifier.go:848]      secureBoot State enabled: [true]
+I0907 06:55:53.279038  206655 grpc_verifier.go:910] >>>>>>>>  DeviceSerial Number [87ba72b7367ec022]
+I0907 06:55:53.279067  206655 grpc_verifier.go:912]       verify quote, PCRs and secureBootState
+I0907 06:55:53.281384  206655 grpc_verifier.go:1058] Issued AK Certificate: 
 -----BEGIN CERTIFICATE-----
-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
+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
 -----END CERTIFICATE-----
 
-I0907 04:15:03.849903  118477 grpc_verifier.go:1062] Issued AK Certificate: 
+I0907 06:55:53.281753  206655 grpc_verifier.go:1072] Issued AK Certificate: 
 -----BEGIN CERTIFICATE-----
-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
+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
 -----END CERTIFICATE-----
 
 Certificate:
     Data:
         Version: 3 (0x2)
-        Serial Number: 3760937606 (0xe02b5a86)
+        Serial Number: 612101954 (0x247bef42)
         Signature Algorithm: SHA256-RSA
         Issuer: C=US,O=Google,OU=Enterprise,CN=Single Root CA
         Validity
-            Not Before: Sep 7 08:15:03 2026 UTC
-            Not After : Sep 7 08:15:03 2027 UTC
+            Not Before: Sep 7 10:55:53 2026 UTC
+            Not After : Sep 7 10:55:53 2027 UTC
         Subject:
         Subject Public Key Info:
             Public Key Algorithm: RSA
                 Public-Key: (2048 bit)
                 Modulus:
-                    b7:5d:56:2f:32:65:19:26:d8:25:cf:ad:6c:84:49:
-                    db:13:c9:58:9c:61:67:f2:6b:20:b2:39:bd:e2:7b:
-                    54:71:7d:7e:e3:1c:51:0f:68:14:b8:74:17:0d:84:
-                    76:1e:b2:5d:3c:ee:1a:3b:70:aa:c7:fe:d2:08:8e:
-                    12:21:02:ce:9c:64:13:6f:80:6b:f3:4a:81:88:2d:
-                    b1:49:58:09:07:ab:33:dc:4f:ba:ae:97:a1:7c:10:
-                    93:89:5d:6e:0c:a6:4c:50:54:2d:a0:f3:a9:f3:93:
-                    33:e3:81:64:3d:06:01:71:cf:e4:33:97:82:6b:a2:
-                    e8:44:b7:45:dd:0b:4d:95:81:a8:d5:d1:24:46:a4:
-                    05:88:42:dc:86:c1:f9:85:f1:e9:68:00:a5:f1:5e:
-                    ef:06:12:b8:b8:d5:99:3b:0d:86:20:a9:5a:4b:8e:
-                    a1:21:1f:60:70:0b:78:dc:56:4d:98:2a:68:96:26:
-                    43:6b:2a:25:21:e1:fe:28:38:bd:5f:f5:9b:79:13:
-                    68:da:15:ed:8d:0e:2b:70:b8:e1:1b:34:12:8a:81:
-                    c7:49:47:90:93:bc:62:d3:f0:98:34:c0:ad:32:4f:
-                    63:2d:43:73:df:61:31:74:73:31:d6:7b:c4:76:bc:
-                    ae:99:c6:c4:10:08:ed:bf:50:10:08:a4:43:b8:92:
-                    1f
+                    b1:4a:e9:1b:5b:c9:09:6e:1a:89:91:88:97:5b:bc:
+                    fa:0d:0e:99:70:dd:88:93:08:a0:de:2e:ab:78:aa:
+                    a2:58:2f:55:98:d7:2a:a8:e9:d1:e4:78:78:bc:a3:
+                    84:50:b5:03:f3:de:bd:fa:9e:2c:7b:cc:d0:3a:e7:
+                    e5:46:dc:b0:e5:e6:24:8c:5f:02:13:cc:44:08:50:
+                    4b:94:8b:85:2f:91:03:40:68:06:39:2b:cd:75:81:
+                    ee:3d:a7:83:26:ce:c4:83:38:40:8a:89:08:70:98:
+                    ba:58:4d:e4:13:87:32:f3:d4:e3:a4:49:73:82:8b:
+                    2e:94:36:c9:56:e1:c8:f8:f7:33:ab:c2:00:a1:bd:
+                    de:2b:1e:57:f5:3b:de:96:64:97:1f:51:6d:d9:3f:
+                    99:ad:ac:dd:8b:ca:3d:ca:93:eb:a3:be:2a:85:59:
+                    e5:ee:d5:1b:ae:d3:71:59:48:71:68:0b:ba:f8:d8:
+                    a4:69:8f:b2:db:d1:54:a9:ad:dd:76:88:4a:d9:bb:
+                    72:1c:47:b2:0b:9f:bd:d6:55:48:aa:cb:23:20:09:
+                    d2:bb:1c:47:63:34:32:f8:aa:bb:ee:c7:53:9a:9d:
+                    53:4d:dc:e6:45:4d:41:98:ba:2a:d0:2c:84:f0:41:
+                    0c:26:fe:4b:53:f4:a0:4f:2a:79:ba:5d:7a:ab:58:
+                    27
                 Exponent: 65537 (0x10001)
         X509v3 extensions:
             X509v3 Key Usage: critical
@@ -397,221 +881,194 @@ Certificate:
                 Policy: 2.23.133.11.1.2
                 Policy: 2.23.133.11.1.3
             X509v3 Subject Alternative Name:
-                Hardware Module Name: Type: 2.23.133.1.2, Serial Number: 00001014:2f6d51db7736ecb92dcde2278031c8b1ecc387b4:4cf
-                Permanent Identifier: 0e67ca2671ea24d7
+                Hardware Module Name: Type: 2.23.133.1.2, Serial Number: 00001014:2f6d51db7736ecb92dcde2278031c8b1ecc387b4:4d2
+                Permanent Identifier: 87ba72b7367ec022
                 TPM Manufacturer: id:00001014
                 TPM Model: swtpm
                 TPM Version: id:20240125
     Signature Algorithm: SHA256-RSA
-         9d:9e:54:0a:c3:2c:a7:b8:da:8e:3d:c1:9c:41:56:73:44:ce:
-         9a:12:bd:f1:8b:76:99:e4:5b:cd:48:0a:66:15:b5:30:9e:7b:
-         76:ce:32:a7:5d:75:1b:0c:fc:4f:9d:c1:3c:5c:01:c6:d9:46:
-         43:a7:cc:8d:14:df:6d:39:6a:ab:0a:9f:d9:16:c0:5b:cd:aa:
-         90:7a:27:a4:3b:33:fc:c8:f7:ef:1f:35:96:cf:2b:8e:56:6a:
-         d6:21:06:d0:61:b2:bb:80:06:47:38:f2:1e:ae:c4:e4:fa:11:
-         9d:b3:20:0a:9b:81:2d:7f:33:d7:34:48:4c:9e:03:82:68:7e:
-         fa:fa:35:fe:01:55:f0:b2:91:77:24:82:f5:85:58:bc:23:36:
-         3d:9d:8d:41:cf:f2:dd:0a:1e:d4:f5:cb:b9:25:ac:1c:26:9c:
-         f3:59:c0:b2:05:50:74:a4:86:a6:fb:ff:ee:0d:8d:9e:72:01:
-         6c:ef:b4:6c:0f:e1:0e:01:c6:14:65:eb:9e:0b:34:d7:65:3f:
-         10:73:f3:d1:0b:83:73:8d:e1:ba:56:9f:c0:37:f4:0d:1b:50:
-         22:64:f3:0e:72:44:92:71:c0:93:2c:5e:76:17:77:d1:7e:9a:
-         a2:f7:77:68:14:12:f0:c2:4f:e9:18:86:98:62:78:80:b9:00:
-         8f:86:f4:0f
+         32:7c:88:80:ea:74:8e:d1:08:21:ed:9f:e4:06:16:0d:46:3e:
+         88:b5:60:75:6f:2c:96:f3:00:9e:bc:dc:18:ac:50:13:9c:21:
+         04:04:b9:e6:f9:77:d9:02:b6:87:d9:21:e0:b3:26:b6:77:4c:
+         13:3d:c8:b2:61:cf:ae:a4:cd:55:9c:a3:82:65:46:e6:ad:b1:
+         84:ad:47:89:6d:5a:c7:1a:98:78:a7:74:cb:b3:5c:6c:5b:da:
+         76:85:49:7d:85:84:3f:30:10:6d:c7:8f:37:8a:8f:38:3a:a1:
+         31:c4:2a:70:94:81:09:b7:7e:81:7e:16:5e:fd:9d:a4:34:c7:
+         14:51:ba:d3:95:a7:1c:a0:83:21:1a:38:79:22:c1:80:80:9b:
+         68:15:0e:da:7a:4b:69:ad:61:9e:09:f4:3a:e6:e2:97:60:32:
+         32:f4:f7:fa:5b:6f:cc:c9:2d:5c:d3:f1:1a:d3:ce:d0:49:ac:
+         18:17:7f:cf:17:dc:0a:b7:50:7c:58:f3:ed:8e:40:37:86:3d:
+         b2:37:cf:5f:ae:e2:9c:58:81:e8:b5:44:c8:9d:08:f5:6e:78:
+         97:9d:68:d6:96:d4:3c:40:40:e9:0a:e4:89:56:df:12:e1:59:
+         f4:44:12:81:9b:7c:7d:c8:1a:52:d0:79:11:78:5c:dc:8e:83:
+         a8:4f:ee:92
 
-I0907 04:15:03.849991  118477 grpc_verifier.go:1066] =============== end SetQuote ===============
-I0907 04:15:03.862421  118477 grpc_verifier.go:1073] ======= SetAttestedKey ========
-I0907 04:15:03.862464  118477 grpc_verifier.go:1094]         New PublicKey ========
-I0907 04:15:03.862823  118477 grpc_verifier.go:1119]      Key AuthPolicy []
-I0907 04:15:03.862846  118477 grpc_verifier.go:1129]      Key TPM Properties mask: 262258
-I0907 04:15:03.862869  118477 grpc_verifier.go:1132]      Key Expected Properties mask 262258
-I0907 04:15:03.862928  118477 grpc_verifier.go:1165]      key verified 
+I0907 06:55:53.281807  206655 grpc_verifier.go:1076] =============== end SetQuote ===============
+I0907 06:55:53.292773  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:53.292890  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.292920  206655 grpc_verifier.go:1083] ======= SetAttestedKey ========
+I0907 06:55:53.292942  206655 grpc_verifier.go:1086]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:53.292960  206655 grpc_verifier.go:1087]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.292981  206655 grpc_verifier.go:1104]         New PublicKey ========
+I0907 06:55:53.293416  206655 grpc_verifier.go:1129]      Key AuthPolicy []
+I0907 06:55:53.293452  206655 grpc_verifier.go:1139]      Key TPM Properties mask: 262258
+I0907 06:55:53.293496  206655 grpc_verifier.go:1142]      Key Expected Properties mask 262258
+I0907 06:55:53.293567  206655 grpc_verifier.go:1175]      key verified 
 -----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEna+PTxyNblQohjhcJdLBWWjCMg7R
-P1m0s/ssbYGy27gH/IG5D8WpHdzSWG6X2yfFH0SmrXlwzdLPGDaYvvYHPw==
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3yldje7gyuALrBmTTgQ47L6yqThH
+Oi3Jpkt0WtXpFSkZ9jR3mCQTbg97BJ5ynG8WldKnmb1iOYxi9OKMzQjiXQ==
 -----END PUBLIC KEY-----
 
-I0907 04:15:03.862956  118477 grpc_verifier.go:1167] =============== end SetAttestedKey ===============
-I0907 04:15:03.866057  118477 grpc_verifier.go:1172] ======= GetCertificate ========
-I0907 04:15:03.866171  118477 grpc_verifier.go:1205] Creating public x509
-I0907 04:15:03.867074  118477 grpc_verifier.go:1266] >>>>>>>>  DeviceSerial Number [7736d337f4263e48]
-I0907 04:15:03.867124  118477 grpc_verifier.go:1268]       verify quote, PCRs and secureBootState
-I0907 04:15:03.870931  118477 grpc_verifier.go:1417] Issued ECC Certificate: 
+I0907 06:55:53.293599  206655 grpc_verifier.go:1177] =============== end SetAttestedKey ===============
+I0907 06:55:53.296644  206655 grpc_verifier.go:145]      Connected from peer 127.0.0.1
+I0907 06:55:53.296729  206655 grpc_verifier.go:161]      EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.296775  206655 grpc_verifier.go:1182] ======= GetCertificate ========
+I0907 06:55:53.296792  206655 grpc_verifier.go:1185]      Inbound gRPC request from: 127.0.0.1
+I0907 06:55:53.296808  206655 grpc_verifier.go:1186]      Inbound EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:53.296937  206655 grpc_verifier.go:1215] Creating public x509
+I0907 06:55:53.297832  206655 grpc_verifier.go:1267] >>>>>>>>  Using DeviceSerial Number [87ba72b7367ec022]
+I0907 06:55:53.297875  206655 grpc_verifier.go:1269]       verify quote, PCRs and secureBootState
+I0907 06:55:53.300127  206655 grpc_verifier.go:1418] Issued ECC Certificate: 
 -----BEGIN CERTIFICATE-----
-MIIDXjCCAkagAwIBAgIEddY83DANBgkqhkiG9w0BAQsFADBMMQswCQYDVQQGEwJV
-UzEPMA0GA1UECgwGR29vZ2xlMRMwEQYDVQQLDApFbnRlcnByaXNlMRcwFQYDVQQD
-DA5TaW5nbGUgUm9vdCBDQTAeFw0yNjA5MDcwODE1MDNaFw0yNzA5MDcwODE1MDNa
-MBsxGTAXBgNVBAMTEDc3MzZkMzM3ZjQyNjNlNDgwWTATBgcqhkjOPQIBBggqhkjO
-PQMBBwNCAASdr49PHI1uVCiGOFwl0sFZaMIyDtE/WbSz+yxtgbLbuAf8gbkPxakd
-3NJYbpfbJ8UfRKateXDN0s8YNpi+9gc/o4IBQjCCAT4wDgYDVR0PAQH/BAQDAgeA
-MBAGA1UdJQQJMAcGBWeBBQgDMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAU7PDq
-U1M/nyPcwQ4xEDcH3t7nbvMwJwYDVR0gBCAwHjAIBgZngQULAQEwCAYGZ4EFCwEC
-MAgGBmeBBQsBAzCBwQYDVR0RBIG5MIG2oEwGCCsGAQUFBwgEoEAwPgYFZ4EFAQKE
-NTAwMDAxMDE0OjJmNmQ1MWRiNzczNmVjYjkyZGNkZTIyNzgwMzFjOGIxZWNjMzg3
-YjQ6NGNmoCAGCCsGAQUFBwgDoBQwEgwQNzczNmQzMzdmNDI2M2U0OKREMEIxFjAU
-BgVngQUCARMLaWQ6MDAwMDEwMTQxEDAOBgVngQUCAhMFc3d0cG0xFjAUBgVngQUC
-AxMLaWQ6MjAyNDAxMjUwDQYJKoZIhvcNAQELBQADggEBALEpVHLmDCzbrSPjOgqx
-zItp8mzMiGK2hhxF47JB90y+UDSXpGoC+GIYDMSXbz8QqAK2c9HMcZ1JDJgfOO33
-cZ07a1XgWHIt+Ia1IBOYlTh5roeaZyT+s6kAOoVONG7etWRJfyMl9gFhw09qsRQ1
-1oWYpdsvDxtAqlna7Up6l0zv4CzblxE/4+A7FdJkDN9XXB+DdmJ0stVo2bzl8AtJ
-O6WWIZrJPqUK3XSMd3DtwX2QuHO1XfoeucgjYDsDxejIV0edGhwxleLPdpDUyOTs
-sE1yYu6+sWSOeNkASFV59a4QbODE5dZvtRr9ro3132znBwZVTeHqA2wmmCHpvyAk
-psc=
+MIIDXzCCAkegAwIBAgIFAJgym8AwDQYJKoZIhvcNAQELBQAwTDELMAkGA1UEBhMC
+VVMxDzANBgNVBAoMBkdvb2dsZTETMBEGA1UECwwKRW50ZXJwcmlzZTEXMBUGA1UE
+AwwOU2luZ2xlIFJvb3QgQ0EwHhcNMjYwOTA3MTA1NTUzWhcNMjcwOTA3MTA1NTUz
+WjAbMRkwFwYDVQQDExA4N2JhNzJiNzM2N2VjMDIyMFkwEwYHKoZIzj0CAQYIKoZI
+zj0DAQcDQgAE3yldje7gyuALrBmTTgQ47L6yqThHOi3Jpkt0WtXpFSkZ9jR3mCQT
+bg97BJ5ynG8WldKnmb1iOYxi9OKMzQjiXaOCAUIwggE+MA4GA1UdDwEB/wQEAwIH
+gDAQBgNVHSUECTAHBgVngQUIAzAMBgNVHRMBAf8EAjAAMB8GA1UdIwQYMBaAFOzw
+6lNTP58j3MEOMRA3B97e527zMCcGA1UdIAQgMB4wCAYGZ4EFCwEBMAgGBmeBBQsB
+AjAIBgZngQULAQMwgcEGA1UdEQSBuTCBtqBMBggrBgEFBQcIBKBAMD4GBWeBBQEC
+hDUwMDAwMTAxNDoyZjZkNTFkYjc3MzZlY2I5MmRjZGUyMjc4MDMxYzhiMWVjYzM4
+N2I0OjRkMqAgBggrBgEFBQcIA6AUMBIMEDg3YmE3MmI3MzY3ZWMwMjKkRDBCMRYw
+FAYFZ4EFAgETC2lkOjAwMDAxMDE0MRAwDgYFZ4EFAgITBXN3dHBtMRYwFAYFZ4EF
+AgMTC2lkOjIwMjQwMTI1MA0GCSqGSIb3DQEBCwUAA4IBAQChb6JtXykzcEcH+DFG
+MiJIKSBZG4O99o1z9AuQbHL+b1FSRyhOR8BrTbfXn5z4oqoNFejk3vlt+K2CLSLS
+skjg3+ZEm7aPwlSDDW/C0UORO75zhA1RDeTmdwEex2/Z7+5S+jSG65lz0RgTyjHL
+PThq79Pm8XWVjgkww7YGWfAbBFbJOZ38WVaEH6ZMavDQdnOgBtCMrP53kXv2o/VW
+m6XbvywygmRwsHUIxFhcZ9BKsjyiGI6PpB2AxSU8RzgdF2ISKqevaBwVKmrc2Lku
+p6aYybeRXWpiHD2v2BGuCQPAs0fwZssN1z99tLiaS7wYiOkMChm/LVbW2wFlFx+y
+vuqV
 -----END CERTIFICATE-----
 
-I0907 04:15:03.871012  118477 grpc_verifier.go:1422] =============== end GetCertificate ===============
+I0907 06:55:53.300157  206655 grpc_verifier.go:1420]       Clearing Session
+I0907 06:55:53.300184  206655 grpc_verifier.go:1423] =============== end GetCertificate ===============
 ```
 
+###### Attestor Logs
 
-##### Attestor
-
-Now run the attestor and specify the verifier
 
 ```bash
 go run src/client/grpc_attestor.go -host 127.0.0.1:50051 \
    --tpm-path="127.0.0.1:2321"   --eventLogPath=swtpm/binary_bios_measurements  \
-    --v=10 -alsologtostderr
+    --v=60 -alsologtostderr
 
-I0907 04:15:03.722376  118576 grpc_attestor.go:127] =============== HealthCheck ===============
-I0907 04:15:03.731946  118576 grpc_attestor.go:143] RPC HealthChekStatus: SERVING
-I0907 04:15:03.732019  118576 grpc_attestor.go:160] EKM: 97832d14bddc6211252a3183248c65d994c56000e70ef17880b652cf5925e5dd
-I0907 04:15:03.732043  118576 grpc_attestor.go:171] Opening swtpm socket
-I0907 04:15:03.733154  118576 grpc_attestor.go:213] Manufacturer: IBM
-I0907 04:15:03.733214  118576 grpc_attestor.go:214] VendorInfo: SW   TPM
-I0907 04:15:03.733242  118576 grpc_attestor.go:215] FirmwareVersionMajor: 8228
-I0907 04:15:03.733268  118576 grpc_attestor.go:216] FirmwareVersionMinor: 293
-I0907 04:15:03.734119  118576 grpc_attestor.go:226] EKCert Issuer: CN=swtpm-localca
-I0907 04:15:03.734197  118576 grpc_attestor.go:252] EKCert SerialNumber: 1231
-I0907 04:15:03.734235  118576 grpc_attestor.go:255] =============== OfferPlatformCert ===============
-I0907 04:15:03.741438  118576 grpc_attestor.go:338] Verified Platform Cert
-I0907 04:15:03.741502  118576 grpc_attestor.go:340] =============== OfferEK ===============
-I0907 04:15:03.743337  118576 grpc_attestor.go:349] Verified EK Cert
-I0907 04:15:03.743387  118576 grpc_attestor.go:351] =============== OfferAK ===============
-I0907 04:15:03.818421  118576 grpc_attestor.go:382] Creating AK CSR
-I0907 04:15:03.821694  118576 grpc_attestor.go:417] AK CSR 
+I0907 06:55:52.935054  206740 grpc_attestor.go:128] =============== HealthCheck ===============
+I0907 06:55:52.945806  206740 grpc_attestor.go:144] RPC HealthChekStatus: SERVING
+I0907 06:55:52.945870  206740 grpc_attestor.go:150] AuthType, ServerName tls, verify.domain.com
+I0907 06:55:52.945914  206740 grpc_attestor.go:161] EKM: e852b47c92399d56455b9279dc64686ac239d4200b590d46090f0be78d8e062f
+I0907 06:55:52.945936  206740 grpc_attestor.go:172] Opening swtpm socket
+I0907 06:55:52.948119  206740 grpc_attestor.go:214] Manufacturer: IBM
+I0907 06:55:52.948181  206740 grpc_attestor.go:215] VendorInfo: SW   TPM
+I0907 06:55:52.948204  206740 grpc_attestor.go:216] FirmwareVersionMajor: 8228
+I0907 06:55:52.948225  206740 grpc_attestor.go:217] FirmwareVersionMinor: 293
+I0907 06:55:52.949410  206740 grpc_attestor.go:227] EKCert Issuer: CN=swtpm-localca
+I0907 06:55:52.949492  206740 grpc_attestor.go:253] EKCert SerialNumber: 1234
+I0907 06:55:52.949528  206740 grpc_attestor.go:256] =============== OfferPlatformCert ===============
+I0907 06:55:52.950137  206740 grpc_attestor.go:319] Using platformSerialNumber Number [075bcd15]
+I0907 06:55:52.954743  206740 grpc_attestor.go:334] Verified Platform Cert
+I0907 06:55:52.954811  206740 grpc_attestor.go:336] =============== OfferEK ===============
+I0907 06:55:52.956497  206740 grpc_attestor.go:345] Verified EK Cert
+I0907 06:55:52.956555  206740 grpc_attestor.go:347] =============== OfferAK ===============
+I0907 06:55:53.231809  206740 grpc_attestor.go:378] Creating AK CSR
+I0907 06:55:53.237967  206740 grpc_attestor.go:413] AK CSR 
 -----BEGIN CERTIFICATE REQUEST-----
 MIIC9TCCAd0CAQAwfzELMAkGA1UEBhMCVVMxEzARBgNVBAgTCkNhbGlmb3JuaWEx
 FjAUBgNVBAcTDU1vdW50YWluIFZpZXcxEDAOBgNVBAoTB0FjbWUgQ28xEzARBgNV
 BAsTCkVudGVycHJpc2UxHDAaBgNVBAMTE2F0dGVzdG9yLmRvbWFpbi5jb20wggEi
-MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQC3XVYvMmUZJtglz61shEnbE8lY
-nGFn8msgsjm94ntUcX1+4xxRD2gUuHQXDYR2HrJdPO4aO3Cqx/7SCI4SIQLOnGQT
-b4Br80qBiC2xSVgJB6sz3E+6rpehfBCTiV1uDKZMUFQtoPOp85Mz44FkPQYBcc/k
-M5eCa6LoRLdF3QtNlYGo1dEkRqQFiELchsH5hfHpaACl8V7vBhK4uNWZOw2GIKla
-S46hIR9gcAt43FZNmCpoliZDayolIeH+KDi9X/WbeRNo2hXtjQ4rcLjhGzQSioHH
-SUeQk7xi0/CYNMCtMk9jLUNz32ExdHMx1nvEdryumcbEEAjtv1AQCKRDuJIfAgMB
+MA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCxSukbW8kJbhqJkYiXW7z6DQ6Z
+cN2Ikwig3i6reKqiWC9VmNcqqOnR5Hh4vKOEULUD8969+p4se8zQOuflRtyw5eYk
+jF8CE8xECFBLlIuFL5EDQGgGOSvNdYHuPaeDJs7EgzhAiokIcJi6WE3kE4cy89Tj
+pElzgosulDbJVuHI+Pczq8IAob3eKx5X9TvelmSXH1Ft2T+Zrazdi8o9ypPro74q
+hVnl7tUbrtNxWUhxaAu6+NikaY+y29FUqa3ddohK2btyHEeyC5+91lVIqssjIAnS
+uxxHYzQy+Kq77sdTmp1TTdzmRU1BmLoq0CyE8EEMJv5LU/SgTyp5ul16q1gnAgMB
 AAGgMTAvBgkqhkiG9w0BCQ4xIjAgMB4GA1UdEQQXMBWCE2F0dGVzdG9yLmRvbWFp
-bi5jb20wDQYJKoZIhvcNAQELBQADggEBAF7GJeQDQaAvmS0F0/TpZn/pLanbXWn1
-qK/aFM+1828S6osoqaX0NA+3c9IQbqhFH9d/3N7/LhRIJm3262TcRJOF+tG7rPVp
-WIrXDfJrGHIYBxspEYNREJaLTLP4f8S2s4lc2nwhf4phKQ8B0/HP0j6epmZKML1f
-Ldmp7EE5GfpKcS324wh4APBPtQUPmGqAKKh5ktL7oYn2Gc8zI8DsUYFat+ZY/TZ6
-EcEMHA2NlpfHL6sW/ymucJ/naOT2Rzn0gxqWPuQ5FGZwF0izapWWK6D9/7o9iNYz
-t/ShPEML6pDRZYHbz3q2NBff/qmoeioCChUzoxkximEPlJHk5tS8PdE=
+bi5jb20wDQYJKoZIhvcNAQELBQADggEBAApeGzfil2mhqlzF+qHM7wTK7RaLuQqt
+bp21dtXvJWK3ernH9oI95mVTp5mR1qqmW8i1njk7iRvQ35uxt0LKGKkeeIMlRr15
+GhwibAPT8ddQke+PhSuR2UmtME36jTrFMqezQ9977qWAy+SdQtuIkbB+ekMZxEwW
+I7eeDS1KMpOHEgDoP7eKZg70A74ejpdiDxxm4cLbbs1HvSy+Bd4i4oXomxFyM+0E
+DG3Ss3eDp32Y2UtydHDSoz1FjpGyQR8AwYt0GUkOOTb8hmKtsBEBJRU1gEN86bHP
+qdSSZ1vE+TS7FEdTz3YDxlEwDqxryUMchTWvPvuA/O9I9hugwomYt2A=
 -----END CERTIFICATE REQUEST-----
 
-I0907 04:15:03.823554  118576 grpc_attestor.go:428] Verified AK 
-I0907 04:15:03.823625  118576 grpc_attestor.go:430] =============== GetMakeCredential ===============
-I0907 04:15:03.830641  118576 grpc_attestor.go:459] EncryptedCredentials Secret iOetVx7dto+oZB35HXORmR12b8TQf3pl0d2Z0bPff8A=
-I0907 04:15:03.830712  118576 grpc_attestor.go:461] =============== SetActivateCredential ===============
-I0907 04:15:03.831390  118576 grpc_attestor.go:470] SetActivateCredential complete 
-I0907 04:15:03.831472  118576 grpc_attestor.go:472] =============== OfferQuote ===============
-I0907 04:15:03.831978  118576 grpc_attestor.go:479] OfferQuote complete 
-I0907 04:15:03.832052  118576 grpc_attestor.go:481] =============== SetQuote ===============
-I0907 04:15:03.850532  118576 grpc_attestor.go:514] Issued AK Certificate: 
+I0907 06:55:53.239900  206740 grpc_attestor.go:424] Verified AK 
+I0907 06:55:53.239978  206740 grpc_attestor.go:426] =============== GetMakeCredential ===============
+I0907 06:55:53.241737  206740 grpc_attestor.go:433] EncryptedCredentials eyJDcmVkZW50aWFsIjoiQUVRQUlGbGdSa1FBSFVueG1vQUZqeGNOVU44SGNocS85bWxvaWlGRGw1RnpKZVhVTTNZd01BZktkUllRZ1pmTXg1dDFGcjYyTE5vUHROZ2ZKWWpDaFQzczh0RnFadz09IiwiU2VjcmV0IjoiQVFCeDc1SlBsemtmb2NBZzc5UVptSlJHQ1dheWRmK1dNRlBwdTFrLzIyWjZYdHpERVI4eURzbWJVOHoxa1ZYRkthcXpjYTJVMEcvYW1DcWVVL2daVmJ6UzU4enhzdHlpcHJMODFnRXBSYlhUTWVtVGdQZXdQSnEreitUclpBUkphMHdJY1ZFT2FyWUtBK1NwcXNzSWVETW5tYmNBdndMT0paQ3huV1NlcnpucjFidSt5UVkyMGNwc3NVdEgvKzJmWkVycm1tR3BlNUV3MFh3a0ZJZUZsSWdxL3diTi85MlNJUEJlQ3hwemk5K2ZPVlA3Q3l6czNCbGxxWnRlUmZaS1RhTUFMcmlueHV4MTB1Lzh2ZHlobWJJdU8xZ2IxSUh0WE02b1Z6cnkrNkhGOWoxQVp2ZEJ2SDJacU8wQk9aVXRQRUhxUWhQVnNBc3VZeE0zZlB1MGViN1YifQo=
+I0907 06:55:53.256779  206740 grpc_attestor.go:455] EncryptedCredentials Secret EK5QYbjPArwwKgntNpxV8wZOXH5ZBcYOJdLcW/eHIhQ=
+I0907 06:55:53.256843  206740 grpc_attestor.go:457] =============== SetActivateCredential ===============
+I0907 06:55:53.257957  206740 grpc_attestor.go:466] SetActivateCredential complete 
+I0907 06:55:53.258034  206740 grpc_attestor.go:468] =============== OfferQuote ===============
+I0907 06:55:53.259337  206740 grpc_attestor.go:475] OfferQuote complete 
+I0907 06:55:53.259418  206740 grpc_attestor.go:477] =============== SetQuote ===============
+I0907 06:55:53.283404  206740 grpc_attestor.go:520] Issued AK Certificate: 
 -----BEGIN CERTIFICATE-----
-MIIEDzCCAvegAwIBAgIFAOArWoYwDQYJKoZIhvcNAQELBQAwTDELMAkGA1UEBhMC
-VVMxDzANBgNVBAoMBkdvb2dsZTETMBEGA1UECwwKRW50ZXJwcmlzZTEXMBUGA1UE
-AwwOU2luZ2xlIFJvb3QgQ0EwHhcNMjYwOTA3MDgxNTAzWhcNMjcwOTA3MDgxNTAz
-WjAAMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAt11WLzJlGSbYJc+t
-bIRJ2xPJWJxhZ/JrILI5veJ7VHF9fuMcUQ9oFLh0Fw2Edh6yXTzuGjtwqsf+0giO
-EiECzpxkE2+Aa/NKgYgtsUlYCQerM9xPuq6XoXwQk4ldbgymTFBULaDzqfOTM+OB
-ZD0GAXHP5DOXgmui6ES3Rd0LTZWBqNXRJEakBYhC3IbB+YXx6WgApfFe7wYSuLjV
-mTsNhiCpWkuOoSEfYHALeNxWTZgqaJYmQ2sqJSHh/ig4vV/1m3kTaNoV7Y0OK3C4
-4Rs0EoqBx0lHkJO8YtPwmDTArTJPYy1Dc99hMXRzMdZ7xHa8rpnGxBAI7b9QEAik
-Q7iSHwIDAQABo4IBQjCCAT4wDgYDVR0PAQH/BAQDAgeAMBAGA1UdJQQJMAcGBWeB
-BQgDMAwGA1UdEwEB/wQCMAAwHwYDVR0jBBgwFoAU7PDqU1M/nyPcwQ4xEDcH3t7n
-bvMwJwYDVR0gBCAwHjAIBgZngQULAQEwCAYGZ4EFCwECMAgGBmeBBQsBAzCBwQYD
-VR0RBIG5MIG2oEwGCCsGAQUFBwgEoEAwPgYFZ4EFAQKENTAwMDAxMDE0OjJmNmQ1
-MWRiNzczNmVjYjkyZGNkZTIyNzgwMzFjOGIxZWNjMzg3YjQ6NGNmoCAGCCsGAQUF
-BwgDoBQwEgwQMGU2N2NhMjY3MWVhMjRkN6REMEIxFjAUBgVngQUCARMLaWQ6MDAw
-MDEwMTQxEDAOBgVngQUCAhMFc3d0cG0xFjAUBgVngQUCAxMLaWQ6MjAyNDAxMjUw
-DQYJKoZIhvcNAQELBQADggEBAJ2eVArDLKe42o49wZxBVnNEzpoSvfGLdpnkW81I
-CmYVtTCee3bOMqdddRsM/E+dwTxcAcbZRkOnzI0U3205aqsKn9kWwFvNqpB6J6Q7
-M/zI9+8fNZbPK45WatYhBtBhsruABkc48h6uxOT6EZ2zIAqbgS1/M9c0SEyeA4Jo
-fvr6Nf4BVfCykXckgvWFWLwjNj2djUHP8t0KHtT1y7klrBwmnPNZwLIFUHSkhqb7
-/+4NjZ5yAWzvtGwP4Q4BxhRl654LNNdlPxBz89ELg3ON4bpWn8A39A0bUCJk8w5y
-RJJxwJMsXnYXd9F+mqL3d2gUEvDCT+kYhphieIC5AI+G9A8=
------END CERTIFICATE-----
-
-I0907 04:15:03.850656  118576 grpc_attestor.go:515] SetQuote complete 
-I0907 04:15:03.850715  118576 grpc_attestor.go:517] =============== SetAttestedKey ===============
-I0907 04:15:03.861692  118576 grpc_attestor.go:568] Generated ECC Public 
------BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEna+PTxyNblQohjhcJdLBWWjCMg7R
-P1m0s/ssbYGy27gH/IG5D8WpHdzSWG6X2yfFH0SmrXlwzdLPGDaYvvYHPw==
------END PUBLIC KEY-----
-I0907 04:15:03.863245  118576 grpc_attestor.go:585] SetAttestedKey complete 
-I0907 04:15:03.863344  118576 grpc_attestor.go:587] =============== GetCertificate ===============
-I0907 04:15:03.863452  118576 grpc_attestor.go:589] Creating CSR
-I0907 04:15:03.865452  118576 grpc_attestor.go:622] CSR 
------BEGIN CERTIFICATE REQUEST-----
-MIIBTzCB9gIBADBxMQswCQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEW
-MBQGA1UEBxMNTW91bnRhaW4gVmlldzEQMA4GA1UEChMHQWNtZSBDbzETMBEGA1UE
-CxMKRW50ZXJwcmlzZTEOMAwGA1UEAxMFbXl0cG0wWTATBgcqhkjOPQIBBggqhkjO
-PQMBBwNCAASdr49PHI1uVCiGOFwl0sFZaMIyDtE/WbSz+yxtgbLbuAf8gbkPxakd
-3NJYbpfbJ8UfRKateXDN0s8YNpi+9gc/oCMwIQYJKoZIhvcNAQkOMRQwEjAQBgNV
-HREECTAHggVteXRwbTAKBggqhkjOPQQDAgNIADBFAiEA+rqwZ0CBncYZrQqZXmec
-a6Uh6Ul4UUhtH7NYGbjfU3QCIHrjk61558WIJBifcf0lf1r9kQctwEdXCFKb48Bj
-g+J0
------END CERTIFICATE REQUEST-----
-
-I0907 04:15:03.871935  118576 grpc_attestor.go:642] Issued Client Certificate: 
------BEGIN CERTIFICATE-----
-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
+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
 -----END CERTIFICATE-----
 
 Certificate:
     Data:
         Version: 3 (0x2)
-        Serial Number: 1976974556 (0x75d63cdc)
+        Serial Number: 612101954 (0x247bef42)
         Signature Algorithm: SHA256-RSA
         Issuer: C=US,O=Google,OU=Enterprise,CN=Single Root CA
         Validity
-            Not Before: Sep 7 08:15:03 2026 UTC
-            Not After : Sep 7 08:15:03 2027 UTC
-        Subject: CN=7736d337f4263e48
+            Not Before: Sep 7 10:55:53 2026 UTC
+            Not After : Sep 7 10:55:53 2027 UTC
+        Subject:
         Subject Public Key Info:
-            Public Key Algorithm: ECDSA
-                Public-Key: (256 bit)
-                Curve: P-256
-                X:
-                    9d:af:8f:4f:1c:8d:6e:54:28:86:38:5c:25:d2:c1:
-                    59:68:c2:32:0e:d1:3f:59:b4:b3:fb:2c:6d:81:b2:
-                    db:b8
-                Y:
-                    07:fc:81:b9:0f:c5:a9:1d:dc:d2:58:6e:97:db:27:
-                    c5:1f:44:a6:ad:79:70:cd:d2:cf:18:36:98:be:f6:
-                    07:3f
+            Public Key Algorithm: RSA
+                Public-Key: (2048 bit)
+                Modulus:
+                    b1:4a:e9:1b:5b:c9:09:6e:1a:89:91:88:97:5b:bc:
+                    fa:0d:0e:99:70:dd:88:93:08:a0:de:2e:ab:78:aa:
+                    a2:58:2f:55:98:d7:2a:a8:e9:d1:e4:78:78:bc:a3:
+                    84:50:b5:03:f3:de:bd:fa:9e:2c:7b:cc:d0:3a:e7:
+                    e5:46:dc:b0:e5:e6:24:8c:5f:02:13:cc:44:08:50:
+                    4b:94:8b:85:2f:91:03:40:68:06:39:2b:cd:75:81:
+                    ee:3d:a7:83:26:ce:c4:83:38:40:8a:89:08:70:98:
+                    ba:58:4d:e4:13:87:32:f3:d4:e3:a4:49:73:82:8b:
+                    2e:94:36:c9:56:e1:c8:f8:f7:33:ab:c2:00:a1:bd:
+                    de:2b:1e:57:f5:3b:de:96:64:97:1f:51:6d:d9:3f:
+                    99:ad:ac:dd:8b:ca:3d:ca:93:eb:a3:be:2a:85:59:
+                    e5:ee:d5:1b:ae:d3:71:59:48:71:68:0b:ba:f8:d8:
+                    a4:69:8f:b2:db:d1:54:a9:ad:dd:76:88:4a:d9:bb:
+                    72:1c:47:b2:0b:9f:bd:d6:55:48:aa:cb:23:20:09:
+                    d2:bb:1c:47:63:34:32:f8:aa:bb:ee:c7:53:9a:9d:
+                    53:4d:dc:e6:45:4d:41:98:ba:2a:d0:2c:84:f0:41:
+                    0c:26:fe:4b:53:f4:a0:4f:2a:79:ba:5d:7a:ab:58:
+                    27
+                Exponent: 65537 (0x10001)
         X509v3 extensions:
             X509v3 Key Usage: critical
                 Digital Signature
@@ -626,29 +1083,135 @@ Certificate:
                 Policy: 2.23.133.11.1.2
                 Policy: 2.23.133.11.1.3
             X509v3 Subject Alternative Name:
-                Hardware Module Name: Type: 2.23.133.1.2, Serial Number: 00001014:2f6d51db7736ecb92dcde2278031c8b1ecc387b4:4cf
-                Permanent Identifier: 7736d337f4263e48
+                Hardware Module Name: Type: 2.23.133.1.2, Serial Number: 00001014:2f6d51db7736ecb92dcde2278031c8b1ecc387b4:4d2
+                Permanent Identifier: 87ba72b7367ec022
                 TPM Manufacturer: id:00001014
                 TPM Model: swtpm
                 TPM Version: id:20240125
     Signature Algorithm: SHA256-RSA
-         b1:29:54:72:e6:0c:2c:db:ad:23:e3:3a:0a:b1:cc:8b:69:f2:
-         6c:cc:88:62:b6:86:1c:45:e3:b2:41:f7:4c:be:50:34:97:a4:
-         6a:02:f8:62:18:0c:c4:97:6f:3f:10:a8:02:b6:73:d1:cc:71:
-         9d:49:0c:98:1f:38:ed:f7:71:9d:3b:6b:55:e0:58:72:2d:f8:
-         86:b5:20:13:98:95:38:79:ae:87:9a:67:24:fe:b3:a9:00:3a:
-         85:4e:34:6e:de:b5:64:49:7f:23:25:f6:01:61:c3:4f:6a:b1:
-         14:35:d6:85:98:a5:db:2f:0f:1b:40:aa:59:da:ed:4a:7a:97:
-         4c:ef:e0:2c:db:97:11:3f:e3:e0:3b:15:d2:64:0c:df:57:5c:
-         1f:83:76:62:74:b2:d5:68:d9:bc:e5:f0:0b:49:3b:a5:96:21:
-         9a:c9:3e:a5:0a:dd:74:8c:77:70:ed:c1:7d:90:b8:73:b5:5d:
-         fa:1e:b9:c8:23:60:3b:03:c5:e8:c8:57:47:9d:1a:1c:31:95:
-         e2:cf:76:90:d4:c8:e4:ec:b0:4d:72:62:ee:be:b1:64:8e:78:
-         d9:00:48:55:79:f5:ae:10:6c:e0:c4:e5:d6:6f:b5:1a:fd:ae:
-         8d:f5:df:6c:e7:07:06:55:4d:e1:ea:03:6c:26:98:21:e9:bf:
-         20:24:a6:c7
+         32:7c:88:80:ea:74:8e:d1:08:21:ed:9f:e4:06:16:0d:46:3e:
+         88:b5:60:75:6f:2c:96:f3:00:9e:bc:dc:18:ac:50:13:9c:21:
+         04:04:b9:e6:f9:77:d9:02:b6:87:d9:21:e0:b3:26:b6:77:4c:
+         13:3d:c8:b2:61:cf:ae:a4:cd:55:9c:a3:82:65:46:e6:ad:b1:
+         84:ad:47:89:6d:5a:c7:1a:98:78:a7:74:cb:b3:5c:6c:5b:da:
+         76:85:49:7d:85:84:3f:30:10:6d:c7:8f:37:8a:8f:38:3a:a1:
+         31:c4:2a:70:94:81:09:b7:7e:81:7e:16:5e:fd:9d:a4:34:c7:
+         14:51:ba:d3:95:a7:1c:a0:83:21:1a:38:79:22:c1:80:80:9b:
+         68:15:0e:da:7a:4b:69:ad:61:9e:09:f4:3a:e6:e2:97:60:32:
+         32:f4:f7:fa:5b:6f:cc:c9:2d:5c:d3:f1:1a:d3:ce:d0:49:ac:
+         18:17:7f:cf:17:dc:0a:b7:50:7c:58:f3:ed:8e:40:37:86:3d:
+         b2:37:cf:5f:ae:e2:9c:58:81:e8:b5:44:c8:9d:08:f5:6e:78:
+         97:9d:68:d6:96:d4:3c:40:40:e9:0a:e4:89:56:df:12:e1:59:
+         f4:44:12:81:9b:7c:7d:c8:1a:52:d0:79:11:78:5c:dc:8e:83:
+         a8:4f:ee:92
 
-I0907 04:15:03.872151  118576 grpc_attestor.go:644] GetCertificate complete 
+I0907 06:55:53.283567  206740 grpc_attestor.go:522] SetQuote complete 
+I0907 06:55:53.284804  206740 grpc_attestor.go:524] =============== SetAttestedKey ===============
+I0907 06:55:53.292033  206740 grpc_attestor.go:575] Generated ECC Public 
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3yldje7gyuALrBmTTgQ47L6yqThH
+Oi3Jpkt0WtXpFSkZ9jR3mCQTbg97BJ5ynG8WldKnmb1iOYxi9OKMzQjiXQ==
+-----END PUBLIC KEY-----
+I0907 06:55:53.293967  206740 grpc_attestor.go:592] SetAttestedKey complete 
+I0907 06:55:53.294061  206740 grpc_attestor.go:594] =============== GetCertificate ===============
+I0907 06:55:53.294133  206740 grpc_attestor.go:596] Creating CSR
+I0907 06:55:53.296053  206740 grpc_attestor.go:629] CSR 
+-----BEGIN CERTIFICATE REQUEST-----
+MIIBTjCB9gIBADBxMQswCQYDVQQGEwJVUzETMBEGA1UECBMKQ2FsaWZvcm5pYTEW
+MBQGA1UEBxMNTW91bnRhaW4gVmlldzEQMA4GA1UEChMHQWNtZSBDbzETMBEGA1UE
+CxMKRW50ZXJwcmlzZTEOMAwGA1UEAxMFbXl0cG0wWTATBgcqhkjOPQIBBggqhkjO
+PQMBBwNCAATfKV2N7uDK4AusGZNOBDjsvrKpOEc6LcmmS3Ra1ekVKRn2NHeYJBNu
+D3sEnnKcbxaV0qeZvWI5jGL04ozNCOJdoCMwIQYJKoZIhvcNAQkOMRQwEjAQBgNV
+HREECTAHggVteXRwbTAKBggqhkjOPQQDAgNHADBEAiB4vtd8qbB0Nwg6RGIGah1z
+7BQYDt+HPcDrcpTwmQH76QIgFhbSenFDkVe9Gx5hSIqA58zL956L8MJi3ar7aYy5
+iEU=
+-----END CERTIFICATE REQUEST-----
+
+I0907 06:55:53.300871  206740 grpc_attestor.go:649] Issued Client Certificate: 
+-----BEGIN CERTIFICATE-----
+MIIEDjCCAvagAwIBAgIEJHvvQjANBgkqhkiG9w0BAQsFADBMMQswCQYDVQQGEwJV
+UzEPMA0GA1UECgwGR29vZ2xlMRMwEQYDVQQLDApFbnRlcnByaXNlMRcwFQYDVQQD
+DA5TaW5nbGUgUm9vdCBDQTAeFw0yNjA5MDcxMDU1NTNaFw0yNzA5MDcxMDU1NTNa
+MAAwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCxSukbW8kJbhqJkYiX
+W7z6DQ6ZcN2Ikwig3i6reKqiWC9VmNcqqOnR5Hh4vKOEULUD8969+p4se8zQOufl
+Rtyw5eYkjF8CE8xECFBLlIuFL5EDQGgGOSvNdYHuPaeDJs7EgzhAiokIcJi6WE3k
+E4cy89TjpElzgosulDbJVuHI+Pczq8IAob3eKx5X9TvelmSXH1Ft2T+Zrazdi8o9
+ypPro74qhVnl7tUbrtNxWUhxaAu6+NikaY+y29FUqa3ddohK2btyHEeyC5+91lVI
+qssjIAnSuxxHYzQy+Kq77sdTmp1TTdzmRU1BmLoq0CyE8EEMJv5LU/SgTyp5ul16
+q1gnAgMBAAGjggFCMIIBPjAOBgNVHQ8BAf8EBAMCB4AwEAYDVR0lBAkwBwYFZ4EF
+CAMwDAYDVR0TAQH/BAIwADAfBgNVHSMEGDAWgBTs8OpTUz+fI9zBDjEQNwfe3udu
+8zAnBgNVHSAEIDAeMAgGBmeBBQsBATAIBgZngQULAQIwCAYGZ4EFCwEDMIHBBgNV
+HREEgbkwgbagTAYIKwYBBQUHCASgQDA+BgVngQUBAoQ1MDAwMDEwMTQ6MmY2ZDUx
+ZGI3NzM2ZWNiOTJkY2RlMjI3ODAzMWM4YjFlY2MzODdiNDo0ZDKgIAYIKwYBBQUH
+CAOgFDASDBA4N2JhNzJiNzM2N2VjMDIypEQwQjEWMBQGBWeBBQIBEwtpZDowMDAw
+MTAxNDEQMA4GBWeBBQICEwVzd3RwbTEWMBQGBWeBBQIDEwtpZDoyMDI0MDEyNTAN
+BgkqhkiG9w0BAQsFAAOCAQEAMnyIgOp0jtEIIe2f5AYWDUY+iLVgdW8slvMAnrzc
+GKxQE5whBAS55vl32QK2h9kh4LMmtndMEz3IsmHPrqTNVZyjgmVG5q2xhK1HiW1a
+xxqYeKd0y7NcbFvadoVJfYWEPzAQbcePN4qPODqhMcQqcJSBCbd+gX4WXv2dpDTH
+FFG605WnHKCDIRo4eSLBgICbaBUO2npLaa1hngn0Oubil2AyMvT3+ltvzMktXNPx
+GtPO0EmsGBd/zxfcCrdQfFjz7Y5AN4Y9sjfPX67inFiB6LVEyJ0I9W54l51o1pbU
+PEBA6QrkiVbfEuFZ9EQSgZt8fcgaUtB5EXhc3I6DqE/ukg==
+-----END CERTIFICATE-----
+
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 2553453504 (0x98329bc0)
+        Signature Algorithm: SHA256-RSA
+        Issuer: C=US,O=Google,OU=Enterprise,CN=Single Root CA
+        Validity
+            Not Before: Sep 7 10:55:53 2026 UTC
+            Not After : Sep 7 10:55:53 2027 UTC
+        Subject: CN=87ba72b7367ec022
+        Subject Public Key Info:
+            Public Key Algorithm: ECDSA
+                Public-Key: (256 bit)
+                Curve: P-256
+                X:
+                    df:29:5d:8d:ee:e0:ca:e0:0b:ac:19:93:4e:04:38:
+                    ec:be:b2:a9:38:47:3a:2d:c9:a6:4b:74:5a:d5:e9:
+                    15:29
+                Y:
+                    19:f6:34:77:98:24:13:6e:0f:7b:04:9e:72:9c:6f:
+                    16:95:d2:a7:99:bd:62:39:8c:62:f4:e2:8c:cd:08:
+                    e2:5d
+        X509v3 extensions:
+            X509v3 Key Usage: critical
+                Digital Signature
+            X509v3 Extended Key Usage:
+                2.23.133.8.3
+            X509v3 Basic Constraints: critical
+                CA:FALSE
+            X509v3 Authority Key Identifier:
+                EC:F0:EA:53:53:3F:9F:23:DC:C1:0E:31:10:37:07:DE:DE:E7:6E:F3
+            X509v3 Certificate Policies:
+                Policy: 2.23.133.11.1.1
+                Policy: 2.23.133.11.1.2
+                Policy: 2.23.133.11.1.3
+            X509v3 Subject Alternative Name:
+                Hardware Module Name: Type: 2.23.133.1.2, Serial Number: 00001014:2f6d51db7736ecb92dcde2278031c8b1ecc387b4:4d2
+                Permanent Identifier: 87ba72b7367ec022
+                TPM Manufacturer: id:00001014
+                TPM Model: swtpm
+                TPM Version: id:20240125
+    Signature Algorithm: SHA256-RSA
+         a1:6f:a2:6d:5f:29:33:70:47:07:f8:31:46:32:22:48:29:20:
+         59:1b:83:bd:f6:8d:73:f4:0b:90:6c:72:fe:6f:51:52:47:28:
+         4e:47:c0:6b:4d:b7:d7:9f:9c:f8:a2:aa:0d:15:e8:e4:de:f9:
+         6d:f8:ad:82:2d:22:d2:b2:48:e0:df:e6:44:9b:b6:8f:c2:54:
+         83:0d:6f:c2:d1:43:91:3b:be:73:84:0d:51:0d:e4:e6:77:01:
+         1e:c7:6f:d9:ef:ee:52:fa:34:86:eb:99:73:d1:18:13:ca:31:
+         cb:3d:38:6a:ef:d3:e6:f1:75:95:8e:09:30:c3:b6:06:59:f0:
+         1b:04:56:c9:39:9d:fc:59:56:84:1f:a6:4c:6a:f0:d0:76:73:
+         a0:06:d0:8c:ac:fe:77:91:7b:f6:a3:f5:56:9b:a5:db:bf:2c:
+         32:82:64:70:b0:75:08:c4:58:5c:67:d0:4a:b2:3c:a2:18:8e:
+         8f:a4:1d:80:c5:25:3c:47:38:1d:17:62:12:2a:a7:af:68:1c:
+         15:2a:6a:dc:d8:b9:2e:a7:a6:98:c9:b7:91:5d:6a:62:1c:3d:
+         af:d8:11:ae:09:03:c0:b3:47:f0:66:cb:0d:d7:3f:7d:b4:b8:
+         9a:4b:bc:18:88:e9:0c:0a:19:bf:2d:56:d6:db:01:65:17:1f:
+         b2:be:ea:95
+
+I0907 06:55:53.301018  206740 grpc_attestor.go:651] GetCertificate complete
 ```
 
 Note, to get a GCE instance's swtpm,
