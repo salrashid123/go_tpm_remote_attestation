@@ -511,17 +511,13 @@ func (s *server) OfferEK(ctx context.Context, in *verifier.OfferEKRequest) (*ver
 
 	if val, ok := attestationKeys[evt.EKM]; ok {
 
-		// https://trustedcomputinggroup.org/wp-content/uploads/TCG_Platform_Certificate_Profile_2.1_Pub_v2.pdf
+		// you'll want to compare the platform holder's serial number to match the EK
+		if fmt.Sprintf("%s", val.PlatformCert.Holder.Serial) != fmt.Sprintf("%s", ekcert.SerialNumber) {
+			glog.Errorf("Platform Certificates holder serial number does not match EK Certificate serial number expected AttributeCert serial [%v]     EK serial [%v]", val.PlatformCert.Holder.Serial, ekcert.SerialNumber)
+			return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "Platform Certificates holder serial number does not match EK Certificate serial number [%s]", evt.EKM)
+		}
 		if val.PlatformCert != nil {
-			// do some validation of the platform cert here
-			// you'll want to compare the platform holder's serial number here to verify it
-			// since its a demo, i'm just using a staic one here
-			platformSerialNumber := big.NewInt(123456789)
-			if fmt.Sprintf("%s", val.PlatformCert.Holder.Serial) != fmt.Sprintf("%s", platformSerialNumber) {
-				glog.Errorf("Platform Certificates holder serial number does not match allowed Certificate serial number expected AttributeCert serial [%v]     EK serial [%v]", val.PlatformCert.Holder.Serial, platformSerialNumber)
-				return &verifier.OfferEKResponse{}, status.Errorf(codes.Internal, "Platform Certificates holder serial number does not match EK Certificate serial number [%s]", evt.EKM)
-			}
-
+			// do some validation of the platform cert and EK here
 		}
 		val.EKCert = ekcert
 		attestationKeys[evt.EKM] = val
@@ -821,13 +817,7 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 	for _, e := range el.Events(attest.HashSHA256) {
 		glog.V(60).Infof("Event Index: %d", e.Index)
 		glog.V(60).Infof("   Event Type: %s", e.Type)
-		if hasNonASCII(e.Data) {
-			glog.V(60).Infof("   Event: [non-ascii]")
-		} else {
-			glog.V(60).Infof("   Event: %s", string(e.Data))
-
-		}
-
+		glog.V(60).Infof("   Event: %s", string(e.Data))
 		// determine if SEV is enabled on GCE:
 		//  see https://gist.github.com/salrashid123/0c7a4a6f7465cff19d05ac50d238cd57
 		// if e.Index == 0 && e.Type.String() == "EV_NONHOST_INFO" {
@@ -1535,13 +1525,4 @@ func getPCRMap(expectedPCRMapSHA256 string, algo tpm.HashAlgo) (map[uint32][]byt
 		return nil, nil, fmt.Errorf(" PCRMap is null")
 	}
 	return pcrMap, hsh.Sum(nil), nil
-}
-
-func hasNonASCII(b []byte) bool {
-	for _, v := range b {
-		if v > 127 { // or v & 0x80 != 0
-			return true
-		}
-	}
-	return false
 }
