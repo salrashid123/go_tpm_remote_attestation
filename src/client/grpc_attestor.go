@@ -510,8 +510,19 @@ func run() int {
 	}
 
 	issuedakcrtPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: sq.AkCertificate})
+	akrcert, err := x509.ParseCertificate(sq.AkCertificate)
+	if err != nil {
+		glog.Errorf("Failed to create certificate: %v", err)
+		return 1
+	}
 
-	glog.V(5).Infof("Issued AK Certificate: \n%s\n", string(issuedakcrtPEM))
+	issuedakPrintable, err := certinfo.CertificateText(akrcert)
+	if err != nil {
+		glog.Errorf("Failed to format certificate: %v", err)
+		return 1
+	}
+	glog.V(5).Infof("Issued AK Certificate: \n%s\n%s\n", string(issuedakcrtPEM), issuedakPrintable)
+
 	glog.V(5).Infof("SetQuote complete \n")
 
 	glog.V(5).Infof("=============== SetAttestedKey ===============")
@@ -634,12 +645,12 @@ func run() int {
 		glog.Errorf("Failed to create certificate: %v", err)
 		return 1
 	}
-	akcertPrintable, err := certinfo.CertificateText(ccrcert)
+	issuedcertPrintable, err := certinfo.CertificateText(ccrcert)
 	if err != nil {
 		glog.Errorf("Failed to format certificate: %v", err)
 		return 1
 	}
-	glog.V(5).Infof("Issued Client Certificate: \n%s\n%s\n", string(issuedakcrtPEM), akcertPrintable)
+	glog.V(5).Infof("Issued Client Certificate: \n%s\n%s\n", string(issuedakcrtPEM), issuedcertPrintable)
 
 	glog.V(5).Infof("GetCertificate complete \n")
 

@@ -1053,7 +1053,7 @@ func (s *server) SetQuote(ctx context.Context, in *verifier.SetQuoteRequest) (*v
 		return &verifier.SetQuoteResponse{}, status.Errorf(codes.Internal, "Failed to parse ak certificate: %s", err)
 	}
 	vv.AKCert = akcert
-
+	vv.DeviceSerialNumber = hex.EncodeToString(devserialNumber.Bytes())
 	akcertPrintable, err := certinfo.CertificateText(akcert)
 	if err != nil {
 		glog.Errorf("Failed to format certificate: [%s] %v", evt.EKM, err)
@@ -1250,27 +1250,18 @@ func (s *server) GetCertificate(ctx context.Context, in *verifier.GetCertificate
 
 	// add tpm SAN as "OtherName"
 
-	// create a unique device serial number; the deviceID can be issued by the attestorCA as is the case here
-	// pg 55: https://trustedcomputinggroup.org/wp-content/uploads/TPM-2p0-Keys-for-Device-Identity-and-Attestation_v1_r12_pub10082021.pdf
-	// The subject field’s DN encoding SHOULD include the “serialNumber” attribute with the device’s unique serial number.
-	deviceSerialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 64)
-	devserialNumber, err := rand.Int(rand.Reader, deviceSerialNumberLimit)
-	if err != nil {
-		glog.Errorf("Failed to generate serial number: %s", err)
-		return &verifier.GetCertificateResponse{}, status.Errorf(codes.Internal, "Failed to generate serial number: %s", err)
-	}
-
-	deviceSerialString := hex.EncodeToString(devserialNumber.Bytes())
+	// use the same deviceserialnumber from the AK cert
+	deviceSerialString := vv.DeviceSerialNumber
 
 	// 4. Create a Certificate Order
-	glog.V(5).Infof(">>>>>>>>  DeviceSerial Number [%s]\n", hex.EncodeToString(devserialNumber.Bytes()))
+	glog.V(5).Infof(">>>>>>>>  Using DeviceSerial Number [%s]\n", deviceSerialString)
 
 	glog.V(5).Infof("      verify quote, PCRs and secureBootState")
 
 	var oidAIKCertificate = asn1.ObjectIdentifier{2, 23, 133, 8, 3}
 
 	pid, err := marshalOtherName(oidPermanentIdentifier, permanentIdentifier{
-		IdentifierValue: hex.EncodeToString(devserialNumber.Bytes()),
+		IdentifierValue: deviceSerialString,
 	})
 	if err != nil {
 		glog.Errorf("Failed to create permanentIdentifier: %s", err)
